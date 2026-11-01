@@ -1,0 +1,30 @@
+# Copy to ~/.config/island/config.toml. Every key is optional; these are the
+# defaults. Run `island reload` after editing. MODDING.md explains the rest.
+
+font = "Adwaita Sans"
+icon_font = "JetBrainsMono Nerd Font Propo"   # any Nerd Font; big ones cost real memory
+icon_style = "glyph"              # "glyph" is two-tone, "color" uses each app's own icon
+clock = "%I:%M %p"                # strftime
+palette = "~/.config/theme/generated/colors.toml"
+
+pill = ["media", "workspaces", "network", "clock"]
+panel = ["header", "workspaces", "media", "stats", "audio", "status"]
+
+[icons]
+# App id = glyph, added to the built-in table in src/pen.rs.
+# "org.gnome.nautilus" = "󰉋"
+
+[commands]
+wifi = "nm-connection-editor"     # left click on the network label
+wifi_alt = ""                     # right click
+mixer = "pavucontrol"             # right click on the volume controls
+wallpaper_pick = ""               # empty hides the wallpaper button
+wallpaper_next = ""
+wallpaper_toggle = ""
+
+# A module made of a shell command. Place it with "custom:weather" in `pill` or `panel`.
+# [[custom]]
+# name = "weather"
+# exec = "curl -s 'wttr.in/?format=%t'"
+# interval = 600
+# on_click = "xdg-open https://wttr.in"

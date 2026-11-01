@@ -1,3 +1,4 @@
 target
 tests/headless/run
 .claude
+__pycache__

@@ -183,7 +183,7 @@ impl Icons {
                 themes.push(t.into());
             }
         }
-        Icons { index: scan_desktop_files(&dirs), scanned: Instant::now(), dirs, themes,
+        Icons { index: HashMap::new(), scanned: Instant::now() - RESCAN, dirs, themes,
                 apps: HashMap::new(), symbols: HashMap::new() }
     }
 

@@ -1,18 +1,19 @@
 //! A Dynamic Island for MangoWC. See README.md.
 mod audio;
 mod bus;
-mod draw;
 mod icons;
 mod island;
-mod mango;
+mod modules;
 mod net;
+mod pen;
 mod settings;
 mod sys;
 mod theme;
+mod wm;
 
 use cairo::ImageSurface;
-use draw::{Action, Scroll, View};
 use island::{Island, Outcome};
+use pen::{Action, Scroll, View};
 use settings::{Config, State};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -42,6 +43,7 @@ use smithay_client_toolkit::{
     shm::{Shm, ShmHandler},
 };
 use std::{
+    collections::HashMap,
     env,
     io::{BufRead, BufReader, Read, Write},
     os::unix::net::{UnixListener, UnixStream},
@@ -58,8 +60,9 @@ const STATS_EVERY: Duration = Duration::from_millis(1500);
 const NAMESPACE: &str = "island";
 
 pub enum Msg {
-    Monitors(Vec<mango::Monitor>),
-    Clients(Vec<mango::Client>),
+    Monitors(Vec<wm::Monitor>),
+    Clients(Vec<wm::Client>),
+    Custom(String, String),
     Audio(audio::State),
     Sys(sys::Snapshot),
     Media(Option<bus::Track>),
@@ -73,8 +76,9 @@ pub enum Msg {
 
 /// Everything on screen comes from here; workers only ever feed it messages.
 pub struct Model {
-    pub monitors: Vec<mango::Monitor>,
-    pub clients: Vec<mango::Client>,
+    pub monitors: Vec<wm::Monitor>,
+    pub clients: Vec<wm::Client>,
+    pub custom: HashMap<String, String>,
     pub sys: sys::Snapshot,
     pub audio: Option<audio::State>,
     pub media: Option<bus::Track>,
@@ -110,6 +114,7 @@ pub struct App {
     state: State,
     stats: mpsc::Sender<sys::Cmd>,
     bus: Option<bus::Bus>,
+    wm: Box<dyn wm::Backend>,
     net_poke: mpsc::Sender<()>,
     tx: Tx,
     next_stats: Option<Instant>,
@@ -153,7 +158,7 @@ impl App {
             }
             let surface = self.compositor.create_surface(&qh);
             let layer = self.layer_shell.create_layer_surface(&qh, surface, Layer::Top, Some(NAMESPACE), Some(&output));
-            layer.set_anchor(Anchor::TOP);
+            layer.set_anchor(Anchor::TOP | Anchor::LEFT);
             layer.set_keyboard_interactivity(KeyboardInteractivity::None);
             // Mango gives zone-0 layers a rectangular drop shadow, decided at map
             // time. It would outline the whole transparent surface.
@@ -215,13 +220,17 @@ impl App {
             Msg::Clients(c) => {
                 // Terminals rewrite their title constantly, and titles only show up
                 // as hover tips, so those changes wait for the next hover.
-                let moved = !mango::same_but_titles(&c, &self.model.clients);
+                let moved = !wm::same_but_titles(&c, &self.model.clients);
                 self.model.clients = c;
                 if moved {
                     self.all(true, true);
                 } else {
                     self.islands.iter_mut().for_each(Island::titles_changed);
                 }
+            }
+            Msg::Custom(name, text) => {
+                self.model.custom.insert(name, text);
+                self.all(true, true);
             }
             Msg::Audio(a) => {
                 let changed = self.model.audio.as_ref()
@@ -268,7 +277,7 @@ impl App {
                 }
             }
             Msg::Theme => {
-                if let Some(pal) = theme::reload() {
+                if let Some(pal) = theme::reload(&self.cfg.palette) {
                     self.model.pal = pal;
                     self.all(true, true);
                 }
@@ -283,6 +292,11 @@ impl App {
             "pin" | "toggle" => self.act(Action::Pin, 0.0, None),
             "tuck" => self.act(Action::Tuck, 0.0, None),
             "reset" => self.act(Action::Reset, 0.0, None),
+            "reload" => {
+                self.cfg = Config::load();
+                self.model.pal = theme::load(&self.cfg.palette);
+                self.all(true, true);
+            }
             "quit" => self.quit = true,
             "" => {} // a second instance checking whether we're alive
             _ => eprintln!("island: unknown command {c}"),
@@ -293,10 +307,11 @@ impl App {
         let tray = |m: &Model, i: usize| m.tray.get(i).map(|(item, _)| item.clone());
         match action {
             Action::None => {}
-            Action::View { tag, mon } => mango::dispatch(&format!("viewcrossmon,{tag},{mon}")),
-            Action::MoveTo(tag) => mango::dispatch(&format!("tagsilent,{tag}")),
-            Action::Focus(id) => mango::dispatch(&format!("focusid client,{id}")),
-            Action::Sh(cmd) => spawn_sh(cmd),
+            Action::View { tag, mon } => self.wm.view(tag, &mon),
+            Action::MoveTo(tag) => self.wm.send_to(tag),
+            Action::Focus(id) => self.wm.focus(id),
+            Action::Sh(cmd) if cmd.is_empty() => {}
+            Action::Sh(cmd) => spawn_sh(&cmd),
             Action::Mute => spawn_sh("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),
             Action::Volume => {
                 let pct = (frac * 100.0).round() as u32;
@@ -565,10 +580,7 @@ impl PointerHandler for App {
                                 let sign = if notches > 0.0 { '-' } else { '+' };
                                 spawn_sh(&format!("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ {}%{sign}", 5.0 * notches.abs()));
                             }
-                            Scroll::Tags => {
-                                let f = if notches > 0.0 { "viewtoright_have_client" } else { "viewtoleft_have_client" };
-                                mango::dispatch(f);
-                            }
+                            Scroll::Tags => self.wm.cycle(notches > 0.0),
                         }
                     }
                 }
@@ -641,9 +653,10 @@ fn control_socket(tx: Tx) -> Result<(), String> {
 }
 
 /// Parked in read(2) until matugen rewrites the palette.
-fn watch_theme(tx: Tx) {
+fn watch_theme(palette: &str, tx: Tx) {
+    let dir = theme::expand(palette).parent().map(|d| d.to_owned()).unwrap_or_default();
     thread::spawn(move || unsafe {
-        let Ok(dir) = std::ffi::CString::new(theme::dir().to_string_lossy().as_bytes()) else { return };
+        let Ok(dir) = std::ffi::CString::new(dir.to_string_lossy().as_bytes()) else { return };
         let fd = libc::inotify_init1(libc::IN_CLOEXEC);
         if fd < 0 || libc::inotify_add_watch(fd, dir.as_ptr(), libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO) < 0 {
             return eprintln!("island: can't watch {dir:?}; wallpaper colors won't update live");
@@ -662,10 +675,10 @@ fn main() {
         if cmd == "--gpu-sampler" {
             return sys::gpu_sampler();
         }
-        if matches!(cmd.as_str(), "pin" | "toggle" | "tuck" | "reset" | "quit") {
+        if matches!(cmd.as_str(), "pin" | "toggle" | "tuck" | "reset" | "reload" | "quit") {
             run_client(&cmd);
         }
-        eprintln!("usage: island [pin|tuck|reset|quit]");
+        eprintln!("usage: island [pin|tuck|reset|reload|quit]");
         std::process::exit(2);
     }
 
@@ -688,7 +701,12 @@ fn main() {
         }
     }).expect("message source");
 
+    let cfg = Config::load();
     let net_poke = net::spawn(tx.clone());
+    let wm = wm::detect();
+    wm.watch(tx.clone());
+    modules::custom::spawn(&cfg.custom, tx.clone());
+    watch_theme(&cfg.palette, tx.clone());
     let mut app = App {
         registry: RegistryState::new(&globals),
         seat: SeatState::new(&globals, &qh),
@@ -702,15 +720,16 @@ fn main() {
         qh,
         islands: Vec::new(),
         under_pointer: None,
-        model: Model { monitors: Vec::new(), clients: Vec::new(), sys: sys::Snapshot::default(), audio: None,
-                       media: None, art_small: None, art_large: None, net: net::State::Unknown, tray: Vec::new(),
-                       pal: theme::load() },
+        model: Model { monitors: Vec::new(), clients: Vec::new(), custom: HashMap::new(), sys: sys::Snapshot::default(),
+                       audio: None, media: None, art_small: None, art_large: None, net: net::State::Unknown,
+                       tray: Vec::new(), pal: theme::load(&cfg.palette) },
         icons: Icons::new(),
         tray_items: Vec::new(),
-        cfg: Config::load(),
+        cfg,
         state: State::load(),
         stats: sys::spawn(tx.clone()),
         bus: bus::spawn(tx.clone()),
+        wm,
         net_poke,
         tx: tx.clone(),
         next_stats: None,
@@ -718,9 +737,7 @@ fn main() {
         scroll: 0.0,
         quit: false,
     };
-    mango::watch(tx.clone());
-    audio::spawn(tx.clone());
-    watch_theme(tx);
+    audio::spawn(tx);
 
     while !app.quit {
         let wait = app.next_deadline().saturating_duration_since(Instant::now());

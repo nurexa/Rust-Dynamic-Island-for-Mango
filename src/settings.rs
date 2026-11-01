@@ -1,5 +1,6 @@
-//! ~/.config/island/config is hand-edited and optional. ~/.local/state/island/state
+//! ~/.config/island/config.toml is hand-edited and optional. ~/.local/state/island/state
 //! is written by the island: where each pill sits, and pin and tuck.
+use serde::Deserialize;
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
 pub fn home() -> PathBuf {
@@ -11,27 +12,100 @@ fn state_path() -> PathBuf {
         .join("island/state")
 }
 
+#[derive(Deserialize, Clone, Copy, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum IconStyle {
+    /// One-color Nerd Font glyphs in the theme's colors.
+    Glyph,
+    /// The apps' own full-color icons.
+    Color,
+}
+
+/// Shell commands behind the panel's controls. Empty means no action; an empty
+/// `wallpaper_pick` also hides the wallpaper button.
+#[derive(Deserialize, Debug)]
+#[serde(default)]
+pub struct Commands {
+    pub wifi: String,
+    pub wifi_alt: String,
+    pub mixer: String,
+    pub wallpaper_pick: String,
+    pub wallpaper_next: String,
+    pub wallpaper_toggle: String,
+}
+
+impl Default for Commands {
+    fn default() -> Self {
+        Commands { wifi: "nm-connection-editor".into(), wifi_alt: String::new(), mixer: "pavucontrol".into(),
+                   wallpaper_pick: String::new(), wallpaper_next: String::new(), wallpaper_toggle: String::new() }
+    }
+}
+
+/// A module made of a shell command: its first line of output is what shows.
+#[derive(Deserialize, Clone, Debug)]
+pub struct Custom {
+    pub name: String,
+    pub exec: String,
+    /// Seconds between runs. 0 runs it once.
+    #[serde(default)]
+    pub interval: u64,
+    #[serde(default)]
+    pub on_click: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(default)]
 pub struct Config {
     pub font: String,
+    pub icon_font: String,
+    pub icon_style: IconStyle,
     pub clock: String,
-    /// Keep tiled windows out from under the pill while it's docked.
-    pub reserve: bool,
+    pub palette: String,
+    /// Module order in the pill and the panel. See src/modules/mod.rs.
+    pub pill: Vec<String>,
+    pub panel: Vec<String>,
+    /// App id -> glyph, over the built-in table.
+    pub icons: HashMap<String, String>,
+    pub commands: Commands,
+    pub custom: Vec<Custom>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        let list = |l: &[&str]| l.iter().map(|s| s.to_string()).collect();
+        Config {
+            font: "Adwaita Sans".into(),
+            // Any Nerd Font has the icons, and this one is a sixth the size of Iosevka,
+            // which cuts memory in half: HarfBuzz's tables scale with the font.
+            icon_font: "JetBrainsMono Nerd Font Propo".into(),
+            icon_style: IconStyle::Glyph,
+            clock: "%I:%M %p".into(),
+            palette: "~/.config/theme/generated/colors.toml".into(),
+            pill: list(&["media", "workspaces", "network", "clock"]),
+            panel: list(&["header", "workspaces", "media", "stats", "audio", "status"]),
+            icons: HashMap::new(),
+            commands: Commands::default(),
+            custom: Vec::new(),
+        }
+    }
 }
 
 impl Config {
+    pub fn path() -> PathBuf {
+        env::var_os("XDG_CONFIG_HOME").map_or(home().join(".config"), PathBuf::from).join("island/config.toml")
+    }
+
+    pub fn parse(src: &str) -> Result<Self, toml::de::Error> {
+        toml::from_str(src)
+    }
+
+    /// A broken config must not take the bar down with it: complain, use defaults.
     pub fn load() -> Self {
-        let mut c = Config { font: "Adwaita Sans".into(), clock: "%I:%M %p".into(), reserve: true };
-        let dir = env::var_os("XDG_CONFIG_HOME").map_or(home().join(".config"), PathBuf::from);
-        let src = fs::read_to_string(dir.join("island/config")).unwrap_or_default();
-        for line in src.lines().map(str::trim).filter(|l| !l.starts_with('#')) {
-            match line.split_once('=').map(|(k, v)| (k.trim(), v.trim())) {
-                Some(("font", v)) => c.font = v.into(),
-                Some(("clock", v)) => c.clock = v.into(),
-                Some(("reserve", v)) => c.reserve = v != "false",
-                _ => {}
-            }
-        }
-        c
+        let Ok(src) = fs::read_to_string(Self::path()) else { return Config::default() };
+        Self::parse(&src).unwrap_or_else(|e| {
+            eprintln!("island: ignoring {}: {e}", Self::path().display());
+            Config::default()
+        })
     }
 }
 
@@ -96,6 +170,16 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn config_fills_gaps_and_rejects_nonsense() {
+        let c = Config::parse("clock = \"%H:%M\"\npill = [\"clock\"]\n[icons]\nfoot = \"x\"\n[[custom]]\nname = \"w\"\nexec = \"date\"\n").unwrap();
+        assert_eq!(c.clock, "%H:%M");
+        assert_eq!(c.pill, ["clock"]);
+        assert_eq!(c.panel.len(), Config::default().panel.len());
+        assert_eq!(c.custom[0].interval, 0);
+        assert!(Config::parse("icon_style = \"sparkly\"").is_err());
+    }
 
     #[test]
     fn state_round_trips_and_ignores_garbage() {

@@ -1,0 +1,97 @@
+{
+  "method": "3 runs, 30s idle, 40 workspace switches, headless Mango, same windows and apps",
+  "waybar_version": "Waybar v0.15.0",
+  "binary_mb": {
+    "waybar": 2.5,
+    "island": 3.1
+  },
+  "median": {
+    "waybar": {
+      "startup_ms": 162,
+      "pss_mb": 37.3,
+      "rss_mb": 77.1,
+      "threads": 21,
+      "processes": 1,
+      "idle_cpu_pct": 1.6,
+      "idle_wakeups_per_s": 41.2,
+      "switch_cpu_ms": 45.75
+    },
+    "island": {
+      "startup_ms": 69,
+      "pss_mb": 10.9,
+      "rss_mb": 34.7,
+      "threads": 16,
+      "processes": 2,
+      "idle_cpu_pct": 0.0,
+      "idle_wakeups_per_s": 3.3,
+      "switch_cpu_ms": 2.5,
+      "morph_cpu_ms": 82.0
+    }
+  },
+  "runs": {
+    "waybar": [
+      {
+        "startup_ms": 210,
+        "pss_mb": 37.3,
+        "rss_mb": 77.1,
+        "threads": 21,
+        "processes": 1,
+        "idle_cpu_pct": 1.6,
+        "idle_wakeups_per_s": 48.3,
+        "switch_cpu_ms": 45.75
+      },
+      {
+        "startup_ms": 105,
+        "pss_mb": 37.3,
+        "rss_mb": 77.2,
+        "threads": 21,
+        "processes": 1,
+        "idle_cpu_pct": 2.233,
+        "idle_wakeups_per_s": 41.2,
+        "switch_cpu_ms": 46.75
+      },
+      {
+        "startup_ms": 162,
+        "pss_mb": 37.2,
+        "rss_mb": 77.0,
+        "threads": 21,
+        "processes": 1,
+        "idle_cpu_pct": 0.9,
+        "idle_wakeups_per_s": 12.8,
+        "switch_cpu_ms": 45.25
+      }
+    ],
+    "island": [
+      {
+        "startup_ms": 61,
+        "pss_mb": 11.0,
+        "rss_mb": 35.0,
+        "threads": 16,
+        "processes": 2,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 3.3,
+        "switch_cpu_ms": 3.25
+      },
+      {
+        "startup_ms": 69,
+        "pss_mb": 10.9,
+        "rss_mb": 34.7,
+        "threads": 17,
+        "processes": 2,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 5.4,
+        "switch_cpu_ms": 1.75
+      },
+      {
+        "startup_ms": 77,
+        "pss_mb": 10.9,
+        "rss_mb": 34.7,
+        "threads": 16,
+        "processes": 2,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 2.4,
+        "switch_cpu_ms": 2.5
+      }
+    ]
+  }
+}

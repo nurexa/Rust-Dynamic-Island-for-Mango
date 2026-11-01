@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamic Island for MangoWC</title>
+<meta name="description" content="A Rust Dynamic Island that replaces Waybar on MangoWC: workspaces, media, stats and tray in one pill.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #12152b;
+  --ink-soft: #454a6b;
+  --island: #05060b;
+  --island-fg: #e6e8f5;
+  --island-muted: #8d92ad;
+  --series-island: #4553d6;
+  --series-waybar: #c98a2e;
+  /* Set per wallpaper by data-wall on <html> */
+  --wall: #c9d0fb;
+  --wall-2: #e3c8f2;
+  --wall-3: #a9c6f5;
+  --paper: #eceeff;
+  --accent: #b5c4ff;
+  --on-accent: #1b2b61;
+}
+html[data-wall="moss"] {
+  --wall: #cfe3c4; --wall-2: #e6e6b4; --wall-3: #a8d8c4; --paper: #eff6e8; --accent: #a9d39b; --on-accent: #123a12;
+}
+html[data-wall="ember"] {
+  --wall: #f6cfba; --wall-2: #f7dca8; --wall-3: #f2b4bd; --paper: #fdeee6; --accent: #ffb59d; --on-accent: #561f0f;
+}
+* { box-sizing: border-box; margin: 0; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--wall);
+  line-height: 1.5;
+  font-size: 17px;
+  -webkit-font-smoothing: antialiased;
+}
+/* The page is a desktop: this is its wallpaper. */
+.wallpaper {
+  position: fixed; inset: 0; z-index: -1;
+  background:
+    radial-gradient(60vmax 45vmax at 12% 18%, var(--wall-2), transparent 70%),
+    radial-gradient(70vmax 50vmax at 88% 72%, var(--wall-3), transparent 70%),
+    var(--wall);
+  transition: background-color .5s;
+}
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--series-island); outline-offset: 3px; border-radius: 6px; }
+code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+main { width: min(1040px, 100%); margin: 0 auto; padding: 0 24px 96px; }
+section { margin-top: 112px; }
+h1, h2 { font-family: "Unbounded", system-ui, sans-serif; font-weight: 700; letter-spacing: -.02em; line-height: 1.08; }
+h1 { font-size: clamp(2.5rem, 8.2vw, 5.6rem); max-width: 13ch; }
+h2 { font-size: clamp(1.7rem, 4.4vw, 2.9rem); max-width: 19ch; }
+.lede { margin-top: 18px; max-width: 54ch; font-size: 1.16rem; color: var(--ink-soft); }
+
+.hero { min-height: 100svh; display: flex; flex-direction: column; justify-content: flex-end; padding: 150px 0 72px; margin: 0; }
+.hint { margin-top: 14px; font-size: .95rem; color: var(--ink-soft); }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.button {
+  display: inline-flex; align-items: center; min-height: 46px; padding: 0 22px; border-radius: 23px;
+  background: var(--island); color: var(--island-fg); font-weight: 600; text-decoration: none;
+  transition: transform .15s;
+}
+.button.quiet { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.button:hover { transform: translateY(-2px); }
+
+.screen { margin-top: 32px; border-radius: 22px; overflow: hidden; background: var(--island); box-shadow: 0 24px 60px rgb(18 21 43 / .22); }
+.screen img { display: block; width: 100%; height: auto; }
+
+.card { margin-top: 32px; padding: 28px; border-radius: 26px; background: var(--paper); }
+.legend { display: flex; gap: 20px; font-size: .92rem; font-weight: 500; }
+.legend i { display: inline-block; width: 12px; height: 12px; margin-right: 7px; border-radius: 4px; vertical-align: -1px; }
+.metric { margin-top: 26px; }
+.metric h3 { font-size: 1rem; font-weight: 600; }
+.metric p { font-size: .9rem; color: var(--ink-soft); }
+.bar-row { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 10px; margin-top: 7px; font-size: .9rem; }
+.track { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.bar { height: 16px; min-width: 4px; border-radius: 4px; flex: none; transition: filter .15s; }
+.bar:hover { filter: brightness(1.12); }
+.bar.island { background: var(--series-island); }
+.bar.waybar { background: var(--series-waybar); }
+.value { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tooltip {
+  position: fixed; z-index: 30; pointer-events: none; padding: 6px 10px; border-radius: 10px; font-size: .84rem;
+  background: var(--island); color: var(--island-fg); opacity: 0; transition: opacity .1s;
+}
+
+table { width: 100%; margin-top: 18px; border-collapse: collapse; font-size: .95rem; font-variant-numeric: tabular-nums; }
+caption { text-align: left; font-weight: 600; padding-bottom: 8px; }
+th, td { padding: 9px 12px 9px 0; text-align: left; border-top: 1px solid rgb(18 21 43 / .12); }
+thead th { border-top: 0; color: var(--ink-soft); font-weight: 500; }
+td:not(:first-child), thead th:not(:first-child) { text-align: right; white-space: nowrap; }
+.fine { margin-top: 16px; font-size: .9rem; color: var(--ink-soft); max-width: 72ch; }
+
+.levels { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 32px; }
+.level { padding: 22px; border-radius: 22px; background: var(--paper); min-width: 0; }
+.level h3 { font-size: 1.05rem; font-weight: 600; }
+.level p { margin-top: 4px; color: var(--ink-soft); font-size: .96rem; }
+pre {
+  margin-top: 14px; padding: 16px 18px; border-radius: 16px; overflow-x: auto;
+  background: var(--island); color: var(--island-fg); font-size: .82rem; line-height: 1.6;
+  scrollbar-width: thin; scrollbar-color: rgb(230 232 245 / .3) transparent;
+}
+.install pre { font-size: .92rem; }
+.stars img { display: block; width: 100%; height: auto; border-radius: 14px; }
+footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
+
+/* The island. Same geometry and spring as src/island.rs. */
+#island {
+  position: fixed; left: 50%; top: 10px; z-index: 20;
+  width: 196px; height: 36px; border-radius: 18px; overflow: hidden;
+  background: var(--island); color: var(--island-fg); touch-action: none; user-select: none; cursor: default;
+  box-shadow: 0 8px 26px rgb(5 6 11 / .32);
+  transform: translateX(-50%);
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+#island button { font: inherit; border: 0; cursor: pointer; }
+.pill, .panel { position: absolute; top: 0; }
+.pill { left: 50%; transform: translateX(-50%); width: 196px; height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px 0 7px; }
+.pill .time { font-size: 13.5px; font-weight: 600; }
+.chips { display: flex; align-items: center; gap: 3px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 13px; font-size: 12.5px; font-weight: 700; color: var(--island-muted); }
+.chip svg { width: 16px; height: 16px; color: var(--island-fg); }
+.chip.on { background: var(--accent); color: var(--on-accent); }
+.chip.on svg { color: var(--on-accent); }
+.panel { left: 50%; transform: translateX(-50%); width: var(--panel-w); padding: 18px 20px 20px; opacity: 0; visibility: hidden; }
+.panel .head { display: flex; align-items: baseline; gap: 12px; }
+.panel .clock { font-size: 26px; font-weight: 600; }
+.panel .date { font-size: 13px; color: var(--island-muted); }
+.panel .label { margin-top: 14px; display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; color: var(--island-muted); }
+.panel .label::before { content: ""; width: 6px; height: 6px; border-radius: 3px; background: var(--accent); }
+.panel .chips { margin-top: 7px; gap: 6px; flex-wrap: wrap; }
+.panel .chip { height: 36px; padding: 0 12px; border-radius: 13px; background: rgb(230 232 245 / .07); font-size: 13px; }
+.panel .chip.on { background: var(--accent); }
+.panel .chip:hover { filter: brightness(1.2); }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.tile { padding: 9px 12px 10px; border-radius: 14px; background: rgb(230 232 245 / .055); min-width: 0; }
+.tile span { display: block; font-size: 10.5px; font-weight: 500; color: var(--island-muted); white-space: nowrap; }
+.tile b { display: block; font-size: 17px; font-weight: 600; margin-top: 2px; }
+
+@media (max-width: 640px) {
+  body { font-size: 16px; }
+  section { margin-top: 80px; }
+  .levels { grid-template-columns: 1fr; }
+  .card { padding: 20px 18px; }
+  .bar-row { grid-template-columns: 54px 1fr; }
+  th, td { padding-right: 8px; font-size: .88rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .button, .wallpaper { transition: none; }
+}
+</style>
+</head>
+<body>
+<div class="wallpaper" aria-hidden="true"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="g-term" viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 4v10h16V8H4Zm2 2 1.4-1.4L11.8 13l-4.4 4.4L6 16l3-3-3-3Zm6 6h6v2h-6v-2Z"/></symbol>
+  <symbol id="g-globe" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm7.9 9h-3a15 15 0 0 0-1.3-5.4A8 8 0 0 1 19.900 11ZM12 4c.9 1.300 1.700 3.700 1.900 7h-3.800C10.300 7.700 11.100 5.300 12 4ZM8.400 5.600A15 15 0 0 0 7.100 11h-3a8 8 0 0 1 4.300-5.400ZM4.100 13h3a15 15 0 0 0 1.300 5.400A8 8 0 0 1 4.100 13Zm7.900 7c-.9-1.300-1.700-3.700-1.900-7h3.800c-.2 3.300-1 5.700-1.900 7Zm3.600-1.600a15 15 0 0 0 1.300-5.400h3a8 8 0 0 1-4.300 5.400Z"/></symbol>
+  <symbol id="g-note" viewBox="0 0 24 24"><path fill="currentColor" d="M21 3v12.500a3.500 3.500 0 1 1-2-3.160V7.500L9 9.700v7.800a3.500 3.500 0 1 1-2-3.160V5.200L21 3Z"/></symbol>
+</svg>
+
+<div id="island" role="group" aria-label="Live demo of the island">
+  <div class="pill">
+    <div class="chips">
+      <span class="chip on" data-chip="dusk">1 <svg><use href="#g-term"/></svg></span>
+      <span class="chip" data-chip="moss">2 <svg><use href="#g-globe"/></svg></span>
+    </div>
+    <span class="time" data-time></span>
+  </div>
+  <div class="panel">
+    <div class="head"><span class="clock" data-time></span><span class="date" data-date></span></div>
+    <div class="label">Workspaces</div>
+    <div class="chips">
+      <button class="chip on" data-wall="dusk" aria-label="Workspace 1, dusk wallpaper">1 <svg><use href="#g-term"/></svg></button>
+      <button class="chip" data-wall="moss" aria-label="Workspace 2, moss wallpaper">2 <svg><use href="#g-globe"/></svg></button>
+      <button class="chip" data-wall="ember" aria-label="Workspace 3, ember wallpaper">3 <svg><use href="#g-note"/></svg></button>
+    </div>
+    <div class="tiles">
+      <div class="tile"><span>Memory</span><b>10.9 MB</b></div>
+      <div class="tile"><span>Workspace switch</span><b>2.5 ms</b></div>
+      <div class="tile"><span>Idle CPU</span><b>&lt;0.1%</b></div>
+    </div>
+  </div>
+</div>
+
+<main>
+  <section class="hero">
+    <h1>A Dynamic Island for MangoWC</h1>
+    <p class="lede">One black pill replaces Waybar. Hover it for workspaces, media, stats and the tray, drag it out of the way, and it floats over your windows without moving them.</p>
+    <p class="hint">That pill at the top is a working copy. Open it and pick a workspace: this page's wallpaper changes, and so does the accent, the way the real one follows yours.</p>
+    <div class="actions">
+      <a class="button" href="https://github.com/nurexa/Rust-Dynamic-Island-for-Mango">View on GitHub</a>
+      <a class="button quiet" href="#install">Install</a>
+    </div>
+  </section>
+
+  <section id="demo">
+    <h2>Hover, click, drag</h2>
+    <div class="screen">
+      <img src="demo.gif" width="880" height="540" loading="lazy" alt="The pill opens into a panel on hover, switches workspace on a click, then drags across the screen and docks again.">
+    </div>
+  </section>
+
+  <section id="benchmarks">
+    <h2>Less than a third of Waybar's memory</h2>
+    <p class="lede">A daily-driver Waybar config against the island, on the same compositor with the same windows and apps. Lower is better.</p>
+    <div class="card">
+      <div class="legend" aria-label="Legend">
+        <span><i style="background:var(--series-island)"></i>Island</span>
+        <span><i style="background:var(--series-waybar)"></i>Waybar v0.15.0</span>
+      </div>
+      <div class="metric">
+        <h3>Real memory (PSS)</h3>
+        <p>Memory shared with other apps is split fairly between them.</p>
+        <div class="bar-row"><span>Island</span><div class="track"><div class="bar island" style="width:calc(29.2% - 18px)" data-tip="Island: 10.9 MB"></div><span class="value">10.9 MB</span></div></div>
+        <div class="bar-row"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 62px)" data-tip="Waybar: 37.3 MB"></div><span class="value">37.3 MB</span></div></div>
+      </div>
+      <div class="metric">
+        <h3>Resident memory (RSS)</h3>
+        <p>Everything mapped in, shared libraries and fonts included.</p>
+        <div class="bar-row"><span>Island</span><div class="track"><div class="bar island" style="width:calc(45.0% - 28px)" data-tip="Island: 34.7 MB"></div><span class="value">34.7 MB</span></div></div>
+        <div class="bar-row"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 62px)" data-tip="Waybar: 77.1 MB"></div><span class="value">77.1 MB</span></div></div>
+      </div>
+      <div class="metric">
+        <h3>CPU per workspace switch</h3>
+        <p>What each switch costs the bar.</p>
+        <div class="bar-row"><span>Island</span><div class="track"><div class="bar island" style="width:calc(5.5% - 3px)" data-tip="Island: 2.5 ms"></div><span class="value">2.5 ms</span></div></div>
+        <div class="bar-row"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 62px)" data-tip="Waybar: 45.75 ms"></div><span class="value">45.75 ms</span></div></div>
+      </div>
+      <div class="metric">
+        <h3>Startup</h3>
+        <p>From launch to first frame on screen.</p>
+        <div class="bar-row"><span>Island</span><div class="track"><div class="bar island" style="width:calc(42.6% - 26px)" data-tip="Island: 69 ms"></div><span class="value">69 ms</span></div></div>
+        <div class="bar-row"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 62px)" data-tip="Waybar: 162 ms"></div><span class="value">162 ms</span></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <table>
+        <caption>Everything we measured</caption>
+        <thead><tr><th scope="col">Median of 3 runs</th><th scope="col">Waybar</th><th scope="col">Island</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Real memory (PSS)</th><td>37.3 MB</td><td>10.9 MB</td></tr>
+          <tr><th scope="row">Resident memory (RSS)</th><td>77.1 MB</td><td>34.7 MB</td></tr>
+          <tr><th scope="row">CPU per workspace switch</th><td>45.75 ms</td><td>2.5 ms</td></tr>
+          <tr><th scope="row">Startup</th><td>162 ms</td><td>69 ms</td></tr>
+          <tr><th scope="row">Threads</th><td>21</td><td>16</td></tr>
+          <tr><th scope="row">Linked shared libraries</th><td>117</td><td>39</td></tr>
+          <tr><th scope="row">Idle CPU, across 12 runs</th><td>0–2.2%</td><td>0–0.1%</td></tr>
+          <tr><th scope="row">Idle wakeups per second, across 12 runs</th><td>0–48</td><td>2–8</td></tr>
+          <tr><th scope="row">Binary size</th><td>2.5 MB</td><td>3.1 MB</td></tr>
+        </tbody>
+      </table>
+      <p class="fine">Measured in a private headless Mango against a real daily-driver Waybar config: workspace pills, media, audio, tray, network and clock. The island's numbers include its pactl listener. Waybar's switch cost includes the helper commands its custom workspace modules run, but not the separate script that feeds them. Treat idle as a tie: both sit near zero, and Waybar moves with audio server activity. Waybar has the smaller binary. Run <code>bench/run.py</code> to reproduce this.</p>
+    </div>
+  </section>
+
+  <section id="mod">
+    <h2>Change anything</h2>
+    <p class="lede">Most changes take a line of config. When they don't, a new module is one file.</p>
+    <div class="levels">
+      <div class="level">
+        <h3>Rearrange it</h3>
+        <p>The pill and panel are ordered lists of modules. Reload without restarting.</p>
+<pre>pill = ["workspaces", "clock"]
+panel = ["header", "media", "audio"]</pre>
+      </div>
+      <div class="level">
+        <h3>Add a module with a script</h3>
+        <p>Any shell command works. Its output is the module.</p>
+<pre>[[custom]]
+name = "weather"
+exec = "curl -s 'wttr.in/?format=%t'"
+interval = 600</pre>
+      </div>
+      <div class="level">
+        <h3>Write one in Rust</h3>
+        <p>A module is one function that draws and returns where it ended.</p>
+<pre>pub fn pill(p: &amp;mut Pen, c: &amp;Ctx, x: f64) -&gt; f64 {
+    x + p.text("hi", 13.0, Weight::Bold,
+               p.pal.fg, x, 16.0, -1.0)
+}</pre>
+      </div>
+      <div class="level">
+        <h3>Port it to your compositor</h3>
+        <p>Compositor support sits behind a five-method trait, so a port is one file.</p>
+<pre>trait Backend {
+    fn watch(&amp;self, tx: Tx);
+    fn view(&amp;self, tag: u32, monitor: &amp;str);
+    // send_to, focus, cycle
+}</pre>
+      </div>
+    </div>
+    <p class="fine"><a href="https://github.com/nurexa/Rust-Dynamic-Island-for-Mango/blob/main/MODDING.md">Read the modding guide</a></p>
+  </section>
+
+  <section id="install" class="install">
+    <h2>Install it</h2>
+    <p class="lede">Run this inside a Mango session. It keeps your originals, and <code>--undo</code> puts Waybar back.</p>
+<pre>git clone https://github.com/nurexa/Rust-Dynamic-Island-for-Mango
+cd Rust-Dynamic-Island-for-Mango
+./install.sh</pre>
+    <p class="fine">You'll need Rust, cairo, pango, a Nerd Font, adwaita-icon-theme, and playerctl for media. The island replaces Waybar's tray watcher too, so your tray apps keep working.</p>
+  </section>
+
+  <section id="stars" class="stars">
+    <h2>Star history</h2>
+    <div class="card">
+      <a href="https://star-history.com/#nurexa/Rust-Dynamic-Island-for-Mango&amp;Date">
+        <img src="https://api.star-history.com/svg?repos=nurexa/Rust-Dynamic-Island-for-Mango&amp;type=Date" width="800" height="533" loading="lazy" alt="Chart of the repository's GitHub stars over time">
+      </a>
+    </div>
+    <p class="fine"><a href="https://github.com/nurexa/Rust-Dynamic-Island-for-Mango/stargazers">Star it on GitHub</a></p>
+  </section>
+
+  <footer>GPL-3.0. Made by <a href="https://github.com/nurexa">nurexa</a>.</footer>
+</main>
+
+<div class="tooltip" id="tip" role="status"></div>
+
+<script>
+// A copy of the real thing. These are the springs from src/island.rs, and like
+// the real one it only runs while something is moving.
+const el = document.getElementById("island");
+const panel = el.querySelector(".panel");
+const pillEl = el.querySelector(".pill");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function spring(period, zeta) {
+  const w = 2 * Math.PI / period;
+  return { x: 0, v: 0, target: 0, k: w * w, c: 2 * zeta * w,
+    tune(p, z) { const w = 2 * Math.PI / p; this.k = w * w; this.c = 2 * z * w; },
+    step(dt) {
+      for (let left = dt; left > 0; left -= 0.001) {
+        const h = Math.min(left, 0.001);
+        this.v += (-this.k * (this.x - this.target) - this.c * this.v) * h;
+        this.x += this.v * h;
+      }
+      if (Math.abs(this.x - this.target) < 0.002 && Math.abs(this.v) < 0.02) { this.x = this.target; this.v = 0; }
+    },
+    get settled() { return this.x === this.target && this.v === 0; } };
+}
+
+const morph = spring(0.42, 0.74);
+const slide = { x: spring(0.34, 0.82), y: spring(0.34, 0.82) };
+let raf = 0, last = 0, open = false, pinned = false, hovered = false, suppressed = false;
+let hoverTimer = 0, leaveTimer = 0;
+
+const smooth = t => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
+const lerp = (a, b, t) => a + (b - a) * t;
+function panelWidth() { return Math.min(560, innerWidth - 16); }
+function panelHeight() { return panel.scrollHeight; }
+
+function paint() {
+  const t = morph.x, c = Math.min(1, Math.max(0, t));
+  const w = lerp(196, panelWidth(), t), h = lerp(36, panelHeight(), t);
+  el.style.width = w + "px";
+  el.style.height = h + "px";
+  el.style.borderRadius = Math.min(lerp(18, 30, c), h / 2) + "px";
+  el.style.transform = `translate(calc(-50% + ${slide.x.x}px), ${slide.y.x}px)`;
+  pillEl.style.opacity = 1 - smooth(c / 0.45);
+  panel.style.opacity = smooth((c - 0.32) / 0.68);
+  panel.style.visibility = c > 0.05 ? "visible" : "hidden";
+}
+
+function tick(now) {
+  const dt = Math.min((now - last) / 1000, 1 / 30);
+  last = now;
+  morph.step(dt); slide.x.step(dt); slide.y.step(dt);
+  paint();
+  raf = (morph.settled && slide.x.settled && slide.y.settled) ? 0 : requestAnimationFrame(tick);
+}
+function kick() {
+  if (reduced) { morph.x = morph.target; slide.x.x = slide.x.target; slide.y.x = slide.y.target; morph.v = 0; return paint(); }
+  if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); }
+}
+function setOpen(want) {
+  if (want === open) return;
+  open = want;
+  if (want) morph.tune(0.42, 0.74); else morph.tune(0.34, 0.92);
+  morph.target = want ? 1 : 0;
+  kick();
+}
+
+el.addEventListener("pointerenter", e => {
+  if (e.pointerType === "touch") return;
+  hovered = true; clearTimeout(leaveTimer);
+  if (!suppressed) hoverTimer = setTimeout(() => setOpen(true), 130);
+});
+el.addEventListener("pointerleave", e => {
+  if (e.pointerType === "touch") return;
+  hovered = false; suppressed = false; clearTimeout(hoverTimer);
+  leaveTimer = setTimeout(() => { if (!pinned) setOpen(false); }, 280);
+});
+
+// Drag it anywhere; drop it near home and it docks. Hover stays off until you leave.
+let press = null;
+el.addEventListener("pointerdown", e => {
+  if (e.target.closest("button")) return;
+  press = { x: e.clientX, y: e.clientY, sx: slide.x.target, sy: slide.y.target, drag: false, touch: e.pointerType === "touch" };
+  clearTimeout(hoverTimer);
+  el.setPointerCapture(e.pointerId);
+});
+el.addEventListener("pointermove", e => {
+  if (!press) return;
+  const dx = e.clientX - press.x, dy = e.clientY - press.y;
+  if (!press.drag && Math.hypot(dx, dy) > 5) { press.drag = true; setOpen(false); }
+  if (press.drag) {
+    slide.x.target = slide.x.x = press.sx + dx; slide.y.target = slide.y.x = press.sy + dy;
+    slide.x.v = slide.y.v = 0;
+    kick();
+  }
+});
+el.addEventListener("pointerup", () => {
+  if (!press) return;
+  const { drag, touch } = press;
+  press = null;
+  if (drag) {
+    suppressed = true;
+    if (Math.hypot(slide.x.target, slide.y.target) < 56) { slide.x.target = 0; slide.y.target = 0; kick(); }
+    return;
+  }
+  pinned = !pinned;
+  if (touch) setOpen(pinned); else if (pinned) setOpen(true);
+});
+el.addEventListener("dblclick", e => {
+  if (e.target.closest("button")) return;
+  slide.x.target = 0; slide.y.target = 0; pinned = false; setOpen(false); kick();
+});
+el.addEventListener("focusin", () => setOpen(true));
+el.addEventListener("focusout", () => { if (!pinned && !hovered) setOpen(false); });
+addEventListener("keydown", e => { if (e.key === "Escape") { pinned = false; setOpen(false); } });
+addEventListener("resize", paint);
+
+// Workspaces are wallpapers here: switching one retints the page.
+el.querySelectorAll("[data-wall]").forEach(b => b.addEventListener("click", () => {
+  document.documentElement.dataset.wall = b.dataset.wall;
+  el.querySelectorAll("[data-wall]").forEach(x => x.classList.toggle("on", x === b));
+  el.querySelectorAll("[data-chip]").forEach(x => x.classList.toggle("on", x.dataset.chip === b.dataset.wall));
+}));
+
+function clock() {
+  const now = new Date();
+  const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  el.querySelectorAll("[data-time]").forEach(n => n.textContent = time);
+  el.querySelector("[data-date]").textContent = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+  setTimeout(clock, 60000 - now.getSeconds() * 1000);
+}
+clock();
+el.style.setProperty("--panel-w", panelWidth() + "px");
+addEventListener("resize", () => el.style.setProperty("--panel-w", panelWidth() + "px"));
+paint();
+
+// Chart tooltips
+const tip = document.getElementById("tip");
+document.querySelectorAll(".bar").forEach(b => {
+  const show = e => { tip.textContent = b.dataset.tip; tip.style.opacity = 1;
+    tip.style.left = Math.min(e.clientX + 12, innerWidth - 190) + "px"; tip.style.top = e.clientY - 34 + "px"; };
+  b.addEventListener("pointermove", show);
+  b.addEventListener("pointerleave", () => tip.style.opacity = 0);
+});
+</script>
+</body>
+</html>

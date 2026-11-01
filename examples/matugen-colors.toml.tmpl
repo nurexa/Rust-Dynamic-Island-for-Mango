@@ -1,0 +1,12 @@
+# matugen template for the island's palette. In matugen's config.toml:
+#
+#   [templates.island]
+#   input_path = "/path/to/matugen-colors.toml.tmpl"
+#   output_path = "~/.config/theme/generated/colors.toml"
+[colors]
+accent     = "{{colors.primary.default.hex}}"
+on_accent  = "{{colors.on_primary.default.hex}}"
+surface    = "{{colors.surface.default.hex}}"
+on_surface = "{{colors.on_surface.default.hex}}"
+muted      = "{{colors.outline.default.hex}}"
+error      = "{{colors.error.default.hex}}"

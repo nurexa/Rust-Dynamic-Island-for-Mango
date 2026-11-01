@@ -4,8 +4,9 @@
 #   ./install.sh          build, install to ~/.local/bin, switch over
 #   ./install.sh --undo   put Waybar back
 #
-# Touches exactly two files: mango/scripts/bar (the autostart loop) and a marked
-# block at the end of mango/config.conf. Originals are kept in ISLAND_BACKUP.
+# Touches exactly two files: mango/scripts/bar (the autostart loop, created if you
+# don't have one) and a marked block at the end of mango/config.conf. Originals are
+# kept in ISLAND_BACKUP.
 # Waybar itself stays installed. Nothing here needs root.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
@@ -64,21 +65,28 @@ fi
 if [ "${1:-}" != --no-build ]; then
     cargo build --release --bins
 fi
-install -Dm755 target/release/island "$BIN_DIR/island"
+# Replace rather than overwrite, so a running island can't block the update.
+install -Dm755 target/release/island "$BIN_DIR/island.new"
+mv -f "$BIN_DIR/island.new" "$BIN_DIR/island"
 
 mkdir -p "$BACKUP"
 # Only ever back up the pre-island originals, so a re-run can't overwrite them.
-grep -q island "$BAR" || cp "$BAR" "$BACKUP/bar"
+[ ! -f "$BAR" ] || grep -q island "$BAR" || cp "$BAR" "$BACKUP/bar"
 grep -q "^$BEGIN\$" "$CONF" || cp "$CONF" "$BACKUP/config.conf"
 
+mkdir -p "$(dirname "$BAR")"
 printf '#!/bin/sh\n# Bring the island back if it dies. A second copy exits 0, ending the loop.\nuntil %s/island; do sleep 1; done\n' "$BIN_DIR" > "$BAR"
+chmod +x "$BAR"
 
 # Mango reloads on save, so the rule is live before the island maps. Without
 # no_animation it would slide in and lag behind every drag.
 strip_block
+# Stock configs don't run scripts/bar, so the block starts the island itself.
+autostart=""
+grep -q '^exec_once=.*scripts/bar' "$CONF" || autostart="exec_once=$BAR"$'\n'
 cat >> "$CONF" <<BLOCK
 $BEGIN
-layer_rule=no_animation:1,no_shadow:1,layer_name:island
+${autostart}layer_rule=no_animation:1,no_shadow:1,layer_name:island
 bind=SUPER,i,spawn,$BIN_DIR/island pin
 bind=SUPER+SHIFT,i,spawn,$BIN_DIR/island tuck
 bind=SUPER+ALT,i,spawn,$BIN_DIR/island reset

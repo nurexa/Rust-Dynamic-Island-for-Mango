@@ -1,6 +1,7 @@
-//! Mango IPC. mmsg is a thin client over a line protocol on
+//! MangoWC backend. mmsg is a thin client over a line protocol on
 //! $MANGO_INSTANCE_SIGNATURE, so we talk to the socket directly: one connection
 //! per `watch` stream, and a fresh one per dispatch.
+use super::{Backend, Client, Monitor};
 use crate::Msg;
 use serde::Deserialize;
 use std::{
@@ -9,35 +10,6 @@ use std::{
     os::unix::net::UnixStream,
     thread,
 };
-
-#[derive(Deserialize, Clone, PartialEq, Debug)]
-pub struct Tag {
-    pub index: u32,
-    pub is_active: bool,
-    pub is_urgent: bool,
-}
-
-#[derive(Deserialize, Clone, PartialEq, Debug)]
-pub struct Monitor {
-    pub name: String,
-    /// True on the monitor mango has selected, not merely enabled.
-    pub active: bool,
-    pub layout_symbol: String,
-    pub tags: Vec<Tag>,
-}
-
-#[derive(Deserialize, Clone, PartialEq, Debug)]
-pub struct Client {
-    pub id: u64,
-    pub title: Option<String>,
-    pub appid: Option<String>,
-    pub monitor: String,
-    #[serde(default)]
-    pub tags: Vec<u32>,
-    pub is_focused: bool,
-    pub is_minimized: bool,
-    pub is_urgent: bool,
-}
 
 #[derive(Deserialize)]
 struct Monitors {
@@ -56,7 +28,7 @@ fn connect() -> std::io::Result<UnixStream> {
 
 /// Mango checks for hangup before reading, so a client that writes and closes
 /// straight away has its command dropped: wait for the reply, off the UI thread.
-pub fn dispatch(cmd: &str) {
+fn dispatch(cmd: &str) {
     let cmd = cmd.to_owned();
     thread::spawn(move || {
         let reply = connect().and_then(|mut s| {
@@ -96,27 +68,35 @@ fn stream(what: &str, tx: crate::Tx, parse: fn(&str) -> serde_json::Result<Msg>)
     });
 }
 
-pub fn watch(tx: crate::Tx) {
-    stream("all-monitors", tx.clone(), |l| Ok(Msg::Monitors(serde_json::from_str::<Monitors>(l)?.monitors)));
-    stream("all-clients", tx, |l| Ok(Msg::Clients(serde_json::from_str::<Clients>(l)?.clients)));
-}
+pub struct Mango;
 
-pub fn same_but_titles(a: &[Client], b: &[Client]) -> bool {
-    a.len() == b.len() && a.iter().zip(b).all(|(a, b)| {
-        (a.id, &a.appid, &a.monitor, &a.tags, a.is_focused, a.is_minimized, a.is_urgent)
-            == (b.id, &b.appid, &b.monitor, &b.tags, b.is_focused, b.is_minimized, b.is_urgent)
-    })
-}
+impl Backend for Mango {
+    fn watch(&self, tx: crate::Tx) {
+        stream("all-monitors", tx.clone(), |l| Ok(Msg::Monitors(serde_json::from_str::<Monitors>(l)?.monitors)));
+        stream("all-clients", tx, |l| Ok(Msg::Clients(serde_json::from_str::<Clients>(l)?.clients)));
+    }
 
-/// Windows on one tag of one monitor, in mango's order. Minimized windows stay
-/// out, matching what the Waybar pills showed.
-pub fn clients_on<'a>(clients: &'a [Client], mon: &'a str, tag: u32) -> impl Iterator<Item = &'a Client> {
-    clients.iter().filter(move |c| !c.is_minimized && c.monitor == mon && c.tags.contains(&tag))
+    fn view(&self, tag: u32, monitor: &str) {
+        dispatch(&format!("viewcrossmon,{tag},{monitor}"));
+    }
+
+    fn send_to(&self, tag: u32) {
+        dispatch(&format!("tagsilent,{tag}"));
+    }
+
+    fn focus(&self, window: u64) {
+        dispatch(&format!("focusid client,{window}"));
+    }
+
+    fn cycle(&self, forward: bool) {
+        dispatch(if forward { "viewtoright_have_client" } else { "viewtoleft_have_client" });
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wm::clients_on;
 
     #[test]
     fn parses_real_payloads_and_filters_by_monitor_and_tag() {

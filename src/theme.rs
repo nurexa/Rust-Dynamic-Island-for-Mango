@@ -1,6 +1,5 @@
-//! Colors from the existing matugen pipeline. `theme/apply.sh` regenerates
-//! theme/generated/colors.toml on every wallpaper change; that file is the
-//! canonical token set, so we read it instead of adding a matugen template.
+//! Colors come from one small file of tokens, re-read whenever it changes. Point
+//! `palette` at anything that writes one; matugen, in the setup this was built on.
 use std::path::PathBuf;
 
 pub type Rgb = (f64, f64, f64);
@@ -15,8 +14,12 @@ pub struct Palette {
     pub error: Rgb,
 }
 
-pub fn dir() -> PathBuf {
-    crate::settings::home().join(".config/theme/generated")
+/// `~` is the one bit of shell the config's palette path gets.
+pub fn expand(path: &str) -> PathBuf {
+    match path.strip_prefix("~/") {
+        Some(rest) => crate::settings::home().join(rest),
+        None => path.into(),
+    }
 }
 
 fn hex(s: &str) -> Option<Rgb> {
@@ -70,13 +73,13 @@ pub fn parse(src: &str) -> Option<Palette> {
 
 /// None on a file that doesn't parse, which is also what a read during a write
 /// looks like: the caller keeps the palette it has.
-pub fn reload() -> Option<Palette> {
-    parse(&std::fs::read_to_string(dir().join("colors.toml")).ok()?)
+pub fn reload(path: &str) -> Option<Palette> {
+    parse(&std::fs::read_to_string(expand(path)).ok()?)
 }
 
-pub fn load() -> Palette {
-    let fallback = || parse(&std::fs::read_to_string(dir().join("../tokens/colors.fallback.toml")).ok()?);
-    reload().or_else(fallback).unwrap_or(Palette {
+pub fn load(path: &str) -> Palette {
+    let fallback = || parse(&std::fs::read_to_string(expand(path).parent()?.join("../tokens/colors.fallback.toml")).ok()?);
+    reload(path).or_else(fallback).unwrap_or(Palette {
             bg: (0.0, 0.0, 0.0),
             fg: (1.0, 1.0, 1.0),
             muted: (0.6, 0.6, 0.6),

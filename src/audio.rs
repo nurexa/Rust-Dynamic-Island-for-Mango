@@ -100,9 +100,9 @@ mod tests {
     #[test]
     fn picks_the_default_sink_and_ignores_stream_noise() {
         let json = r#"[{"name":"a","description":"Other","mute":false,"volume":{"mono":{"value_percent":"5%"}}},
-            {"name":"b","description":"Kraken","mute":true,
+            {"name":"b","description":"Speakers","mute":true,
              "volume":{"front-left":{"value_percent":"48%"},"front-right":{"value_percent":"50%"}}}]"#;
-        assert_eq!(parse("b", json), Some(State { device: "Kraken".into(), volume: 50, muted: true }));
+        assert_eq!(parse("b", json), Some(State { device: "Speakers".into(), volume: 50, muted: true }));
         assert_eq!(parse("missing", json), None);
         assert!(is_relevant("Event 'change' on sink #56"));
         assert!(!is_relevant("Event 'change' on sink-input #91"));

@@ -20,5 +20,5 @@ def png(path):
     return w,h,bpp,out
 w,h,bpp,o=png(sys.argv[1]); x,y=int(sys.argv[2]),int(sys.argv[3])
 r,g,b=o[(y*w+x)*bpp:(y*w+x)*bpp+3]
-if len(sys.argv)>4: print('yes' if r+g+b<60 else 'no')
+if len(sys.argv)>4: print('yes' if r+g+b<40 else 'no')
 else: print(r,g,b)

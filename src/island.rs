@@ -5,7 +5,8 @@
 //! so the transparent rest of the surface never eats clicks.
 use crate::{
     Model,
-    draw::{self, Action, Content, MAX_PANEL_H, PANEL_W, PILL_H, Scroll, View},
+    modules::{self, MAX_COMPACT_W, MAX_PANEL_H, PANEL_W, PILL_H},
+    pen::{Action, Content, Scroll, View},
     icons::Icons,
     settings::Config,
 };
@@ -13,13 +14,12 @@ use cairo::{Context, Format, ImageSurface};
 use smithay_client_toolkit::{
     compositor::{CompositorState, FrameCallbackData, Region},
     reexports::client::{QueueHandle, protocol::{wl_output, wl_surface::WlSurface}},
-    shell::{WaylandSurface, wlr_layer::{Anchor, LayerSurface}},
+    shell::{WaylandSurface, wlr_layer::LayerSurface},
     shm::{Shm, slot::{Buffer, SlotPool}},
 };
 use std::time::{Duration, Instant};
 
 pub const DOCK_Y: f64 = 6.0;
-const ZONE: i32 = 40; // same reserved height as the old bar, so tiling geometry doesn't change
 const SHADOW: f64 = 26.0;
 const PANEL_R: f64 = 30.0;
 const SNAP: f64 = 56.0; // release this close to home and the pill docks
@@ -136,10 +136,10 @@ pub struct Island {
     buffers: Vec<Buffer>,
     size: (f64, f64),
 
-    /// Pill centre x and top y. None is docked: top centre, space reserved.
+    /// Pill centre x and top y. None is docked at top centre.
     pub pos: Option<(f64, f64)>,
     place: (Spring, Spring),
-    anchored: Option<(bool, i32, i32, i32)>,
+    placed: Option<(i32, i32)>,
     input: Option<(i32, i32, i32, i32)>,
 
     t: Spring,
@@ -147,6 +147,8 @@ pub struct Island {
     ph: Spring,
     k: Spring,
     last: Option<Instant>,
+    /// ISLAND_TIME_SCALE=0.1 runs animations at a tenth speed, for tuning them.
+    time_scale: f64,
 
     pub pinned: bool,
     pub tucked: bool,
@@ -197,12 +199,13 @@ impl Island {
         Some(Island {
             output, name, out, scale, layer, configured: false, pool, buffers: Vec::new(), size, pos,
             place: (Spring::new(at.0, 0.34, 0.82, 0.3), Spring::new(at.1, 0.34, 0.82, 0.3)),
-            anchored: None, input: None,
+            placed: None, input: None,
             t: Spring::new(if pinned { 1.0 } else { 0.0 }, 0.42, 0.78, 0.002),
             cw: Spring::new(200.0, 0.36, 0.86, 0.3),
             ph: Spring::new(320.0, 0.36, 0.86, 0.3),
             k: Spring::new(if tucked { 1.0 } else { 0.0 }, 0.34, 0.86, 0.002),
-            last: None, pinned, tucked, hovered: false, open: false, suppress: false, press: None,
+            last: None, time_scale: std::env::var("ISLAND_TIME_SCALE").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0),
+            pinned, tucked, hovered: false, open: false, suppress: false, press: None,
             dragging: false, sliding: false, pointer: (0.0, 0.0), hover: None, pin_at: None,
             open_at: None, close_at: None, flash_until: None, view: View::Main,
             compact: None, panel: None, compact_dirty: true, panel_dirty: true,
@@ -281,16 +284,12 @@ impl Island {
         let at = self.pos.unwrap_or(self.home());
         self.place.0.snap(at.0);
         self.place.1.snap(at.1);
-        self.anchored = None;
+        self.placed = None;
         self.dirty = true;
     }
 
     fn home(&self) -> (f64, f64) {
         (self.out.0 / 2.0, DOCK_Y)
-    }
-
-    fn settled_at_home(&self) -> bool {
-        self.pos.is_none() && self.place.0.settled() && self.place.1.settled()
     }
 
     fn opens_down(&self) -> bool {
@@ -351,25 +350,14 @@ impl Island {
         }
     }
 
-    fn apply_anchor(&mut self, reserve: bool) {
-        // Exclusive zones need a single-edge anchor, which also means centred, so
-        // the docked and free states are separate configurations.
-        let docked = self.settled_at_home();
-        let zone = if docked && reserve && !self.tucked { ZONE } else { -1 };
+    /// The island floats over windows and never reserves space, so one anchor
+    /// and two margins cover every position.
+    fn apply_place(&mut self) {
         let (x, y) = self.surface_pos();
-        let (x, y) = (x as i32, y as i32);
-        let want = (docked, zone, if docked { 0 } else { x }, if docked { 0 } else { y });
-        if self.anchored == Some(want) {
-            return;
-        }
-        self.anchored = Some(want);
-        self.layer.set_exclusive_zone(zone);
-        if docked {
-            self.layer.set_anchor(Anchor::TOP);
-            self.layer.set_margin(0, 0, 0, 0);
-        } else {
-            self.layer.set_anchor(Anchor::TOP | Anchor::LEFT);
-            self.layer.set_margin(y, 0, 0, x);
+        let want = (x as i32, y as i32);
+        if self.placed != Some(want) {
+            self.placed = Some(want);
+            self.layer.set_margin(want.1, 0, 0, want.0);
         }
     }
 
@@ -392,7 +380,7 @@ impl Island {
         if self.compact_dirty {
             self.compact_dirty = false;
             let flash = self.flash_until.is_some();
-            if let Some(c) = draw::compact(m, icons, cfg, &self.name, self.scale, flash) {
+            if let Some(c) = modules::pill(m, icons, cfg, &self.name, self.scale, flash) {
                 if self.compact.is_none() {
                     self.cw.snap(c.w);
                 }
@@ -404,7 +392,7 @@ impl Island {
             if self.panel_dirty || self.panel.is_none() {
                 self.panel_dirty = false;
                 let first = self.panel.is_none();
-                if let Some(c) = draw::panel(m, icons, cfg, &self.view, self.scale, self.pinned, self.tucked) {
+                if let Some(c) = modules::panel(m, icons, cfg, &self.name, &self.view, self.scale, self.pinned, self.tucked) {
                     if first && self.t.x < 0.01 {
                         self.ph.snap(c.h);
                     }
@@ -436,14 +424,14 @@ impl Island {
 
         let now = Instant::now();
         // The first frame after idle has no meaningful gap to integrate over.
-        let dt = self.last.map_or(1.0 / 240.0, |l| (now - l).as_secs_f64()).min(1.0 / 30.0);
+        let dt = self.last.map_or(1.0 / 240.0, |l| (now - l).as_secs_f64()).min(1.0 / 30.0) * self.time_scale;
         for s in [&mut self.t, &mut self.cw, &mut self.ph, &mut self.k, &mut self.place.0, &mut self.place.1] {
             s.step(dt);
         }
         let animating = !self.springs_settled();
         self.last = animating.then_some(now);
 
-        self.apply_anchor(cfg.reserve);
+        self.apply_place();
         self.apply_input(compositor);
         // Regions change with the state and the content; indices don't carry over.
         if self.hovered && !self.dragging {
@@ -831,7 +819,7 @@ fn blit(cr: &Context, c: &Content, x: f64, y: f64, w: f64, h: f64, a: f64) {
 
 /// Fits the tallest panel, so opening never needs a layer resize.
 fn surface_size(out: (f64, f64)) -> (f64, f64) {
-    let w = (PANEL_W.max(draw::MAX_COMPACT_W) + 2.0 * SHADOW).min(out.0);
+    let w = (PANEL_W.max(MAX_COMPACT_W) + 2.0 * SHADOW).min(out.0);
     let h = (MAX_PANEL_H + SHADOW + 12.0).min(out.1);
     (w.floor(), h.floor())
 }

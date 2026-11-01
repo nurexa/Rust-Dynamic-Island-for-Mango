@@ -12,4 +12,4 @@ $V click 786 176; sleep .7
 ok "chip on the other monitor switches and focuses that monitor" "$(mons)" "HEADLESS-1:[1] HEADLESS-2*:[2]"
 $V move 2560 22; sleep 1.2; grim $H/run/m2.png
 ok "pointer on monitor 2 opens that island" "$(python3 $H/px.py $H/run/m2.png 2292 60 opaque)" yes
-ok "monitor 1's island closed" "$(python3 $H/px.py $H/run/m2.png 750 30)" "42 74 90"
+ok "monitor 1's island closed" "$(python3 $H/px.py $H/run/m2.png 750 30)" "15 20 23"
