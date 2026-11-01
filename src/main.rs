@@ -80,7 +80,7 @@ pub struct Model {
     pub art_small: Option<ImageSurface>,
     pub art_large: Option<ImageSurface>,
     pub net: net::State,
-    pub tray: Vec<(bus::TrayItem, Option<ImageSurface>)>,
+    pub tray: Vec<(bus::TrayItem, Option<(ImageSurface, bool)>)>,
     pub pal: theme::Palette,
 }
 
@@ -364,6 +364,9 @@ impl App {
         let now = Instant::now();
         for i in &mut self.islands {
             i.tick(now);
+        }
+        if self.islands.iter_mut().fold(false, |due, i| i.take_pin(now) | due) {
+            self.act(Action::Pin, 0.0, None);
         }
         if now >= self.next_clock {
             self.next_clock = next_minute();

@@ -533,7 +533,12 @@ fn status(p: &mut Pen, m: &Model, y: f64) -> f64 {
     for (i, (item, icon)) in m.tray.iter().enumerate().rev() {
         let r = (x, y, 30.0, h);
         match icon {
-            Some(img) => p.image(img, x + 6.0, cy - 9.0, 1.0),
+            Some((img, false)) => p.image(img, x + 6.0, cy - 9.0, 1.0),
+            Some((mask, true)) => {
+                mask.set_device_scale(p.scale as f64, p.scale as f64);
+                p.set(pal.fg, 1.0);
+                let _ = p.cr.mask_surface(mask, x + 6.0, cy - 9.0);
+            }
             None => p.app(&item.title, 18.0, x + 6.0, cy - 9.0, 1.0),
         }
         p.regions.push(Region::new(r, 10.0, Action::TrayClick(i))

@@ -233,22 +233,26 @@ impl Icons {
         }).clone()
     }
 
-    pub fn tray(&mut self, icon: &crate::bus::TrayIcon, px: i32) -> Option<ImageSurface> {
+    /// Returns the raster, and whether it's a mask to paint in the theme color.
+    pub fn tray(&mut self, icon: &crate::bus::TrayIcon, px: i32) -> Option<(ImageSurface, bool)> {
         use crate::bus::TrayIcon;
         match icon {
             TrayIcon::None => None,
-            TrayIcon::Pixels { w, h, rgba } => fit(&from_rgba(rgba, *w, *h)?, px, false),
+            TrayIcon::Pixels { w, h, rgba } => Some((fit(&from_rgba(rgba, *w, *h)?, px, false)?, false)),
             TrayIcon::Named { name, theme_path } => {
                 let own = theme_path.as_ref().and_then(|t| {
                     let root = Path::new(t);
-                    let dirs = [root.to_owned(), root.join("hicolor")];
-                    ["svg", "png"].iter().find_map(|e| {
-                        let flat = root.join(format!("{name}.{e}"));
-                        flat.exists().then_some(flat)
-                    }).or_else(|| find_file(name, &dirs[..1], &["hicolor".into()]))
+                    ["svg", "png"].iter().map(|e| root.join(format!("{name}.{e}"))).find(|p| p.exists())
+                        .or_else(|| find_file(name, &[root.to_owned()], &["hicolor".into()]))
                 });
-                let path = own.or_else(|| find_file(name, &self.dirs, &self.themes))?;
-                load(&path, px)
+                if let Some(path) = own.or_else(|| find_file(name, &self.dirs, &self.themes)) {
+                    return Some((load(&path, px)?, name.ends_with("-symbolic")));
+                }
+                let file = format!("{}.svg", name.strip_suffix("-symbolic").unwrap_or(name));
+                let file = format!("{}-symbolic.svg", file.trim_end_matches(".svg"));
+                let root = Path::new("/usr/share/icons/Adwaita/symbolic");
+                let hit = fs::read_dir(root).ok()?.flatten().map(|d| d.path().join(&file)).find(|p| p.exists())?;
+                Some((load_svg(&hit, px)?, true))
             }
         }
     }

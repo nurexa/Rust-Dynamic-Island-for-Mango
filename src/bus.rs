@@ -408,10 +408,7 @@ type MenuNode = (i32, Props, Vec<OwnedValue>);
 fn menu_entry(v: &Value<'_>) -> Option<MenuEntry> {
     let inner: &Structure = match v {
         Value::Structure(s) => s,
-        Value::Value(b) => match &**b {
-            Value::Structure(s) => s,
-            _ => return None,
-        },
+        Value::Value(b) => return menu_entry(b),
         _ => return None,
     };
     let [Value::I32(id), Value::Dict(props), Value::Array(children)] = inner.fields() else { return None };

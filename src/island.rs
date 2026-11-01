@@ -27,7 +27,7 @@ const DRAG_START: f64 = 5.0;
 const HOVER_OPEN: Duration = Duration::from_millis(130);
 const HOVER_CLOSE: Duration = Duration::from_millis(280);
 const FLASH: Duration = Duration::from_millis(1300);
-const DOUBLE_CLICK: Duration = Duration::from_millis(350);
+const DOUBLE_CLICK: Duration = Duration::from_millis(280);
 const TUCK_W: f64 = 72.0;
 const TUCK_H: f64 = 5.0;
 
@@ -158,7 +158,7 @@ pub struct Island {
     sliding: bool,
     pointer: (f64, f64),
     hover: Option<usize>,
-    last_click: Option<Instant>,
+    pin_at: Option<Instant>,
 
     open_at: Option<Instant>,
     close_at: Option<Instant>,
@@ -203,7 +203,7 @@ impl Island {
             ph: Spring::new(320.0, 0.36, 0.86, 0.3),
             k: Spring::new(if tucked { 1.0 } else { 0.0 }, 0.34, 0.86, 0.002),
             last: None, pinned, tucked, hovered: false, open: false, suppress: false, press: None,
-            dragging: false, sliding: false, pointer: (0.0, 0.0), hover: None, last_click: None,
+            dragging: false, sliding: false, pointer: (0.0, 0.0), hover: None, pin_at: None,
             open_at: None, close_at: None, flash_until: None, view: View::Main,
             compact: None, panel: None, compact_dirty: true, panel_dirty: true,
             frame_pending: false, dirty: true, prev_bounds: (0.0, 0.0, 0.0, 0.0),
@@ -723,10 +723,13 @@ impl Island {
         }
         match p.button {
             BTN_LEFT => {
-                let now = Instant::now();
-                let double = self.last_click.is_some_and(|l| now - l < DOUBLE_CLICK);
-                self.last_click = (!double).then_some(now);
-                Outcome::Act(if double { Action::Reset } else { Action::Pin }, 0.0)
+                // A pin waits out the double-click window, so a double click
+                // doesn't flash the panel open and leave it pinned.
+                if self.pin_at.take().is_some() {
+                    return Outcome::Act(Action::Reset, 0.0);
+                }
+                self.pin_at = Some(Instant::now() + DOUBLE_CLICK);
+                Outcome::None
             }
             BTN_MIDDLE => Outcome::Act(Action::Tuck, 0.0),
             _ => Outcome::None,
@@ -763,7 +766,16 @@ impl Island {
     }
 
     pub fn next_deadline(&self) -> Option<Instant> {
-        [self.open_at, self.close_at, self.flash_until].into_iter().flatten().min()
+        [self.open_at, self.close_at, self.flash_until, self.pin_at].into_iter().flatten().min()
+    }
+
+    /// True once when a background click turned out not to be a double click.
+    pub fn take_pin(&mut self, now: Instant) -> bool {
+        let due = self.pin_at.is_some_and(|t| t <= now);
+        if due {
+            self.pin_at = None;
+        }
+        due
     }
 
     pub fn tick(&mut self, now: Instant) {
