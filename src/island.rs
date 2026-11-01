@@ -188,8 +188,8 @@ struct Shape {
 impl Island {
     #[allow(clippy::too_many_arguments)]
     pub fn new(output: wl_output::WlOutput, name: String, out: (f64, f64), scale: i32, layer: LayerSurface,
-               shm: &Shm, state_pos: Option<(f64, f64)>, pinned: bool, tucked: bool, monitors: usize) -> Option<Self> {
-        let size = surface_size(out, monitors);
+               shm: &Shm, state_pos: Option<(f64, f64)>, pinned: bool, tucked: bool) -> Option<Self> {
+        let size = surface_size(out);
         let pool = SlotPool::new((size.0 * size.1) as usize * 4 * scale.pow(2) as usize, shm).ok()?;
         let home = (out.0 / 2.0, DOCK_Y);
         let pos = state_pos.map(|p| clamp_pos(p, out, 200.0));
@@ -238,6 +238,12 @@ impl Island {
         self.dirty |= (compact && self.t.x < 0.999) || (panel && self.panel_visible());
     }
 
+    /// Tips are stale, but nothing on screen is: refresh on the next draw.
+    pub fn titles_changed(&mut self) {
+        self.compact_dirty = true;
+        self.panel_dirty = true;
+    }
+
     pub fn flash(&mut self) {
         if !self.wants_panel() {
             self.flash_until = Some(Instant::now() + FLASH);
@@ -257,14 +263,14 @@ impl Island {
         self.dirty = true;
     }
 
-    pub fn set_output(&mut self, out: (f64, f64), scale: i32, monitors: usize) {
+    pub fn set_output(&mut self, out: (f64, f64), scale: i32) {
         if scale != self.scale {
             self.scale = scale;
             self.buffers.clear();
             self.compact_dirty = true;
             self.panel_dirty = true;
         }
-        let size = surface_size(out, monitors);
+        let size = surface_size(out);
         if size != self.size {
             self.size = size;
             self.buffers.clear();
@@ -349,7 +355,7 @@ impl Island {
         // Exclusive zones need a single-edge anchor, which also means centred, so
         // the docked and free states are separate configurations.
         let docked = self.settled_at_home();
-        let zone = if docked { if reserve && !self.tucked { ZONE } else { 0 } } else { -1 };
+        let zone = if docked && reserve && !self.tucked { ZONE } else { -1 };
         let (x, y) = self.surface_pos();
         let (x, y) = (x as i32, y as i32);
         let want = (docked, zone, if docked { 0 } else { x }, if docked { 0 } else { y });
@@ -612,7 +618,7 @@ impl Island {
         if !self.suppress && !self.open {
             self.open_at = Some(Instant::now() + HOVER_OPEN);
         }
-        self.update_hover();
+        self.dirty = true;
     }
 
     pub fn leave(&mut self) {
@@ -636,8 +642,12 @@ impl Island {
         }
     }
 
+    pub fn dragging(&self) -> bool {
+        self.dragging
+    }
+
     pub fn hovering_target(&self) -> bool {
-        self.hover.is_some() || self.dragging
+        self.hover.is_some()
     }
 
     pub fn motion(&mut self, at: (f64, f64)) -> Outcome {
@@ -819,10 +829,10 @@ fn blit(cr: &Context, c: &Content, x: f64, y: f64, w: f64, h: f64, a: f64) {
     let _ = cr.restore();
 }
 
-fn surface_size(out: (f64, f64), monitors: usize) -> (f64, f64) {
-    let extra = 70.0 * monitors.saturating_sub(1) as f64;
+/// Fits the tallest panel, so opening never needs a layer resize.
+fn surface_size(out: (f64, f64)) -> (f64, f64) {
     let w = (PANEL_W.max(draw::MAX_COMPACT_W) + 2.0 * SHADOW).min(out.0);
-    let h = (MAX_PANEL_H.min(500.0 + extra) + SHADOW + 12.0).min(out.1);
+    let h = (MAX_PANEL_H + SHADOW + 12.0).min(out.1);
     (w.floor(), h.floor())
 }
 

@@ -68,13 +68,15 @@ pub fn parse(src: &str) -> Option<Palette> {
     })
 }
 
+/// None on a file that doesn't parse, which is also what a read during a write
+/// looks like: the caller keeps the palette it has.
+pub fn reload() -> Option<Palette> {
+    parse(&std::fs::read_to_string(dir().join("colors.toml")).ok()?)
+}
+
 pub fn load() -> Palette {
-    let generated = dir().join("colors.toml");
-    let fallback = dir().join("../tokens/colors.fallback.toml");
-    [generated, fallback]
-        .iter()
-        .find_map(|p| parse(&std::fs::read_to_string(p).ok()?))
-        .unwrap_or(Palette {
+    let fallback = || parse(&std::fs::read_to_string(dir().join("../tokens/colors.fallback.toml")).ok()?);
+    reload().or_else(fallback).unwrap_or(Palette {
             bg: (0.0, 0.0, 0.0),
             fg: (1.0, 1.0, 1.0),
             muted: (0.6, 0.6, 0.6),

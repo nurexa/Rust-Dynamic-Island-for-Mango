@@ -1,0 +1,5 @@
+#!/bin/bash
+H=$(dirname "$(readlink -f "$0")")
+# Bounded so a dead helper fails the test instead of hanging it.
+timeout 3 bash -c "echo '$*' > $H/run/vp.fifo" || echo "VP DEAD"
+sleep 0.05

@@ -1,0 +1,11 @@
+#!/bin/bash
+H=$(dirname "$(readlink -f "$0")")
+# isl [start|stop]: run the debug island inside the headless session.
+source $H/run/env
+P=$XDG_RUNTIME_DIR/island.pid
+[ -f $P ] && kill $(cat $P) 2>/dev/null; rm -f $P; sleep 0.15
+[ "$1" = stop ] && exit 0
+BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}
+XDG_STATE_HOME=$XDG_RUNTIME_DIR nohup setsid $BIN > $XDG_RUNTIME_DIR/island.log 2>&1 &
+echo $! > $P
+sleep 1

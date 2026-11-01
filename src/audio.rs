@@ -6,6 +6,7 @@ use serde::Deserialize;
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader},
+    os::unix::process::CommandExt,
     process::{Command, Stdio},
     sync::mpsc,
     thread,
@@ -67,7 +68,16 @@ pub fn spawn(tx: crate::Tx) {
     });
     thread::spawn(move || loop {
         let _ = poke.send(());
-        let child = Command::new("pactl").arg("subscribe").stdout(Stdio::piped()).stderr(Stdio::null()).spawn();
+        let mut cmd = Command::new("pactl");
+        cmd.arg("subscribe").stdout(Stdio::piped()).stderr(Stdio::null());
+        // Die with the island, however it goes: quit, crash or session end.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                Ok(())
+            });
+        }
+        let child = cmd.spawn();
         if let Ok(mut child) = child {
             if let Some(out) = child.stdout.take() {
                 for line in BufReader::new(out).lines().map_while(Result::ok) {

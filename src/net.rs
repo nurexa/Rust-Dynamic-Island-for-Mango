@@ -64,8 +64,12 @@ pub fn spawn(tx: crate::Tx) -> mpsc::Sender<()> {
                                Some("org.freedesktop.DBus"), "AddMatch", &rule).is_err() {
                 return;
             }
-            for _ in MessageIterator::from(&bus) {
-                let _ = signals.send(());
+            // The iterator also sees replies to read()'s own calls; reacting to
+            // those would loop forever.
+            for msg in MessageIterator::from(&bus).flatten() {
+                if msg.message_type() == zbus::message::Type::Signal {
+                    let _ = signals.send(());
+                }
             }
         });
         let mut last = None;

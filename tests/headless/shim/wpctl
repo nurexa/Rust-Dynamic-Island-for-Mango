@@ -1,0 +1,16 @@
+#!/bin/bash
+H=$(dirname "$(readlink -f "$0")")/..
+# Fake wpctl: log, and apply to the fake sink state.
+echo "wpctl $*" >> $H/run/audio.log
+F=$H/run/sink
+case "$1" in
+ set-mute) python3 -c "
+import json;p='$F';d=json.load(open(p));d['mute']=not d['mute'];json.dump(d,open(p,'w'))";;
+ set-volume) v=${@: -1}; python3 -c "
+import json;p='$F';d=json.load(open(p));v='$v'
+if v.endswith('%+'): n=d['vol']+int(float(v[:-2]))
+elif v.endswith('%-'): n=d['vol']-int(float(v[:-2]))
+else: n=int(float(v[:-1]))
+d['vol']=max(0,min(100,n));json.dump(d,open(p,'w'))";;
+esac
+echo "Event 'change' on sink #56" >> $H/run/events

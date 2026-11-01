@@ -1,7 +1,19 @@
-//! Hardware stats, read only while a panel is open. Anything this machine
-//! doesn't have comes back None and its tile disappears.
+//! Hardware stats, read only while a panel is open, on a thread of their own so
+//! a slow driver call can't stall an animation. Anything this machine doesn't
+//! have comes back None and its tile disappears.
+use crate::Msg;
 use libloading::{Library, Symbol};
-use std::{ffi::{c_int, c_uint, c_void}, fs, path::PathBuf, time::Instant};
+use std::{
+    ffi::{c_int, c_uint, c_void},
+    fs,
+    io::{self, BufRead, BufReader, Write},
+    os::unix::process::CommandExt,
+    path::PathBuf,
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    sync::mpsc,
+    thread,
+    time::Instant,
+};
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct Snapshot {
@@ -23,7 +35,10 @@ struct Utilization {
     memory: c_uint,
 }
 
-/// NVML, opened on first use. nvidia-smi would cost a process per sample.
+/// NVML costs tens of MB resident, and every init/shutdown pair leaks an
+/// eventfd inside the driver library, while libcuda can't be unloaded at all.
+/// So it never enters this process: a copy of this binary runs `gpu_sampler`
+/// only while a panel is open, and exiting cleans up what shutdown can't.
 struct Nvml {
     lib: Library,
     dev: *mut c_void,
@@ -109,32 +124,116 @@ fn battery() -> Option<(f64, bool)> {
     Some((pct, status.trim() == "Charging"))
 }
 
-pub struct Sampler {
+/// `island --gpu-sampler`: one line of "util temp" per line of stdin.
+pub fn gpu_sampler() {
+    let Some(nvml) = Nvml::open() else { return };
+    let mut out = io::stdout().lock();
+    for _ in io::stdin().lock().lines() {
+        let Some((util, temp)) = nvml.read() else { return };
+        if writeln!(out, "{util} {temp}").and_then(|_| out.flush()).is_err() {
+            return;
+        }
+    }
+}
+
+struct Gpu {
+    child: Child,
+    input: ChildStdin,
+    output: BufReader<ChildStdout>,
+}
+
+impl Gpu {
+    fn open() -> Option<Self> {
+        let mut cmd = Command::new("/proc/self/exe");
+        cmd.arg("--gpu-sampler").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                Ok(())
+            });
+        }
+        let mut child = cmd.spawn().ok()?;
+        let (input, output) = (child.stdin.take()?, child.stdout.take()?);
+        Some(Gpu { child, input, output: BufReader::new(output) })
+    }
+
+    fn read(&mut self) -> Option<(f64, f64)> {
+        writeln!(self.input).ok()?;
+        let mut line = String::new();
+        self.output.read_line(&mut line).ok()?;
+        let (util, temp) = line.trim().split_once(' ')?;
+        Some((util.parse().ok()?, temp.parse().ok()?))
+    }
+}
+
+impl Drop for Gpu {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+pub enum Cmd {
+    Sample,
+    /// No panel is open: end the GPU sampler and return freed memory.
+    Release,
+}
+
+/// Parked on the channel while every panel is closed.
+pub fn spawn(tx: crate::Tx) -> mpsc::Sender<Cmd> {
+    let (cmd, cmds) = mpsc::channel();
+    thread::spawn(move || {
+        let mut s = Sampler::new();
+        s.prime();
+        let mut last = Snapshot::default();
+        for c in cmds {
+            match c {
+                Cmd::Sample => {
+                    last = s.sample(&last);
+                    if tx.send(Msg::Sys(last.clone())).is_err() {
+                        return;
+                    }
+                }
+                Cmd::Release => {
+                    s.gpu = None;
+                    unsafe { libc::malloc_trim(0) };
+                }
+            }
+        }
+    });
+    cmd
+}
+
+struct Sampler {
     temp: Option<PathBuf>,
-    nvml: Option<Nvml>,
-    tried_nvml: bool,
+    gpu: Option<Gpu>,
+    /// Set once the sampler fails: no NVIDIA GPU here, so stop trying.
+    no_gpu: bool,
     cpu: Option<(u64, u64)>,
     net: Option<((u64, u64), Instant)>,
 }
 
 impl Sampler {
-    pub fn new() -> Self {
-        Sampler { temp: cpu_temp_path(), nvml: None, tried_nvml: false, cpu: None, net: None }
+    fn new() -> Self {
+        Sampler { temp: cpu_temp_path(), gpu: None, no_gpu: false, cpu: None, net: None }
     }
 
     /// Take the baseline for rates, so the first panel shows a real number
     /// (the average since startup) instead of a tile that pops in a tick later.
-    pub fn prime(&mut self) {
+    fn prime(&mut self) {
         self.cpu = fs::read_to_string("/proc/stat").ok().as_deref().and_then(parse_cpu);
         self.net = Some((parse_net(&fs::read_to_string("/proc/net/dev").unwrap_or_default()), Instant::now()));
     }
 
-    pub fn sample(&mut self, last: &Snapshot) -> Snapshot {
-        if !self.tried_nvml {
-            self.tried_nvml = true;
-            self.nvml = Nvml::open();
+    fn sample(&mut self, last: &Snapshot) -> Snapshot {
+        if self.gpu.is_none() && !self.no_gpu {
+            self.gpu = Gpu::open();
         }
-        let gpu = self.nvml.as_ref().and_then(Nvml::read);
+        let gpu = self.gpu.as_mut().and_then(Gpu::read);
+        if gpu.is_none() {
+            self.gpu = None;
+            self.no_gpu = true;
+        }
 
         let cpu_now = fs::read_to_string("/proc/stat").ok().as_deref().and_then(parse_cpu);
         let cpu = match (self.cpu, cpu_now) {

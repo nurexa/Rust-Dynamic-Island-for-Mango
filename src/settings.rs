@@ -21,7 +21,8 @@ pub struct Config {
 impl Config {
     pub fn load() -> Self {
         let mut c = Config { font: "Adwaita Sans".into(), clock: "%I:%M %p".into(), reserve: true };
-        let src = fs::read_to_string(home().join(".config/island/config")).unwrap_or_default();
+        let dir = env::var_os("XDG_CONFIG_HOME").map_or(home().join(".config"), PathBuf::from);
+        let src = fs::read_to_string(dir.join("island/config")).unwrap_or_default();
         for line in src.lines().map(str::trim).filter(|l| !l.starts_with('#')) {
             match line.split_once('=').map(|(k, v)| (k.trim(), v.trim())) {
                 Some(("font", v)) => c.font = v.into(),

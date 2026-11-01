@@ -293,9 +293,26 @@ fn read_items(c: &Connection) -> Vec<String> {
         .and_then(|v| Vec::<String>::try_from(v).ok()).unwrap_or_default()
 }
 
-fn claim_watcher(c: &Connection) {
+/// Apps that registered with the previous watcher (Waybar, at cutover) may never
+/// re-register, so pick up anything already on the bus under the spec's name.
+fn adopt_items(c: &Connection, owned: &Mutex<Vec<String>>) {
+    let reply = c.call_method(Some(DBUS), DBUS_PATH, Some(DBUS), "ListNames", &());
+    let names: Vec<String> = reply.ok().and_then(|r| r.body().deserialize().ok()).unwrap_or_default();
+    let mut items = owned.lock().unwrap();
+    for name in names.iter().filter(|n| n.starts_with("org.kde.StatusNotifierItem-")
+                                        || n.starts_with("org.freedesktop.StatusNotifierItem-")) {
+        let full = format!("{name}/StatusNotifierItem");
+        if !items.contains(&full) {
+            items.push(full);
+        }
+    }
+}
+
+fn claim_watcher(c: &Connection, owned: &Mutex<Vec<String>>) {
     let flags = RequestNameFlags::DoNotQueue.into();
-    let _ = c.request_name_with_flags(WATCHER, flags);
+    if c.request_name_with_flags(WATCHER, flags).is_ok() {
+        adopt_items(c, owned);
+    }
     let host = format!("org.kde.StatusNotifierHost-{}", std::process::id());
     let _ = c.request_name_with_flags(host.as_str(), flags);
     let _ = c.call_method(Some(WATCHER), WATCHER_PATH, Some(WATCHER), "RegisterStatusNotifierHost", &host);
@@ -339,7 +356,7 @@ impl Tray {
 
     fn name_changed(&mut self, name: &str, new_owner: &str) {
         if name == WATCHER && new_owner.is_empty() {
-            claim_watcher(&self.conn);
+            claim_watcher(&self.conn, &self.owned);
         }
         if name == WATCHER && !new_owner.is_empty() {
             return self.resync();
@@ -502,7 +519,7 @@ pub fn spawn(tx: crate::Tx) -> Option<Bus> {
     thread::spawn(move || {
         // Subscribe before claiming so nothing registered in between is lost.
         let signals = MessageIterator::from(&conn);
-        claim_watcher(&conn);
+        claim_watcher(&conn, &owned);
         let mut tray = Tray { conn: conn.clone(), tx: tx.clone(), items: HashMap::new(), order: Vec::new(), owned };
         tray.resync();
         let _ = tx.send(Msg::Media(read_media(&conn)));

@@ -184,8 +184,10 @@ impl<'a> Pen<'a> {
         let _ = self.cr.fill();
     }
 
-    fn image(&self, img: &ImageSurface, x: f64, y: f64, a: f64) {
-        let s = self.scale as f64;
+    /// `size` is the logical edge: rasters can outlive a scale change, so their
+    /// density comes from the raster itself rather than from this output.
+    fn image(&self, img: &ImageSurface, x: f64, y: f64, size: f64, a: f64) {
+        let s = img.width() as f64 / size;
         img.set_device_scale(s, s);
         if self.cr.set_source_surface(img, x, y).is_ok() {
             let _ = self.cr.paint_with_alpha(a);
@@ -202,7 +204,7 @@ impl<'a> Pen<'a> {
     /// The app's real icon, or a lettered tile when nothing on disk matches.
     fn app(&mut self, appid: &str, size: f64, x: f64, y: f64, alpha: f64) {
         if let Some(img) = self.icons.app(appid, (size * self.scale as f64) as i32) {
-            return self.image(&img, x, y, alpha);
+            return self.image(&img, x, y, size, alpha);
         }
         let tile = mix(self.pal.accent, self.pal.bg, 0.68);
         self.fill((x, y, size, size), size * 0.28, tile, alpha);
@@ -272,7 +274,7 @@ pub fn compact(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: i32
     if let Some(t) = m.media.as_ref().filter(|t| t.playing) {
         let tip = if t.artist.is_empty() { t.title.clone() } else { format!("{} – {}", t.title, t.artist) };
         match &m.art_small {
-            Some(a) => p.image(a, x, cy - 10.0, 1.0),
+            Some(a) => p.image(a, x, cy - 10.0, 20.0, 1.0),
             None => p.symbol("audio-x-generic", 16.0, x + 2.0, cy - 8.0, pal.accent),
         }
         p.regions.push(Region::new((x - 2.0, cy - 12.0, 24.0, 24.0), 6.0, Action::Sh("playerctl play-pause"))
@@ -447,7 +449,7 @@ fn media(p: &mut Pen, m: &Model, y: f64) -> f64 {
             p.pill(PAD, y, size, size, 12.0);
             let _ = p.cr.save();
             let _ = p.cr.clip();
-            p.image(a, PAD, y, 1.0);
+            p.image(a, PAD, y, size, 1.0);
             let _ = p.cr.restore();
         }
         None => {
@@ -533,9 +535,10 @@ fn status(p: &mut Pen, m: &Model, y: f64) -> f64 {
     for (i, (item, icon)) in m.tray.iter().enumerate().rev() {
         let r = (x, y, 30.0, h);
         match icon {
-            Some((img, false)) => p.image(img, x + 6.0, cy - 9.0, 1.0),
+            Some((img, false)) => p.image(img, x + 6.0, cy - 9.0, 18.0, 1.0),
             Some((mask, true)) => {
-                mask.set_device_scale(p.scale as f64, p.scale as f64);
+                let s = mask.width() as f64 / 18.0;
+                mask.set_device_scale(s, s);
                 p.set(pal.fg, 1.0);
                 let _ = p.cr.mask_surface(mask, x + 6.0, cy - 9.0);
             }

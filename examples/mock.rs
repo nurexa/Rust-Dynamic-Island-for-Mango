@@ -146,13 +146,14 @@ fn main() -> zbus::Result<()> {
     let art = std::env::args().nth(1).unwrap_or_default();
     let conn = Builder::session()?
         .name("org.mpris.MediaPlayer2.mock")?
+        .name(format!("org.freedesktop.StatusNotifierItem-{}-1", std::process::id()))?
         .serve_at("/org/mpris/MediaPlayer2", Player { playing: true, art })?
         .serve_at("/org/mpris/MediaPlayer2", Root)?
         .serve_at("/StatusNotifierItem", Item)?
         .serve_at("/Menu", Menu)?
         .build()?;
     let name = conn.unique_name().unwrap().to_string();
-    for _ in 0..50 {
+    for _ in 0..10 {
         let r = conn.call_method(Some("org.kde.StatusNotifierWatcher"), "/StatusNotifierWatcher",
                                  Some("org.kde.StatusNotifierWatcher"), "RegisterStatusNotifierItem", &format!("{name}/StatusNotifierItem"));
         if r.is_ok() {

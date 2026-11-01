@@ -61,6 +61,7 @@ pub enum Msg {
     Monitors(Vec<mango::Monitor>),
     Clients(Vec<mango::Client>),
     Audio(audio::State),
+    Sys(sys::Snapshot),
     Media(Option<bus::Track>),
     Net(net::State),
     Tray(Vec<bus::TrayItem>),
@@ -104,9 +105,10 @@ pub struct App {
     under_pointer: Option<wl_surface::WlSurface>,
     model: Model,
     icons: Icons,
+    tray_items: Vec<bus::TrayItem>,
     cfg: Config,
     state: State,
-    sampler: sys::Sampler,
+    stats: mpsc::Sender<sys::Cmd>,
     bus: Option<bus::Bus>,
     net_poke: mpsc::Sender<()>,
     tx: Tx,
@@ -134,7 +136,7 @@ fn next_minute() -> Instant {
 impl App {
     fn sync_outputs(&mut self) {
         let qh = self.qh.clone();
-        let monitors = self.model.monitors.len();
+        let mut rescaled = false;
         for output in self.outputs.outputs().collect::<Vec<_>>() {
             let Some(info) = self.outputs.info(&output) else { continue };
             let Some(name) = info.name.clone() else { continue };
@@ -143,8 +145,9 @@ impl App {
             let out = (w as f64, h as f64);
             let scale = info.scale_factor.max(1);
             if let Some(i) = self.islands.iter_mut().find(|i| i.output == output) {
+                rescaled |= i.scale != scale;
                 if i.out != out || i.scale != scale {
-                    i.set_output(out, scale, monitors);
+                    i.set_output(out, scale);
                 }
                 continue;
             }
@@ -152,14 +155,22 @@ impl App {
             let layer = self.layer_shell.create_layer_surface(&qh, surface, Layer::Top, Some(NAMESPACE), Some(&output));
             layer.set_anchor(Anchor::TOP);
             layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+            // Mango gives zone-0 layers a rectangular drop shadow, decided at map
+            // time. It would outline the whole transparent surface.
+            layer.set_exclusive_zone(-1);
             let island = Island::new(output.clone(), name.clone(), out, scale, layer, &self.shm,
-                                     self.state.pos.get(&name).copied(), self.state.pinned, self.state.tucked, monitors);
+                                     self.state.pos.get(&name).copied(), self.state.pinned, self.state.tucked);
             if let Some(island) = island {
                 let size = island.surface_size();
                 island.layer.set_size(size.0 as u32, size.1 as u32);
                 island.layer.commit();
                 self.islands.push(island);
+                rescaled = true;
             }
+        }
+        if rescaled {
+            self.set_art();
+            self.set_tray();
         }
     }
 
@@ -174,34 +185,42 @@ impl App {
         self.state.save();
     }
 
+    /// Sharp on the densest output; the others scale it down.
+    fn raster_scale(&self) -> i32 {
+        self.islands.iter().map(|i| i.scale).max().unwrap_or(1)
+    }
+
     fn set_art(&mut self) {
         let path = self.model.media.as_ref().and_then(|t| t.art.clone());
-        let scale = self.islands.first().map_or(1, |i| i.scale);
+        let scale = self.raster_scale();
         let load = |p: &PathBuf, px: i32| icons::load_art(p, px * scale);
         self.model.art_small = path.as_ref().and_then(|p| load(p, 20)).map(|s| rounded(s, 5.0 * scale as f64));
         self.model.art_large = path.as_ref().and_then(|p| load(p, 58));
+    }
+
+    fn set_tray(&mut self) {
+        let px = 18 * self.raster_scale();
+        let icons = &mut self.icons;
+        self.model.tray = self.tray_items.iter().map(|i| (i.clone(), icons.tray(&i.icon, px))).collect();
     }
 
     fn handle(&mut self, msg: Msg) {
         match msg {
             Msg::Monitors(m) => {
                 if m != self.model.monitors {
-                    let count = m.len() != self.model.monitors.len();
                     self.model.monitors = m;
-                    if count {
-                        self.sync_outputs();
-                        for i in &mut self.islands {
-                            let (out, scale) = (i.out, i.scale);
-                            i.set_output(out, scale, self.model.monitors.len());
-                        }
-                    }
                     self.all(true, true);
                 }
             }
             Msg::Clients(c) => {
-                if c != self.model.clients {
-                    self.model.clients = c;
+                // Terminals rewrite their title constantly, and titles only show up
+                // as hover tips, so those changes wait for the next hover.
+                let moved = !mango::same_but_titles(&c, &self.model.clients);
+                self.model.clients = c;
+                if moved {
                     self.all(true, true);
+                } else {
+                    self.islands.iter_mut().for_each(Island::titles_changed);
                 }
             }
             Msg::Audio(a) => {
@@ -214,6 +233,12 @@ impl App {
                     }
                 }
                 self.all(false, true);
+            }
+            Msg::Sys(s) => {
+                if s != self.model.sys {
+                    self.model.sys = s;
+                    self.all(false, true);
+                }
             }
             Msg::Media(t) => {
                 let same_art = self.model.media.as_ref().map(|t| &t.art) == t.as_ref().map(|t| &t.art);
@@ -231,12 +256,8 @@ impl App {
                 self.all(compact, true);
             }
             Msg::Tray(items) => {
-                let scale = self.islands.first().map_or(1, |i| i.scale);
-                let icons = &mut self.icons;
-                self.model.tray = items.into_iter().map(|item| {
-                    let img = icons.tray(&item.icon, 18 * scale);
-                    (item, img)
-                }).collect();
+                self.tray_items = items;
+                self.set_tray();
                 self.all(false, true);
             }
             Msg::Menu(index, entries) => {
@@ -247,8 +268,10 @@ impl App {
                 }
             }
             Msg::Theme => {
-                self.model.pal = theme::load();
-                self.all(true, true);
+                if let Some(pal) = theme::reload() {
+                    self.model.pal = pal;
+                    self.all(true, true);
+                }
             }
             Msg::Command(c) => self.command(&c),
             Msg::Quit => self.quit = true,
@@ -261,6 +284,7 @@ impl App {
             "tuck" => self.act(Action::Tuck, 0.0, None),
             "reset" => self.act(Action::Reset, 0.0, None),
             "quit" => self.quit = true,
+            "" => {} // a second instance checking whether we're alive
             _ => eprintln!("island: unknown command {c}"),
         }
     }
@@ -374,7 +398,11 @@ impl App {
         }
         let visible = self.islands.iter().any(Island::panel_visible);
         match (visible, self.next_stats) {
-            (false, _) => self.next_stats = None,
+            (false, None) => {}
+            (false, Some(_)) => {
+                self.next_stats = None;
+                let _ = self.stats.send(sys::Cmd::Release);
+            }
             (true, None) => self.stats(now),
             (true, Some(t)) if now >= t => self.stats(now),
             _ => {}
@@ -384,14 +412,17 @@ impl App {
     fn stats(&mut self, now: Instant) {
         let first = self.next_stats.is_none();
         self.next_stats = Some(now + STATS_EVERY);
-        self.model.sys = self.sampler.sample(&self.model.sys);
+        let _ = self.stats.send(sys::Cmd::Sample);
         let _ = self.net_poke.send(());
         if first {
             if let Some(b) = &self.bus {
                 b.refresh_media(self.tx.clone());
             }
         }
-        self.all(false, true);
+        // Refreshes the progress bar, which moves without any event of its own.
+        if self.model.media.as_ref().is_some_and(|t| t.playing) {
+            self.all(false, true);
+        }
     }
 
     fn flush(&mut self) {
@@ -542,7 +573,8 @@ impl PointerHandler for App {
                     }
                 }
             }
-            let shape = if self.islands[idx].hovering_target() { Shape::Pointer } else { Shape::Default };
+            let isl = &self.islands[idx];
+            let shape = if isl.dragging() { Shape::Grabbing } else if isl.hovering_target() { Shape::Pointer } else { Shape::Default };
             self.set_cursor(shape);
         }
     }
@@ -627,6 +659,9 @@ fn watch_theme(tx: Tx) {
 
 fn main() {
     if let Some(cmd) = env::args().nth(1) {
+        if cmd == "--gpu-sampler" {
+            return sys::gpu_sampler();
+        }
         if matches!(cmd.as_str(), "pin" | "toggle" | "tuck" | "reset" | "quit") {
             run_client(&cmd);
         }
@@ -637,7 +672,8 @@ fn main() {
     let (tx, rx) = channel::channel::<Msg>();
     if let Err(e) = control_socket(tx.clone()) {
         eprintln!("island: {e}");
-        std::process::exit(1);
+        // Success, so the autostart restart loop doesn't spin on a second copy.
+        std::process::exit(0);
     }
 
     let conn = Connection::connect_to_env().expect("not on a Wayland session");
@@ -653,8 +689,6 @@ fn main() {
     }).expect("message source");
 
     let net_poke = net::spawn(tx.clone());
-    let mut sampler = sys::Sampler::new();
-    sampler.prime();
     let mut app = App {
         registry: RegistryState::new(&globals),
         seat: SeatState::new(&globals, &qh),
@@ -672,9 +706,10 @@ fn main() {
                        media: None, art_small: None, art_large: None, net: net::State::Unknown, tray: Vec::new(),
                        pal: theme::load() },
         icons: Icons::new(),
+        tray_items: Vec::new(),
         cfg: Config::load(),
         state: State::load(),
-        sampler,
+        stats: sys::spawn(tx.clone()),
         bus: bus::spawn(tx.clone()),
         net_poke,
         tx: tx.clone(),

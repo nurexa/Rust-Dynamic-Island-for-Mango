@@ -1,0 +1,9 @@
+#!/bin/bash
+H=$(dirname "$(readlink -f "$0")")/..
+R=$H/run
+case "$*" in
+ subscribe) exec tail -n0 -f $R/events;;
+ get-default-sink) echo fake;;
+ *list*) python3 -c "
+import json;d=json.load(open('$R/sink'));print(json.dumps([{'name':'fake','description':'Razer Kraken Kitty V2','mute':d['mute'],'volume':{'front-left':{'value_percent':str(d['vol'])+'%'}}}]))";;
+esac

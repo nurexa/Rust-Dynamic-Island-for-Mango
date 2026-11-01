@@ -101,6 +101,13 @@ pub fn watch(tx: crate::Tx) {
     stream("all-clients", tx, |l| Ok(Msg::Clients(serde_json::from_str::<Clients>(l)?.clients)));
 }
 
+pub fn same_but_titles(a: &[Client], b: &[Client]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(a, b)| {
+        (a.id, &a.appid, &a.monitor, &a.tags, a.is_focused, a.is_minimized, a.is_urgent)
+            == (b.id, &b.appid, &b.monitor, &b.tags, b.is_focused, b.is_minimized, b.is_urgent)
+    })
+}
+
 /// Windows on one tag of one monitor, in mango's order. Minimized windows stay
 /// out, matching what the Waybar pills showed.
 pub fn clients_on<'a>(clients: &'a [Client], mon: &'a str, tag: u32) -> impl Iterator<Item = &'a Client> {
