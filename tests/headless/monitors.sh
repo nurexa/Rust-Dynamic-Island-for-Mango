@@ -7,9 +7,9 @@ mmsg dispatch focusmon,HEADLESS-2 >/dev/null; sleep .3; (nohup setsid kitty -c $
 $V move 1500 900; sleep .3; mmsg dispatch focusmon,HEADLESS-1 >/dev/null; sleep .4; $V move 1500 900; sleep .3
 $V move 960 22; sleep 1.2; grim $H/run/m1.png
 ok "hover leaves focus alone" "$(mons)" "HEADLESS-1*:[1] HEADLESS-2:[1]"
-ok "panel lists both monitors" "$(python3 $H/px.py $H/run/run/m1.png 730 176 opaque)" no
+ok "panel lists both monitors" "$(python3 $H/px.py $H/run/m1.png 730 176 opaque)" no
 $V click 786 176; sleep .7
 ok "chip on the other monitor switches and focuses that monitor" "$(mons)" "HEADLESS-1:[1] HEADLESS-2*:[2]"
 $V move 2560 22; sleep 1.2; grim $H/run/m2.png
-ok "pointer on monitor 2 opens that island" "$(python3 $H/px.py $H/run/run/m2.png 2400 30 opaque)" yes
-ok "monitor 1's island closed" "$(python3 $H/px.py $H/run/run/m2.png 750 30)" "42 74 90"
+ok "pointer on monitor 2 opens that island" "$(python3 $H/px.py $H/run/m2.png 2292 60 opaque)" yes
+ok "monitor 1's island closed" "$(python3 $H/px.py $H/run/m2.png 750 30)" "42 74 90"

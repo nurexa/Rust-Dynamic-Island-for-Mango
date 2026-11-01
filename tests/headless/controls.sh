@@ -28,10 +28,10 @@ $V move 1000 200
 # menu: submenu, back, click (mock logs the event)
 $V click 900 117; sleep .6; grim $H/run/h3.png; magick $H/run/h3.png -crop 640x200+640+0 $H/run/h3s.png
 $V click 710 36; sleep .6; grim $H/run/h4.png
-ok "menu back: from submenu to root" "$(px $H/h4.png 780 148 opaque)" "yes"
+ok "menu back: from submenu to root" "$(px $H/run/h4.png 780 148 opaque)" "yes"
 $V click 900 76; sleep .5; ok "menu item fires dbusmenu Event" "$(last)" "menu: clicked 1"
 sleep .5; grim $H/run/h5.png
-ok "menu click returns to main view" "$(px $H/h5.png 1160 166 opaque)" "no"
+ok "menu click returns to main view" "$(px $H/run/h5.png 1160 166 opaque)" "no"
 # compact flash on volume change
 $V move 1500 900; sleep 1; echo "Event 'change' on server" >> /dev/null
 $H/shim/wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 30%; sleep .6; grim $H/run/h6.png; magick $H/run/h6.png -crop 400x44+760+0 $H/run/h6s.png

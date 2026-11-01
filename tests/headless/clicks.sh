@@ -8,8 +8,8 @@ px(){ python3 $H/px.py "$@"; }
 BG="42 74 90"   # root color from the test config
 $H/isl
 $V move 1500 900; sleep .8; grim $H/run/a.png
-ok "idle: wallpaper around pill stays visible" "$(px $H/a.png 800 22)" "$BG"
-ok "idle: pill is drawn" "$(px $H/a.png 950 10 opaque)" "yes"
+ok "idle: wallpaper around pill stays visible" "$(px $H/run/a.png 800 22)" "$BG"
+ok "idle: pill is drawn" "$(px $H/run/a.png 950 10 opaque)" "yes"
 
 # click-through: a window under the surface but outside the pill still gets pointer focus
 mmsg dispatch togglefloating >/dev/null; sleep .4
@@ -17,10 +17,10 @@ $V click 700 200 l; sleep .4; ok "click at transparent surface reaches the windo
 mmsg dispatch togglefloating >/dev/null; sleep .4
 
 $V move 960 22; sleep 1; grim $H/run/b.png
-ok "hover opens panel" "$(px $H/b.png 700 30 opaque)" "yes"
+ok "hover opens panel" "$(px $H/run/b.png 700 30 opaque)" "yes"
 ok "keyboard focus not stolen by hover" "$(focused)" "kitty"
 $V move 1500 900; sleep 1; grim $H/run/c.png
-ok "leave closes panel" "$(px $H/c.png 800 22)" "$BG"
+ok "leave closes panel" "$(px $H/run/c.png 800 22)" "$BG"
 
 # tag click in compact: chip 3 is at x ~ 925 given chips [1 kitty][3 pav]
 $V move 960 22; sleep 1
@@ -39,6 +39,6 @@ ok "restored" "$(kittytags) $(tags)" "[[1]] [1]"
 # fullscreen covers the island
 $V move 1500 900; sleep .7
 mmsg dispatch togglefullscreen >/dev/null; sleep .8; grim $H/run/d.png
-echo "     fullscreen pixel at pill: $(px $H/d.png 950 10) (window bg, not pill black)"
+echo "     fullscreen pixel at pill: $(px $H/run/d.png 950 10) (window bg, not pill black)"
 mmsg dispatch togglefullscreen >/dev/null; sleep .8
 echo "--- layers"; mmsg get all-layers

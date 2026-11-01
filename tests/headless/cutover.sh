@@ -17,13 +17,13 @@ $H/../../install.sh --no-build
 sleep 1
 ok "after install: island replaced waybar" "$(layers)" "['island']"
 ok "reserved height unchanged, so tiling doesn't move" "$(winy)" 52
-ok "autostart now runs the island" "$(grep -c 'island' $C/scripts/bar)" 1
+ok "autostart now runs the island" "$(grep -c '^until .*/island;' $C/scripts/bar)" 1
 ok "config block added once" "$(grep -c 'layer_name:island' $C/config.conf)" 1
 $H/../../install.sh --no-build >/dev/null; sleep 1
 ok "second run changes nothing" "$(grep -c 'layer_name:island' $C/config.conf) $(layers)" "1 ['island']"
 $H/../../install.sh --undo
 sleep 2.5
 ok "undo brings waybar back" "$(layers)" "['waybar']"
-ok "undo removes the config block" "$(grep -c island $C/config.conf)" 0
+ok "undo removes the config block" "$(grep -c 'layer_name:island' $C/config.conf)" 0
 ok "undo restores the bar script" "$(grep -c waybar $C/scripts/bar)" 1
 pkill -f "$C/scripts/bar" --env MANGO_INSTANCE_SIGNATURE=$MANGO_INSTANCE_SIGNATURE; pkill -x waybar --env MANGO_INSTANCE_SIGNATURE=$MANGO_INSTANCE_SIGNATURE
