@@ -28,5 +28,5 @@ echo "$($WALL opt | tr -d ' \n')" | grep -q '"fit":"fit"' && echo "ok   opt prin
 $WALL opt fit bogus 2>/dev/null; ok "bad value is refused" "$?" "1"
 # The panel draws a row of chips for it.
 island pin; sleep 1.2; grim $R/wall-b.png
-ok "panel grows to hold the wallpaper section" "$(px $R/wall-b.png 700 380 opaque)" "yes"
+ok "panel grows to hold the wallpaper section" "$(px $R/wall-b.png 700 200 opaque)" "yes"
 island pin

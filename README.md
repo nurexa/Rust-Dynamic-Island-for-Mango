@@ -52,7 +52,7 @@ Lower is better, and the best is bold.
 
 Two things to read carefully. mangobar is the faster of the two small bars at drawing a
 workspace change, because it's a 0.3 MB C program that only draws a bar, and it is
-dynamically linked to more libraries (65 against the island's 41). The island does that
+dynamically linked to more libraries (65 against the island's 40). The island does that
 and the launcher, notifications, clipboard and screenshots, and still uses less memory.
 Waybar's wakeup count measured negative (threads exit between samples), so it's left out.
 Idle CPU is a tie between all three. Waybar's switch cost includes the helper commands its

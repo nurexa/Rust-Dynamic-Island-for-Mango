@@ -18,19 +18,18 @@
   --series-island: #4553d6;
   --series-waybar: #c98a2e;
   /* Set per wallpaper by data-wall on <html> */
-  --wall: #c9d0fb;
-  --wall-2: #e3c8f2;
-  --wall-3: #a9c6f5;
-  --paper: #eceeff;
-  --accent: #b5c4ff;
-  --on-accent: #1b2b61;
+  --accent: #ffb778;
+  --on-accent: #4c2700;
+  --img: url(wall/arona.jpg);
+  /* The page tints itself from the accent, the way the real desktop does. */
+  --wall: color-mix(in srgb, var(--accent) 38%, white);
+  --wall-2: color-mix(in srgb, var(--accent) 22%, white);
+  --wall-3: color-mix(in srgb, var(--accent) 52%, white);
+  --paper: color-mix(in srgb, var(--accent) 12%, white);
+  --series-mangobar: #2f9e8f;
 }
-html[data-wall="moss"] {
-  --wall: #cfe3c4; --wall-2: #e6e6b4; --wall-3: #a8d8c4; --paper: #eff6e8; --accent: #a9d39b; --on-accent: #123a12;
-}
-html[data-wall="ember"] {
-  --wall: #f6cfba; --wall-2: #f7dca8; --wall-3: #f2b4bd; --paper: #fdeee6; --accent: #ffb59d; --on-accent: #561f0f;
-}
+html[data-wall="azure"] { --accent: #abc7ff; --on-accent: #0c305f; --img: url(wall/azure.jpg); }
+html[data-wall="grass"] { --accent: #aad291; --on-accent: #183807; --img: url(wall/grass.jpg); }
 * { box-sizing: border-box; margin: 0; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 body {
@@ -45,10 +44,8 @@ body {
 .wallpaper {
   position: fixed; inset: 0; z-index: -1;
   background:
-    radial-gradient(60vmax 45vmax at 12% 18%, var(--wall-2), transparent 70%),
-    radial-gradient(70vmax 50vmax at 88% 72%, var(--wall-3), transparent 70%),
-    var(--wall);
-  transition: background-color .5s;
+    linear-gradient(color-mix(in srgb, var(--paper) 74%, transparent), color-mix(in srgb, var(--paper) 86%, transparent)),
+    var(--img) center / cover, var(--wall);
 }
 a { color: inherit; }
 :focus-visible { outline: 2px solid var(--series-island); outline-offset: 3px; border-radius: 6px; }
@@ -73,7 +70,7 @@ h2 { font-size: clamp(1.7rem, 4.4vw, 2.9rem); max-width: 26ch; text-wrap: balanc
 .button:hover { transform: translateY(-2px); }
 
 .screen { margin-top: 32px; border-radius: 22px; overflow: hidden; background: var(--island); box-shadow: 0 24px 60px rgb(18 21 43 / .22); }
-.screen img { display: block; width: 100%; height: auto; }
+.screen img, .screen video { display: block; width: 100%; height: auto; }
 
 .card { margin-top: 32px; padding: 28px; border-radius: 26px; background: var(--paper); }
 .legend { display: flex; gap: 20px; font-size: .92rem; font-weight: 500; }
@@ -87,6 +84,7 @@ h2 { font-size: clamp(1.7rem, 4.4vw, 2.9rem); max-width: 26ch; text-wrap: balanc
 .bar:hover { filter: brightness(1.12); }
 .bar.island { background: var(--series-island); }
 .bar.waybar { background: var(--series-waybar); }
+.bar.mangobar { background: var(--series-mangobar); }
 .value { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tooltip {
   position: fixed; z-index: 30; pointer-events: none; padding: 6px 10px; border-radius: 10px; font-size: .84rem;
@@ -146,6 +144,9 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
 .panel .chip { height: 36px; padding: 0 12px; border-radius: 13px; background: rgb(230 232 245 / .07); font-size: 13px; }
 .panel .chip.on { background: var(--accent); }
 .panel .chip:hover { filter: brightness(1.2); }
+.slider { display: grid; grid-template-columns: 92px 1fr 40px; align-items: center; gap: 10px; margin-top: 12px; font-size: 12.5px; font-weight: 500; }
+.slider input { width: 100%; accent-color: var(--accent); }
+.slider output { text-align: right; color: var(--island-muted); font-size: 12px; }
 .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
 .tile { padding: 9px 12px 10px; border-radius: 14px; background: rgb(230 232 245 / .055); min-width: 0; }
 .tile span { display: block; font-size: 10.5px; font-weight: 500; color: var(--island-muted); white-space: nowrap; }
@@ -177,8 +178,8 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
 <div id="island" role="group" aria-label="Live demo of the island">
   <div class="pill">
     <div class="chips">
-      <span class="chip on" data-chip="dusk">1 <svg><use href="#g-term"/></svg></span>
-      <span class="chip" data-chip="moss">2 <svg><use href="#g-globe"/></svg></span>
+      <span class="chip on" data-chip="arona">1 <svg><use href="#g-term"/></svg></span>
+      <span class="chip" data-chip="azure">2 <svg><use href="#g-globe"/></svg></span>
     </div>
     <span class="time" data-time></span>
   </div>
@@ -186,15 +187,17 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
     <div class="head"><span class="clock" data-time></span><span class="date" data-date></span></div>
     <div class="label">Workspaces</div>
     <div class="chips">
-      <button class="chip on" data-wall="dusk" aria-label="Workspace 1, dusk wallpaper">1 <svg><use href="#g-term"/></svg></button>
-      <button class="chip" data-wall="moss" aria-label="Workspace 2, moss wallpaper">2 <svg><use href="#g-globe"/></svg></button>
-      <button class="chip" data-wall="ember" aria-label="Workspace 3, ember wallpaper">3 <svg><use href="#g-note"/></svg></button>
+      <button class="chip on" data-wall="arona" aria-label="Workspace 1, Arona wallpaper">1 <svg><use href="#g-term"/></svg></button>
+      <button class="chip" data-wall="azure" aria-label="Workspace 2, Azure Horizon wallpaper">2 <svg><use href="#g-globe"/></svg></button>
+      <button class="chip" data-wall="grass" aria-label="Workspace 3, Wavy Grass wallpaper">3 <svg><use href="#g-note"/></svg></button>
     </div>
     <div class="tiles">
-      <div class="tile"><span>Memory</span><b>13.6 MB</b></div>
-      <div class="tile"><span>Workspace switch</span><b>1.25 ms</b></div>
+      <div class="tile"><span>Memory</span><b>12.4 MB</b></div>
+      <div class="tile"><span>Workspace switch</span><b>1.75 ms</b></div>
       <div class="tile"><span>Idle CPU</span><b>&lt;0.1%</b></div>
     </div>
+    <label class="slider"><span>Speakers</span><input type="range" min="0" max="100" value="48" aria-label="Volume"><output>48%</output></label>
+    <label class="slider"><span>Brightness</span><input type="range" min="0" max="100" value="70" aria-label="Brightness"><output>70%</output></label>
   </div>
 </div>
 
@@ -212,7 +215,10 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
   <section id="demo">
     <h2>Everything happens in the pill</h2>
     <div class="screen">
-      <img src="demo.gif" width="880" height="540" loading="lazy" alt="The pill opens into a panel, searches apps, shows a notification, then drags out of the way and docks again.">
+      <video autoplay loop muted playsinline preload="metadata" width="960" height="588" aria-label="The pill opens into a panel with volume and brightness sliders, searches apps and the clipboard, then picks a new wallpaper and the whole palette follows.">
+        <source src="demo.mp4" type="video/mp4">
+        <img src="demo.gif" width="960" height="588" alt="The pill opens into a panel with volume and brightness sliders, searches apps and the clipboard, then picks a new wallpaper and the whole palette follows.">
+      </video>
     </div>
   </section>
 
@@ -235,61 +241,65 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
   </section>
 
   <section id="benchmarks">
-    <h2>All of it, in under a third of the memory</h2>
-    <p class="lede">A daily-driver Waybar config plus dunst against the island doing both jobs, on the same compositor with the same windows and apps. Lower is better.</p>
+    <h2>Lightest on memory, and it does more</h2>
+    <p class="lede">The island against Waybar and mangobar, on the same compositor with the same windows and apps. Lower is better. mangobar only draws a bar; the island is also your launcher, notifications, clipboard and screenshots.</p>
     <div class="card">
       <div class="legend" aria-label="Legend">
         <span><i style="background:var(--series-island)"></i>Island</span>
-        <span><i style="background:var(--series-waybar)"></i>What it replaces</span>
+        <span><i style="background:var(--series-mangobar)"></i>mangobar</span>
+        <span><i style="background:var(--series-waybar)"></i>Waybar</span>
       </div>
       <div class="metric">
         <h3>Real memory (PSS)</h3>
         <p>Memory shared with other apps is split fairly between them.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(28.9% - 21px)" data-tip="Island: 13.6 MB"></div><span class="value">13.6 MB</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar + dunst</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar + dunst: 47 MB"></div><span class="value">47 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(36.4% - 26px)" data-tip="Island: 12.4 MB"></div><span class="value">12.4 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(54.8% - 39px)" data-tip="mangobar: 18.7 MB"></div><span class="value">18.7 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 34.1 MB"></div><span class="value">34.1 MB</span></div></div>
       </div>
       <div class="metric">
         <h3>Resident memory (RSS)</h3>
         <p>Everything mapped in, shared libraries and fonts included.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(39.5% - 28px)" data-tip="Island: 35.8 MB"></div><span class="value">35.8 MB</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar + dunst</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar + dunst: 90.7 MB"></div><span class="value">90.7 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(56.0% - 40px)" data-tip="Island: 39.6 MB"></div><span class="value">39.6 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(57.9% - 42px)" data-tip="mangobar: 40.9 MB"></div><span class="value">40.9 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 70.7 MB"></div><span class="value">70.7 MB</span></div></div>
       </div>
       <div class="metric">
         <h3>CPU per workspace switch</h3>
-        <p>What each switch costs the bar.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(4.5% - 3px)" data-tip="Island: 1.25 ms"></div><span class="value">1.25 ms</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 27.5 ms"></div><span class="value">27.5 ms</span></div></div>
+        <p>What each switch costs the bar. mangobar wins this one.</p>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(4.2% - 3px)" data-tip="Island: 1.75 ms"></div><span class="value">1.75 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(1.8% - 1px)" data-tip="mangobar: 0.75 ms"></div><span class="value">0.75 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 42 ms"></div><span class="value">42 ms</span></div></div>
       </div>
       <div class="metric">
         <h3>Bar startup</h3>
         <p>From launch to first frame on screen.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(29.2% - 21px)" data-tip="Island: 31 ms"></div><span class="value">31 ms</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 106 ms"></div><span class="value">106 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(37.9% - 27px)" data-tip="Island: 39 ms"></div><span class="value">39 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(50.5% - 36px)" data-tip="mangobar: 52 ms"></div><span class="value">52 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 103 ms"></div><span class="value">103 ms</span></div></div>
       </div>
       <div class="metric">
-        <h3>Launcher open</h3>
-        <p>From the keybind to taking your typing.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(19.5% - 14px)" data-tip="Island: 8 ms"></div><span class="value">8 ms</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>rofi</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="rofi: 41 ms"></div><span class="value">41 ms</span></div></div>
+        <h3>Idle wakeups per second</h3>
+        <p>How often it wakes up doing nothing. Waybar read negative, so it is left out.</p>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(33.6% - 24px)" data-tip="Island: 4.0 per second"></div><span class="value">4.0</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(100.0% - 72px)" data-tip="mangobar: 11.9 per second"></div><span class="value">11.9</span></div></div>
       </div>
     </div>
     <div class="card">
       <table>
         <caption>Everything we measured</caption>
-        <thead><tr><th scope="col">Median of 3 runs</th><th scope="col">Waybar + dunst</th><th scope="col">Island</th></tr></thead>
+        <thead><tr><th scope="col">Median of 5 runs</th><th scope="col">Waybar</th><th scope="col">mangobar</th><th scope="col">Island</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Real memory (PSS)</th><td>47 MB</td><td>13.6 MB</td></tr>
-          <tr><th scope="row">Resident memory (RSS)</th><td>90.7 MB</td><td>35.8 MB</td></tr>
-          <tr><th scope="row">CPU per workspace switch</th><td>27.5 ms</td><td>1.25 ms</td></tr>
-          <tr><th scope="row">Bar startup</th><td>106 ms</td><td>31 ms</td></tr>
-          <tr><th scope="row">Launcher open, against rofi</th><td>41 ms</td><td>8 ms</td></tr>
-          <tr><th scope="row">Linked shared libraries, Waybar alone</th><td>117</td><td>40</td></tr>
-          <tr><th scope="row">Idle CPU, across all runs</th><td>0–2.2%</td><td>0–0.1%</td></tr>
-          <tr><th scope="row">Idle wakeups per second, across all runs</th><td>0–48</td><td>2–8</td></tr>
-          <tr><th scope="row">Binary size, Waybar alone</th><td>2.5 MB</td><td>3.3 MB</td></tr>
+          <tr><th scope="row">Real memory (PSS)</th><td>34.1 MB</td><td>18.7 MB</td><td>12.4 MB</td></tr>
+          <tr><th scope="row">Resident memory (RSS)</th><td>70.7 MB</td><td>40.9 MB</td><td>39.6 MB</td></tr>
+          <tr><th scope="row">CPU per workspace switch</th><td>42 ms</td><td>0.75 ms</td><td>1.75 ms</td></tr>
+          <tr><th scope="row">Bar startup</th><td>103 ms</td><td>52 ms</td><td>39 ms</td></tr>
+          <tr><th scope="row">Idle wakeups per second</th><td>n/a</td><td>11.9</td><td>4.0</td></tr>
+          <tr><th scope="row">Idle CPU, across all runs</th><td>0–0.3%</td><td>0.03–0.07%</td><td>0–0.03%</td></tr>
+          <tr><th scope="row">Linked shared libraries</th><td>117</td><td>65</td><td>40</td></tr>
+          <tr><th scope="row">Binary size</th><td>2.5 MB</td><td>0.3 MB</td><td>3.4 MB</td></tr>
         </tbody>
       </table>
-      <p class="fine">Measured in a private headless Mango against a real daily-driver Waybar config: workspace pills, media, audio, tray, network and clock. Memory counts Waybar and dunst together, because the island does both jobs, and includes the island's pactl listener. Waybar's switch cost includes the helper commands its custom workspace modules run, but not the separate script that feeds them. Launcher times stop when rofi's window maps and when the island has raised itself and taken the keyboard, so treat that gap as indicative. Idle is a tie: both sit near zero, and Waybar moves with audio server activity. Waybar has the smaller binary. Opening the palette adds about 3 MB while it's open. Run <code>bench/run.py</code> to reproduce this.</p>
+      <p class="fine">Measured in a private headless Mango: Waybar 0.15.0 with a daily-driver config (workspace pills, media, audio, tray, network, clock), mangobar 0.2.2 with its stock config, and the island with its defaults, each started fresh with the order rotated between runs. Child processes count, including the island's pactl listener. Waybar's switch cost includes the helper commands its custom workspace modules run, but not the separate script that feeds them. mangobar is the faster of the two small bars at redrawing a workspace change and has by far the smallest binary, but the island uses less memory and wakes up a third as often while also replacing your launcher, notifications and clipboard. An earlier run against Waybar plus dunst and rofi put the island's launcher at 8 ms against rofi's 41 ms. A busy desktop moves all of these, so run <code>bench/run.py</code> on yours.</p>
     </div>
   </section>
 
@@ -434,7 +444,7 @@ el.addEventListener("pointerleave", e => {
 // Drag it anywhere; drop it near home and it docks. Hover stays off until you leave.
 let press = null;
 el.addEventListener("pointerdown", e => {
-  if (e.target.closest("button")) return;
+  if (e.target.closest("button, input")) return;
   press = { x: e.clientX, y: e.clientY, sx: slide.x.target, sy: slide.y.target, drag: false, touch: e.pointerType === "touch" };
   clearTimeout(hoverTimer);
   el.setPointerCapture(e.pointerId);
@@ -469,6 +479,12 @@ el.addEventListener("focusin", () => setOpen(true));
 el.addEventListener("focusout", () => { if (!pinned && !hovered) setOpen(false); });
 addEventListener("keydown", e => { if (e.key === "Escape") { pinned = false; setOpen(false); } });
 addEventListener("resize", paint);
+
+el.querySelectorAll(".slider").forEach(l => {
+  const i = l.querySelector("input"), o = l.querySelector("output");
+  const set = () => { o.textContent = i.value + "%"; i.style.background = ""; };
+  i.addEventListener("input", set);
+});
 
 // Workspaces are wallpapers here: switching one retints the page.
 el.querySelectorAll("[data-wall]").forEach(b => b.addEventListener("click", () => {

@@ -77,11 +77,12 @@ F=$R/frames; rm -rf $F; mkdir -p $F
 (n=0; while :; do grim -c -t ppm $F/$(printf %05d $n).ppm 2>/dev/null; n=$((n+1)); done) &
 CAP=$!
 START=$(date +%s.%N)
-SL_X0=1130; SL_X1=1330; VOL_Y=0; BRI_Y=0   # slider track ends, measured from a screenshot
+SL_X0=1000; SL_X1=1160; VOL_Y=297; BRI_Y=329   # slider rows, measured from a screenshot (CALIB=1 takes one)
 pos(){ read -r _ _ X Y < <(grep pos $R/island/state); X=${X%.*}; Y=${Y%.*}; }
 
 sleep 5                                   # the pill, windows running behind it
 $V path 1400 620 1000 24 24 12; sleep 9   # hover: the panel, with its volume and brightness sliders
+[ -n "$CALIB" ] && { grim $R/calib.png; for f in $R/*pid; do kill $(cat "$f") 2>/dev/null; done; kill $CAP; exit; }
 $V path 1000 24 $SL_X0 $VOL_Y 14 12; sleep 1
 $V drag $((SL_X1-SL_X0)) 0 20 25; sleep 3
 $V path $SL_X1 $VOL_Y $SL_X1 $BRI_Y 8 12; $V drag $((SL_X0-SL_X1)) 0 20 25; sleep 4
@@ -110,8 +111,13 @@ SECS=$(python3 -c "import time;print(time.time()-$START)")
 N=$(ls $F | wc -l); echo "$N frames"
 # A second of capture is a tenth of a second on screen.
 FPS=$(python3 -c "print($N/($SECS/10))")
+CROP="fps=24,crop=1240:760:340:0,scale=960:-2:flags=lanczos"
 ffmpeg -nostdin -v error -y -framerate "$FPS" -pattern_type glob -i "$F/*.ppm" \
-  -vf "fps=22,crop=1240:760:340:0,scale=880:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
+  -vf "$CROP,split[a][b];[a]palettegen=max_colors=256:stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle" \
   "$ROOT/docs/demo.gif"
+# The site plays this one: same frames, a fraction of the size, and no 256-color limit.
+ffmpeg -nostdin -v error -y -framerate "$FPS" -pattern_type glob -i "$F/*.ppm" \
+  -vf "$CROP,format=yuv420p" -c:v libx264 -crf 20 -preset slow -movflags +faststart -an "$ROOT/docs/demo.mp4"
+ls -la --block-size=K "$ROOT/docs/demo.mp4" | awk '{print $5}'
 ls -la --block-size=K "$ROOT/docs/demo.gif" | awk '{print $5}'
 for f in $R/*pid; do kill $(cat "$f") 2>/dev/null; done
