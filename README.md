@@ -96,7 +96,7 @@ programs are missing simply doesn't appear.
 | Middle-click the background, or `Super+Shift+I` | Tuck it into a thin sliver |
 | Scroll on the pill | Move through occupied workspaces |
 
-In the palette, type to search, use the arrows or `Ctrl+N`/`Ctrl+P` to move, and press
+In the palette, type to search, use the arrows or `Ctrl+N`/`Ctrl+P` to move (every palette key is rebindable under `[keys]` in the config), and press
 `Enter` to choose. `Tab` moves between tools, and `Esc` closes it. Reboot, shut down and
 log out ask for a second `Enter`.
 

@@ -24,8 +24,6 @@ const SHADOW: f64 = 26.0;
 const PANEL_R: f64 = 30.0;
 const SNAP: f64 = 56.0; // release this close to home and the pill docks
 const DRAG_START: f64 = 5.0;
-const HOVER_OPEN: Duration = Duration::from_millis(130);
-const HOVER_CLOSE: Duration = Duration::from_millis(280);
 const FLASH: Duration = Duration::from_millis(1300);
 const DOUBLE_CLICK: Duration = Duration::from_millis(280);
 const TUCK_W: f64 = 72.0;
@@ -674,24 +672,24 @@ impl Island {
         ((self.pointer.0 - ox - r.0 - 6.0) / (r.2 - 12.0)).clamp(0.0, 1.0)
     }
 
-    pub fn enter(&mut self, at: (f64, f64)) {
+    pub fn enter(&mut self, at: (f64, f64), ui: &crate::settings::Ui) {
         self.hovered = true;
         self.close_at = None;
         self.pointer = at;
-        if !self.suppress && !self.open {
-            self.open_at = Some(Instant::now() + HOVER_OPEN);
+        if ui.hover_open && !self.suppress && !self.open {
+            self.open_at = Some(Instant::now() + Duration::from_millis(ui.hover_open_ms));
         }
         self.dirty = true;
     }
 
-    pub fn leave(&mut self) {
+    pub fn leave(&mut self, ui: &crate::settings::Ui) {
         self.hovered = false;
         self.suppress = false;
         self.open_at = None;
         self.press = None;
         self.sliding = false;
         if self.open {
-            self.close_at = Some(Instant::now() + HOVER_CLOSE);
+            self.close_at = Some(Instant::now() + Duration::from_millis(ui.hover_close_ms));
         }
         self.hover = None;
         self.dirty = true;

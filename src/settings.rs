@@ -1,6 +1,7 @@
 //! ~/.config/island/config.toml is hand-edited and optional. ~/.local/state/island/state
 //! is written by the island: where each pill sits, and pin and tuck.
 use serde::Deserialize;
+use smithay_client_toolkit::seat::keyboard::Keysym;
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
 pub fn home() -> PathBuf {
@@ -104,6 +105,111 @@ impl Default for NotifyTimes {
     }
 }
 
+/// What a palette key does.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum KeyAct { Up, Down, PageUp, PageDown, Accept, Close, NextTool, PrevTool, Clear, DeleteWord }
+
+/// Palette keys, as lists of chords like `"ctrl+n"` or `"shift+tab"`. A list you set
+/// replaces the default; an empty list turns the action off.
+#[derive(Deserialize, Debug, Clone)]
+#[serde(default)]
+pub struct Keys {
+    pub up: Vec<String>,
+    pub down: Vec<String>,
+    pub page_up: Vec<String>,
+    pub page_down: Vec<String>,
+    pub accept: Vec<String>,
+    pub close: Vec<String>,
+    pub next_tool: Vec<String>,
+    pub prev_tool: Vec<String>,
+    pub clear: Vec<String>,
+    pub delete_word: Vec<String>,
+}
+
+impl Default for Keys {
+    fn default() -> Self {
+        let l = |l: &[&str]| l.iter().map(|s| s.to_string()).collect();
+        Keys { up: l(&["up", "ctrl+p", "ctrl+k"]), down: l(&["down", "ctrl+n", "ctrl+j"]),
+               page_up: l(&["pageup"]), page_down: l(&["pagedown"]), accept: l(&["enter", "kp_enter"]),
+               close: l(&["escape"]), next_tool: l(&["tab"]), prev_tool: l(&["shift+tab"]),
+               clear: l(&["ctrl+u"]), delete_word: l(&["ctrl+w", "ctrl+backspace"]) }
+    }
+}
+
+/// A chord's key: a named key or one character. Err means the chord is unusable.
+fn chord_key(name: &str) -> Option<Keysym> {
+    Some(match name {
+        "enter" | "return" => Keysym::Return,
+        "kp_enter" => Keysym::KP_Enter,
+        "escape" | "esc" => Keysym::Escape,
+        "tab" => Keysym::Tab,
+        "backspace" => Keysym::BackSpace,
+        "space" => Keysym::space,
+        "up" => Keysym::Up,
+        "down" => Keysym::Down,
+        "pageup" => Keysym::Page_Up,
+        "pagedown" => Keysym::Page_Down,
+        _ => {
+            let mut c = name.chars();
+            let (Some(ch), None) = (c.next(), c.next()) else { return None };
+            Keysym::from_char(ch)
+        }
+    })
+}
+
+/// (ctrl, alt, shift, key) of a chord string.
+fn parse_chord(chord: &str) -> Option<(bool, bool, bool, Keysym)> {
+    let lower = chord.to_lowercase();
+    let mut parts = lower.split('+').map(str::trim).collect::<Vec<_>>();
+    let key = chord_key(parts.pop()?)?;
+    let has = |m: &str| parts.contains(&m);
+    parts.iter().all(|p| ["ctrl", "alt", "shift"].contains(p)).then(|| (has("ctrl"), has("alt"), has("shift"), key))
+}
+
+impl Keys {
+    fn table(&self) -> [(KeyAct, &Vec<String>); 10] {
+        use KeyAct::*;
+        [(Up, &self.up), (Down, &self.down), (PageUp, &self.page_up), (PageDown, &self.page_down),
+         (Accept, &self.accept), (Close, &self.close), (NextTool, &self.next_tool), (PrevTool, &self.prev_tool),
+         (Clear, &self.clear), (DeleteWord, &self.delete_word)]
+    }
+
+    /// The action bound to this key press, if any. Modifiers must match exactly, and a
+    /// letter matches either case. Shift+Tab arrives as its own key, so fold it back.
+    pub fn action(&self, sym: Keysym, ctrl: bool, alt: bool, shift: bool) -> Option<KeyAct> {
+        let (sym, shift) = if sym == Keysym::ISO_Left_Tab { (Keysym::Tab, true) } else { (sym, shift) };
+        let fold = |k: Keysym| k.key_char().map_or(k, |c| Keysym::from_char(c.to_ascii_lowercase()));
+        self.table().into_iter().find_map(|(act, chords)| {
+            chords.iter().filter_map(|c| parse_chord(c)).any(|c| c == (ctrl, alt, shift, fold(sym)) ).then_some(act)
+        })
+    }
+
+    /// Say which chords are unusable, once, when the config loads.
+    fn warn(&self) {
+        for (_, chords) in self.table() {
+            for c in chords.iter().filter(|c| parse_chord(c).is_none()) {
+                eprintln!("island: [keys] can't read {c:?}; try \"ctrl+n\", \"shift+tab\", \"escape\"");
+            }
+        }
+    }
+}
+
+/// Look and feel switches.
+#[derive(Deserialize, Debug, Clone)]
+#[serde(default)]
+pub struct Ui {
+    /// Hovering the pill opens the panel. Off leaves it to a click or the pin key.
+    pub hover_open: bool,
+    pub hover_open_ms: u64,
+    pub hover_close_ms: u64,
+}
+
+impl Default for Ui {
+    fn default() -> Self {
+        Ui { hover_open: true, hover_open_ms: 130, hover_close_ms: 280 }
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Config {
@@ -128,6 +234,8 @@ pub struct Config {
     pub wallpaper: Wallpaper,
     pub terminal: String,
     pub screenshot_dir: String,
+    pub keys: Keys,
+    pub ui: Ui,
 }
 
 impl Default for Config {
@@ -153,6 +261,8 @@ impl Default for Config {
             wallpaper: Wallpaper::default(),
             terminal: "kitty".into(),
             screenshot_dir: "~/Pictures".into(),
+            keys: Keys::default(),
+            ui: Ui::default(),
         }
     }
 }
@@ -169,10 +279,16 @@ impl Config {
     /// A broken config must not take the bar down with it: complain, use defaults.
     pub fn load() -> Self {
         let Ok(src) = fs::read_to_string(Self::path()) else { return Config::default() };
-        Self::parse(&src).unwrap_or_else(|e| {
-            eprintln!("island: ignoring {}: {e}", Self::path().display());
-            Config::default()
-        })
+        match Self::parse(&src) {
+            Ok(c) => {
+                c.keys.warn();
+                c
+            }
+            Err(e) => {
+                eprintln!("island: ignoring {}: {e}", Self::path().display());
+                Config::default()
+            }
+        }
     }
 }
 
@@ -251,6 +367,22 @@ mod tests {
         assert_eq!(c.panel.len(), Config::default().panel.len());
         assert_eq!(c.custom[0].interval, 0);
         assert!(Config::parse("icon_style = \"sparkly\"").is_err());
+    }
+
+    #[test]
+    fn keys_rebind_disable_and_fold() {
+        let k = |s| Config::parse(s).unwrap().keys;
+        let d = Config::default().keys;
+        assert_eq!(d.action(Keysym::n, true, false, false), Some(KeyAct::Down));
+        assert_eq!(d.action(Keysym::N, true, false, false), Some(KeyAct::Down), "case folds");
+        assert_eq!(d.action(Keysym::ISO_Left_Tab, false, false, true), Some(KeyAct::PrevTool));
+        assert_eq!(d.action(Keysym::Escape, false, false, false), Some(KeyAct::Close));
+        let c = k("[keys]\ndown = [\"alt+s\"]\nup = []\nclose = [\"nonsense+\"]");
+        assert_eq!(c.action(Keysym::s, false, true, false), Some(KeyAct::Down));
+        assert_eq!(c.action(Keysym::n, true, false, false), None, "list replaces the default");
+        assert_eq!(c.action(Keysym::Up, false, false, false), None, "empty turns it off");
+        assert_eq!(c.action(Keysym::Escape, false, false, false), None, "bad chord is ignored");
+        assert!(!Config::parse("[ui]\nhover_open = false").unwrap().ui.hover_open);
     }
 
     #[test]

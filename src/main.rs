@@ -294,7 +294,7 @@ impl App {
     fn key(&mut self, e: KeyEvent) {
         let mods = self.mods;
         let Some(p) = &mut self.model.palette else { return };
-        let outcome = p.key(e.keysym, e.utf8.as_deref(), mods);
+        let outcome = p.key(e.keysym, e.utf8.as_deref(), mods, &self.cfg.keys);
         self.palette_outcome(outcome);
     }
 
@@ -812,11 +812,11 @@ impl PointerHandler for App {
                     self.enter_serial = serial;
                     self.cursor = None;
                     self.under_pointer = Some(e.surface.clone());
-                    self.islands[idx].enter(e.position);
+                    self.islands[idx].enter(e.position, &self.cfg.ui);
                 }
                 PointerEventKind::Leave { .. } => {
                     self.under_pointer = None;
-                    self.islands[idx].leave();
+                    self.islands[idx].leave(&self.cfg.ui);
                 }
                 PointerEventKind::Motion { .. } => {
                     if let Outcome::Act(a, f) = self.islands[idx].motion(e.position) {

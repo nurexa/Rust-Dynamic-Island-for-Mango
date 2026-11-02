@@ -2,6 +2,7 @@
 //! by `island dmenu`. This is the logic only; `modules/palette.rs` draws it.
 use crate::tools::{Act, Entry, Item, Then};
 use smithay_client_toolkit::seat::keyboard::{Keysym, Modifiers};
+use crate::settings::{KeyAct, Keys};
 use std::sync::mpsc;
 
 pub const VISIBLE_ROWS: usize = 8;
@@ -225,45 +226,43 @@ impl Palette {
         self.switch((self.current as isize + by).rem_euclid(n) as usize)
     }
 
-    pub fn key(&mut self, sym: Keysym, text: Option<&str>, mods: Modifiers) -> Outcome {
+    pub fn key(&mut self, sym: Keysym, text: Option<&str>, mods: Modifiers, keys: &Keys) -> Outcome {
         let edited = |p: &mut Self| {
             p.refilter();
             Outcome::Redraw
         };
-        match sym {
-            Keysym::Escape if !self.back.is_empty() => return self.pop(),
-            Keysym::Escape => return Outcome::Close,
-            Keysym::Return | Keysym::KP_Enter => return self.choose(),
-            Keysym::Up => self.move_selection(-1),
-            Keysym::Down => self.move_selection(1),
-            Keysym::Page_Up => self.move_selection(-(VISIBLE_ROWS as isize)),
-            Keysym::Page_Down => self.move_selection(VISIBLE_ROWS as isize),
-            Keysym::Tab => return self.step_tool(if mods.shift { -1 } else { 1 }),
-            Keysym::ISO_Left_Tab => return self.step_tool(-1),
-            Keysym::BackSpace => {
+        let word = |p: &mut Self| {
+            let keep = p.query.trim_end().rfind(char::is_whitespace).map_or(0, |i| i + 1);
+            p.query.truncate(keep);
+        };
+        match keys.action(sym, mods.ctrl, mods.alt, mods.shift) {
+            Some(KeyAct::Close) if !self.back.is_empty() => return self.pop(),
+            Some(KeyAct::Close) => return Outcome::Close,
+            Some(KeyAct::Accept) => return self.choose(),
+            Some(KeyAct::Up) => self.move_selection(-1),
+            Some(KeyAct::Down) => self.move_selection(1),
+            Some(KeyAct::PageUp) => self.move_selection(-(VISIBLE_ROWS as isize)),
+            Some(KeyAct::PageDown) => self.move_selection(VISIBLE_ROWS as isize),
+            Some(KeyAct::NextTool) => return self.step_tool(1),
+            Some(KeyAct::PrevTool) => return self.step_tool(-1),
+            Some(KeyAct::Clear) => {
+                self.query.clear();
+                return edited(self);
+            }
+            Some(KeyAct::DeleteWord) => {
+                word(self);
+                return edited(self);
+            }
+            None if sym == Keysym::BackSpace => {
                 if mods.ctrl {
-                    let keep = self.query.trim_end().rfind(char::is_whitespace).map_or(0, |i| i + 1);
-                    self.query.truncate(keep);
+                    word(self);
                 } else {
                     self.query.pop();
                 }
                 return edited(self);
             }
-            _ if mods.ctrl => match sym {
-                Keysym::n | Keysym::j => self.move_selection(1),
-                Keysym::p | Keysym::k => self.move_selection(-1),
-                Keysym::u => {
-                    self.query.clear();
-                    return edited(self);
-                }
-                Keysym::w => {
-                    let keep = self.query.trim_end().rfind(char::is_whitespace).map_or(0, |i| i + 1);
-                    self.query.truncate(keep);
-                    return edited(self);
-                }
-                _ => return Outcome::Nothing,
-            },
-            _ => {
+            None if mods.ctrl => return Outcome::Nothing,
+            None => {
                 let Some(t) = text.filter(|t| !t.chars().any(char::is_control)) else { return Outcome::Nothing };
                 self.query.push_str(t);
                 return edited(self);
@@ -302,11 +301,11 @@ mod tests {
     fn typing_filters_and_the_best_match_is_selected() {
         let mut p = palette(&["Discord", "Firefox", "Files"]);
         let m = Modifiers::default();
-        p.key(Keysym::f, Some("f"), m);
-        p.key(Keysym::i, Some("i"), m);
+        p.key(Keysym::f, Some("f"), m, &Keys::default());
+        p.key(Keysym::i, Some("i"), m, &Keys::default());
         let names: Vec<&str> = p.shown.iter().map(|&i| p.items[i].title.as_str()).collect();
         assert_eq!(names, ["Files", "Firefox"]);
-        assert!(matches!(p.key(Keysym::Return, None, m), Outcome::Run(Act::Sh(s)) if s == "Files"));
+        assert!(matches!(p.key(Keysym::Return, None, m, &Keys::default()), Outcome::Run(Act::Sh(s)) if s == "Files"));
     }
 
     #[test]
@@ -328,7 +327,7 @@ mod tests {
         p.move_selection(-1);
         p.move_selection(1);
         assert!(matches!(p.choose(), Outcome::Redraw), "moving away reset it");
-        assert!(matches!(p.key(Keysym::Return, None, m), Outcome::Run(Act::Quit)));
+        assert!(matches!(p.key(Keysym::Return, None, m, &Keys::default()), Outcome::Run(Act::Quit)));
     }
 
     #[test]
@@ -368,8 +367,8 @@ mod tests {
     fn password_prompts_answer_with_what_was_typed() {
         let (tx, rx) = mpsc::channel();
         let mut p = Palette::dmenu("pw".into(), true, Vec::new(), Dmenu { reply: tx, index: false });
-        p.key(Keysym::a, Some("a"), Modifiers::default());
-        p.key(Keysym::Return, None, Modifiers::default());
+        p.key(Keysym::a, Some("a"), Modifiers::default(), &Keys::default());
+        p.key(Keysym::Return, None, Modifiers::default(), &Keys::default());
         assert_eq!(rx.recv().unwrap(), "a");
     }
 
@@ -381,10 +380,10 @@ mod tests {
         p.refilter();
         assert!(matches!(p.choose(), Outcome::Redraw));
         assert_eq!(p.items.len(), 2);
-        assert!(matches!(p.key(Keysym::Escape, None, Modifiers::default()), Outcome::Redraw));
+        assert!(matches!(p.key(Keysym::Escape, None, Modifiers::default(), &Keys::default()), Outcome::Redraw));
         assert_eq!(p.items[0].title, "Settings");
         // At the top Escape closes, as before.
-        assert!(matches!(p.key(Keysym::Escape, None, Modifiers::default()), Outcome::Close));
+        assert!(matches!(p.key(Keysym::Escape, None, Modifiers::default(), &Keys::default()), Outcome::Close));
         p.choose();
         p.selected = 0;
         assert!(matches!(p.choose(), Outcome::Redraw) && p.items[0].title == "Settings");

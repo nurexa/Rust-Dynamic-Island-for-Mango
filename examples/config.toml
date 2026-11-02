@@ -15,6 +15,27 @@ panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "st
 tools = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power"]
 notifications = true              # false keeps your own notification daemon
 
+[ui]
+hover_open = true                 # false: the panel opens only on click or the pin key
+hover_open_ms = 130               # delay before hover opens it
+hover_close_ms = 280              # delay before leaving closes it
+
+# Palette keys. A list replaces the default, [] turns the action off.
+# Chords: ctrl+ alt+ shift+ then a letter or enter, escape, tab, space, backspace,
+# up, down, pageup, pagedown. Modifiers must match exactly. Typing and plain
+# Backspace are fixed.
+[keys]
+up = ["up", "ctrl+p", "ctrl+k"]
+down = ["down", "ctrl+n", "ctrl+j"]
+page_up = ["pageup"]
+page_down = ["pagedown"]
+accept = ["enter", "kp_enter"]
+close = ["escape"]                # steps back out of a sub-list first
+next_tool = ["tab"]
+prev_tool = ["shift+tab"]
+clear = ["ctrl+u"]
+delete_word = ["ctrl+w", "ctrl+backspace"]
+
 [notify]                          # seconds on screen; critical stays until dismissed
 low = 3
 normal = 5
