@@ -8,6 +8,7 @@ export ISLAND_BIN=$(readlink -f $H/../../target/release/island)
 $H/fresh.sh 1 >/dev/null; $H/clicks.sh; $H/movement.sh; $H/fullscreen.sh; $H/hotplug.sh
 $H/fresh.sh 2 >/dev/null; $H/monitors.sh
 $H/fresh.sh 1 >/dev/null; $H/full.sh; $H/controls.sh; $H/theme.sh
+$H/fresh.sh 1 >/dev/null; $H/full.sh; $H/tools.sh; $H/notifications.sh; $H/palette-soak.sh
 $H/fresh.sh 1 >/dev/null; $H/takeover.sh
 $H/fresh.sh 1 >/dev/null; $H/modules.sh; $H/bare.sh
 $H/fresh.sh 1 >/dev/null; $H/full.sh; $H/isl stop; $H/cutover.sh

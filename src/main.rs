@@ -5,14 +5,19 @@ mod icons;
 mod island;
 mod modules;
 mod net;
+mod notify;
+mod palette;
 mod pen;
 mod settings;
 mod sys;
 mod theme;
+mod tools;
 mod wm;
 
 use cairo::ImageSurface;
 use island::{Island, Outcome};
+use notify::Note;
+use palette::Palette;
 use pen::{Action, Scroll, View};
 use settings::{Config, State};
 use smithay_client_toolkit::{
@@ -20,10 +25,10 @@ use smithay_client_toolkit::{
     delegate_dispatch2, delegate_registry,
     output::{OutputHandler, OutputState},
     reexports::{
-        calloop::{EventLoop, channel},
+        calloop::{EventLoop, LoopHandle, channel},
         calloop_wayland_source::WaylandSource,
         client::{Connection, QueueHandle, globals::registry_queue_init,
-                 protocol::{wl_output, wl_pointer, wl_seat, wl_surface}},
+                 protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface}},
         protocols::wp::{
             cursor_shape::v1::client::wp_cursor_shape_device_v1::{Shape, WpCursorShapeDeviceV1},
             relative_pointer::zv1::client::zwp_relative_pointer_v1::ZwpRelativePointerV1,
@@ -33,6 +38,7 @@ use smithay_client_toolkit::{
     registry_handlers,
     seat::{
         Capability, SeatHandler, SeatState,
+        keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers},
         pointer::{PointerEvent, PointerEventKind, PointerHandler, cursor_shape::CursorShapeManager},
         relative_pointer::{RelativeMotionEvent, RelativePointerHandler, RelativePointerState},
     },
@@ -58,6 +64,8 @@ pub type Tx = channel::Sender<Msg>;
 
 const STATS_EVERY: Duration = Duration::from_millis(1500);
 const NAMESPACE: &str = "island";
+/// Bounds a `dmenu` request, which is anything a local script cares to pipe in.
+const MAX_REQUEST: u64 = 8 << 20;
 
 pub enum Msg {
     Monitors(Vec<wm::Monitor>),
@@ -71,6 +79,10 @@ pub enum Msg {
     Menu(usize, Vec<bus::MenuEntry>),
     Theme,
     Command(String),
+    Items(u64, Vec<tools::Item>),
+    Notify(Note),
+    NoteClosed(u32),
+    Dmenu(palette::Dmenu, String, bool, Vec<tools::Item>),
     Quit,
 }
 
@@ -87,6 +99,8 @@ pub struct Model {
     pub net: net::State,
     pub tray: Vec<(bus::TrayItem, Option<(ImageSurface, bool)>)>,
     pub pal: theme::Palette,
+    pub palette: Option<Palette>,
+    pub notes: notify::Center,
 }
 
 pub struct App {
@@ -104,6 +118,12 @@ pub struct App {
     enter_serial: u32,
     cursor: Option<Shape>,
     qh: QueueHandle<App>,
+    loop_handle: LoopHandle<'static, App>,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    mods: Modifiers,
+    /// Output the palette is open on.
+    palette_on: Option<String>,
+    generation: u64,
 
     islands: Vec<Island>,
     under_pointer: Option<wl_surface::WlSurface>,
@@ -179,6 +199,140 @@ impl App {
         }
     }
 
+    fn focused_island(&self) -> Option<usize> {
+        let active = self.model.monitors.iter().find(|m| m.active)?;
+        self.islands.iter().position(|i| i.name == active.name).or((!self.islands.is_empty()).then_some(0))
+    }
+
+    fn tool_ctx(&self) -> tools::Ctx {
+        tools::Ctx { cfg: self.cfg.clone(), clients: self.model.clients.clone() }
+    }
+
+    fn open_palette(&mut self, tool: Option<&str>) {
+        let entries = tools::enabled(&self.cfg);
+        let wanted = tool.and_then(|t| entries.iter().position(|e| e.name() == t));
+        if let Some(open) = &mut self.model.palette {
+            // The same key again closes it; another tool's key switches to it.
+            let same = wanted.is_none_or(|w| w == open.current) && open.dmenu.is_none();
+            if same {
+                return self.close_palette();
+            }
+            let outcome = wanted.map_or(palette::Outcome::Nothing, |w| open.switch(w));
+            return self.palette_outcome(outcome);
+        }
+        if entries.is_empty() || tool.is_some() && wanted.is_none() {
+            return;
+        }
+        let Some(island) = self.focused_island() else { return };
+        self.generation += 1;
+        let palette = Palette::new(entries, wanted.unwrap_or(0), self.generation);
+        tools::load(&palette.entries[palette.current], self.generation, self.tool_ctx(), self.tx.clone());
+        self.model.palette = Some(palette);
+        self.palette_on = Some(self.islands[island].name.clone());
+        self.islands[island].open_palette();
+    }
+
+    fn close_palette(&mut self) {
+        if let Some(p) = self.model.palette.take() {
+            self.generation = self.generation.max(p.generation) + 1;
+        }
+        if let Some(name) = self.palette_on.take() {
+            self.islands.iter_mut().filter(|i| i.name == name).for_each(Island::close_palette);
+        }
+        self.icons.forget_files();
+        // A long list and its icons leave a lot of freed heap behind.
+        let _ = self.stats.send(sys::Cmd::Release);
+    }
+
+    fn palette_redraw(&mut self) {
+        let Some(name) = &self.palette_on else { return };
+        self.islands.iter_mut().filter(|i| i.name == *name).for_each(|i| i.invalidate(false, true));
+    }
+
+    fn palette_outcome(&mut self, outcome: palette::Outcome) {
+        use palette::Outcome as O;
+        match outcome {
+            O::Nothing => {}
+            O::Redraw => self.palette_redraw(),
+            O::Close => self.close_palette(),
+            O::Run(act) => {
+                self.close_palette();
+                self.run(act);
+            }
+            O::Answer(then, text) => {
+                self.close_palette();
+                tools::run_then(then, text, self.tx.clone());
+            }
+            O::Reload => {
+                if let Some(p) = &self.model.palette {
+                    tools::load(&p.entries[p.current], p.generation, self.tool_ctx(), self.tx.clone());
+                }
+                self.palette_redraw();
+            }
+        }
+    }
+
+    fn run(&mut self, act: tools::Act) {
+        use tools::Act as A;
+        match act {
+            A::Sh(cmd) => tools::spawn_detached(&cmd),
+            A::Launch { id, cmd } => {
+                #[cfg(feature = "apps")]
+                tools::apps::record(id);
+                #[cfg(not(feature = "apps"))]
+                let _ = id;
+                tools::spawn_detached(&cmd);
+            }
+            A::Focus(window) => self.wm.focus(window),
+            A::Quit => self.wm.quit(),
+            A::Task(task) => tools::run_task(task, self.tool_ctx(), self.tx.clone()),
+            A::Confirm(..) | A::Ask { .. } | A::Reply(_) => {}
+        }
+    }
+
+    fn key(&mut self, e: KeyEvent) {
+        let mods = self.mods;
+        let Some(p) = &mut self.model.palette else { return };
+        let outcome = p.key(e.keysym, e.utf8.as_deref(), mods);
+        self.palette_outcome(outcome);
+    }
+
+    fn end_toasts(&mut self) {
+        self.islands.iter_mut().for_each(Island::end_toast);
+    }
+
+    fn note_gone(&mut self, id: u32, reason: u32) {
+        if let Some(bus) = self.bus.as_ref().filter(|_| id < 0xfff0_0000) {
+            bus.note_closed(id, reason);
+        }
+    }
+
+    /// Move toasts along: expire the one showing, then show the next if there's room.
+    fn pump_notes(&mut self, now: Instant) {
+        if self.model.notes.until.is_some_and(|t| t <= now) {
+            if self.islands.iter().any(Island::hovered) {
+                self.model.notes.until = Some(now + Duration::from_secs(1));
+            } else if let Some(note) = self.model.notes.finish() {
+                self.note_gone(note.id, 1);
+                self.end_toasts();
+            }
+        }
+        if self.model.notes.showing.is_some() || self.model.notes.queue.is_empty() || self.model.palette.is_some() {
+            return;
+        }
+        let Some(i) = self.focused_island() else { return };
+        // The history in an open panel is already showing them.
+        if self.islands[i].wants_panel() {
+            return self.model.notes.queue.clear();
+        }
+        let times = &self.cfg.notify;
+        let (low, normal) = (Duration::from_secs(times.low), Duration::from_secs(times.normal));
+        if let Some(note) = self.model.notes.next(low, normal, now) {
+            let critical = note.urgency == 2;
+            self.islands[i].show_toast(critical);
+        }
+    }
+
     fn all(&mut self, compact: bool, panel: bool) {
         for i in &mut self.islands {
             i.invalidate(compact, panel);
@@ -227,6 +381,35 @@ impl App {
                 } else {
                     self.islands.iter_mut().for_each(Island::titles_changed);
                 }
+            }
+            Msg::Items(generation, items) => {
+                if let Some(p) = &mut self.model.palette {
+                    p.set_items(generation, items);
+                    self.palette_redraw();
+                }
+            }
+            Msg::Notify(note) => {
+                if self.cfg.notifications {
+                    self.model.notes.add(note);
+                    self.all(false, true);
+                } else {
+                    // Someone else is the daemon, so our own messages go through it.
+                    tools::spawn_note(&note);
+                }
+            }
+            Msg::NoteClosed(id) => {
+                if self.model.notes.remove(id) {
+                    self.end_toasts();
+                }
+                self.note_gone(id, 3);
+                self.all(false, true);
+            }
+            Msg::Dmenu(dmenu, prompt, password, items) => {
+                self.close_palette();
+                let Some(island) = self.focused_island() else { return };
+                self.model.palette = Some(Palette::dmenu(prompt, password, items, dmenu));
+                self.palette_on = Some(self.islands[island].name.clone());
+                self.islands[island].open_palette();
             }
             Msg::Custom(name, text) => {
                 self.model.custom.insert(name, text);
@@ -292,6 +475,9 @@ impl App {
             "pin" | "toggle" => self.act(Action::Pin, 0.0, None),
             "tuck" => self.act(Action::Tuck, 0.0, None),
             "reset" => self.act(Action::Reset, 0.0, None),
+            "dnd" => self.act(Action::Dnd, 0.0, None),
+            "open" => self.open_palette(None),
+            "close" => self.close_palette(),
             "reload" => {
                 self.cfg = Config::load();
                 self.model.pal = theme::load(&self.cfg.palette);
@@ -299,7 +485,15 @@ impl App {
             }
             "quit" => self.quit = true,
             "" => {} // a second instance checking whether we're alive
-            _ => eprintln!("island: unknown command {c}"),
+            _ => match c.split_once(' ') {
+                Some(("open", tool)) => self.open_palette(Some(tool)),
+                Some(("shot", kind)) => {
+                    if let Some(task) = tools::shot_task(kind) {
+                        self.run(tools::Act::Task(task));
+                    }
+                }
+                _ => eprintln!("island: unknown command {c}"),
+            },
         }
     }
 
@@ -379,6 +573,41 @@ impl App {
                     self.islands[f].invalidate(false, true);
                 }
             }
+            Action::Open(tool) => self.open_palette(Some(tool)),
+            Action::PaletteRow(row) => {
+                let Some(p) = &mut self.model.palette else { return };
+                p.selected = row;
+                let outcome = p.choose();
+                self.palette_outcome(outcome);
+            }
+            Action::PaletteTool(i) => {
+                let Some(p) = &mut self.model.palette else { return };
+                let outcome = p.switch(i);
+                self.palette_outcome(outcome);
+            }
+            Action::NoteAction(id, key) => {
+                if let Some(bus) = self.bus.as_ref().filter(|_| id < 0xfff0_0000) {
+                    bus.note_action(id, key);
+                }
+                self.act(Action::NoteDismiss(id), 0.0, None);
+            }
+            Action::NoteDismiss(id) => {
+                if self.model.notes.remove(id) {
+                    self.end_toasts();
+                }
+                self.note_gone(id, 2);
+                self.all(false, true);
+            }
+            Action::NoteClear => {
+                self.model.notes.history.clear();
+                self.all(false, true);
+            }
+            Action::Dnd => {
+                self.model.notes.dnd = !self.model.notes.dnd;
+                self.state.dnd = self.model.notes.dnd;
+                self.save();
+                self.all(false, true);
+            }
             Action::MenuBack => {
                 if let Some(f) = from {
                     let isl = &mut self.islands[f];
@@ -396,7 +625,7 @@ impl App {
 
     fn next_deadline(&self) -> Instant {
         let islands = self.islands.iter().filter_map(Island::next_deadline);
-        islands.chain(self.next_stats).chain([self.next_clock]).min().unwrap_or(self.next_clock)
+        islands.chain(self.next_stats).chain(self.model.notes.until).chain([self.next_clock]).min().unwrap_or(self.next_clock)
     }
 
     fn tick(&mut self) {
@@ -411,7 +640,8 @@ impl App {
             self.next_clock = next_minute();
             self.all(true, true);
         }
-        let visible = self.islands.iter().any(Island::panel_visible);
+        self.pump_notes(now);
+        let visible = self.islands.iter().any(Island::wants_stats);
         match (visible, self.next_stats) {
             (false, None) => {}
             (false, Some(_)) => {
@@ -522,6 +752,11 @@ impl SeatHandler for App {
     }
     fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
     fn new_capability(&mut self, _: &Connection, qh: &QueueHandle<Self>, seat: wl_seat::WlSeat, cap: Capability) {
+        if cap == Capability::Keyboard && self.keyboard.is_none() {
+            let handle = self.loop_handle.clone();
+            let repeat = Box::new(|app: &mut App, _: &wl_keyboard::WlKeyboard, e: KeyEvent| app.key(e));
+            self.keyboard = self.seat.get_keyboard_with_repeat(qh, &seat, None, handle, repeat).ok();
+        }
         if cap == Capability::Pointer && self.pointer.is_none() {
             if let Ok(pointer) = self.seat.get_pointer(qh, &seat) {
                 self.relative_pointer = self.relative.get_relative_pointer(&pointer, qh).ok();
@@ -531,6 +766,9 @@ impl SeatHandler for App {
         }
     }
     fn remove_capability(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat, cap: Capability) {
+        if cap == Capability::Keyboard {
+            self.keyboard = None;
+        }
         if cap == Capability::Pointer {
             self.pointer = None;
             self.relative_pointer = None;
@@ -538,6 +776,23 @@ impl SeatHandler for App {
         }
     }
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
+}
+
+impl KeyboardHandler for App {
+    fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface,
+             _: u32, _: &[u32], _: &[Keysym]) {}
+    fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32) {}
+    fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, e: KeyEvent) {
+        self.key(e);
+    }
+    fn repeat_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, e: KeyEvent) {
+        self.key(e);
+    }
+    fn release_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: KeyEvent) {}
+    fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32,
+                        mods: Modifiers, _: RawModifiers, _: u32) {
+        self.mods = mods;
+    }
 }
 
 impl PointerHandler for App {
@@ -581,6 +836,12 @@ impl PointerHandler for App {
                                 spawn_sh(&format!("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ {}%{sign}", 5.0 * notches.abs()));
                             }
                             Scroll::Tags => self.wm.cycle(notches > 0.0),
+                            Scroll::Palette => {
+                                if let Some(p) = &mut self.model.palette {
+                                    p.scroll(notches as isize);
+                                    self.palette_redraw();
+                                }
+                            }
                         }
                     }
                 }
@@ -622,6 +883,55 @@ fn socket_path() -> PathBuf {
         "island-{}.sock", env::var("WAYLAND_DISPLAY").unwrap_or_default()))
 }
 
+/// `island dmenu`: pick a line from stdin, the way `rofi -dmenu` does, so scripts
+/// written for rofi work by swapping the command. Exits 1 when cancelled.
+fn run_dmenu(args: &[String]) -> ! {
+    let (mut prompt, mut password, mut index) = (String::from("Search"), false, false);
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.trim_start_matches('-') {
+            "p" => prompt = it.next().cloned().unwrap_or_default(),
+            "password" => password = true,
+            "format" => index = it.next().is_some_and(|f| f == "i"),
+            "l" | "theme" | "mesg" | "theme-str" => drop(it.next()),
+            _ => {}
+        }
+    }
+    let mut input = String::new();
+    if !password {
+        let _ = std::io::stdin().read_to_string(&mut input);
+    }
+    let talk = || -> std::io::Result<String> {
+        let mut s = UnixStream::connect(socket_path())?;
+        writeln!(s, "dmenu\t{}\t{}\t{}", password as u8, index as u8, prompt.replace(['\t', '\n'], " "))?;
+        s.write_all(input.as_bytes())?;
+        s.shutdown(std::net::Shutdown::Write)?;
+        let mut reply = String::new();
+        s.read_to_string(&mut reply)?;
+        Ok(reply)
+    };
+    match talk() {
+        Ok(r) if !r.is_empty() => {
+            println!("{r}");
+            std::process::exit(0)
+        }
+        Ok(_) => std::process::exit(1),
+        Err(e) => {
+            eprintln!("island: not running? {e}");
+            std::process::exit(1)
+        }
+    }
+}
+
+/// One line of a `dmenu` list. Rofi's `text\0icon\x1fvalue` form sets an icon.
+fn dmenu_item(line: &str) -> tools::Item {
+    let (text, meta) = line.split_once('\0').unwrap_or((line, ""));
+    let icon = meta.strip_prefix("icon\u{1f}").map_or(tools::Icon::None, |v| {
+        if v.starts_with('/') { tools::Icon::Image(v.into()) } else { tools::Icon::Named(v.into()) }
+    });
+    tools::Item::new(text, icon, tools::Act::Reply(text.to_owned()))
+}
+
 fn run_client(cmd: &str) -> ! {
     let sent = UnixStream::connect(socket_path()).and_then(|mut s| writeln!(s, "{cmd}"));
     if let Err(e) = sent {
@@ -642,11 +952,32 @@ fn control_socket(tx: Tx) -> Result<(), String> {
     let listener = UnixListener::bind(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     thread::spawn(move || {
         for stream in listener.incoming().flatten() {
-            let mut line = String::new();
-            let mut reader = BufReader::new(stream.take(64));
-            if reader.read_line(&mut line).is_ok() {
-                let _ = tx.send(Msg::Command(line.trim().to_owned()));
-            }
+            let tx = tx.clone();
+            // A dmenu client waits for its answer, so each gets a thread of its own.
+            thread::spawn(move || {
+                let Ok(mut out) = stream.try_clone() else { return };
+                let mut reader = BufReader::new(stream.take(MAX_REQUEST));
+                let mut line = String::new();
+                if reader.read_line(&mut line).is_err() {
+                    return;
+                }
+                let line = line.trim_end_matches('\n');
+                let Some(header) = line.strip_prefix("dmenu\t") else {
+                    let _ = tx.send(Msg::Command(line.trim().to_owned()));
+                    return;
+                };
+                let mut fields = header.splitn(3, '\t');
+                let (password, index) = (fields.next() == Some("1"), fields.next() == Some("1"));
+                let prompt = fields.next().unwrap_or("").to_owned();
+                let mut body = String::new();
+                let _ = reader.read_to_string(&mut body);
+                let items = body.lines().map(dmenu_item).collect();
+                let (reply, answer) = mpsc::channel();
+                let _ = tx.send(Msg::Dmenu(palette::Dmenu { reply, index }, prompt, password, items));
+                if let Ok(text) = answer.recv() {
+                    let _ = out.write_all(text.as_bytes());
+                }
+            });
         }
     });
     Ok(())
@@ -675,10 +1006,13 @@ fn main() {
         if cmd == "--gpu-sampler" {
             return sys::gpu_sampler();
         }
-        if matches!(cmd.as_str(), "pin" | "toggle" | "tuck" | "reset" | "reload" | "quit") {
-            run_client(&cmd);
+        let args: Vec<String> = env::args().skip(1).collect();
+        match cmd.as_str() {
+            "dmenu" => run_dmenu(&args[1..]),
+            "pin" | "toggle" | "tuck" | "reset" | "reload" | "quit" | "dnd" | "open" | "close" | "shot" => run_client(&args.join(" ")),
+            _ => {}
         }
-        eprintln!("usage: island [pin|tuck|reset|reload|quit]");
+        eprintln!("usage: island [pin|tuck|reset|reload|quit|dnd|close|open [tool]|shot <kind>|dmenu [-p prompt]]");
         std::process::exit(2);
     }
 
@@ -695,6 +1029,7 @@ fn main() {
 
     let mut event_loop: EventLoop<App> = EventLoop::try_new().expect("event loop");
     WaylandSource::new(conn.clone(), queue).insert(event_loop.handle()).expect("wayland source");
+    let loop_handle = event_loop.handle();
     event_loop.handle().insert_source(rx, |e, _, app: &mut App| {
         if let channel::Event::Msg(m) = e {
             app.handle(m);
@@ -702,10 +1037,12 @@ fn main() {
     }).expect("message source");
 
     let cfg = Config::load();
+    let state = State::load();
     let net_poke = net::spawn(tx.clone());
     let wm = wm::detect();
     wm.watch(tx.clone());
     modules::custom::spawn(&cfg.custom, tx.clone());
+    let cfg_notifications = cfg.notifications;
     watch_theme(&cfg.palette, tx.clone());
     let mut app = App {
         registry: RegistryState::new(&globals),
@@ -718,17 +1055,23 @@ fn main() {
         cursor_shapes: CursorShapeManager::bind(&globals, &qh).ok(),
         pointer: None, relative_pointer: None, shape_device: None, enter_serial: 0, cursor: None,
         qh,
+        loop_handle,
+        keyboard: None,
+        mods: Modifiers::default(),
+        palette_on: None,
+        generation: 0,
         islands: Vec::new(),
         under_pointer: None,
         model: Model { monitors: Vec::new(), clients: Vec::new(), custom: HashMap::new(), sys: sys::Snapshot::default(),
                        audio: None, media: None, art_small: None, art_large: None, net: net::State::Unknown,
-                       tray: Vec::new(), pal: theme::load(&cfg.palette) },
+                       tray: Vec::new(), pal: theme::load(&cfg.palette), palette: None,
+                       notes: notify::Center::new(state.dnd) },
         icons: Icons::new(),
         tray_items: Vec::new(),
         cfg,
-        state: State::load(),
+        state,
         stats: sys::spawn(tx.clone()),
-        bus: bus::spawn(tx.clone()),
+        bus: bus::spawn(tx.clone(), cfg_notifications),
         wm,
         net_poke,
         tx: tx.clone(),

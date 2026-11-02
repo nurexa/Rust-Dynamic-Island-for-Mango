@@ -91,6 +91,10 @@ impl Backend for Mango {
     fn cycle(&self, forward: bool) {
         dispatch(if forward { "viewtoright_have_client" } else { "viewtoleft_have_client" });
     }
+
+    fn quit(&self) {
+        dispatch("quit");
+    }
 }
 
 #[cfg(test)]

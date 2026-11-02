@@ -2,6 +2,8 @@
 //! org.kde.StatusNotifierWatcher, so with Waybar gone this has to serve that name
 //! as well as host items, or apps would have nowhere to register.
 use crate::Msg;
+#[cfg(feature = "notifications")]
+use crate::notify::{self, Note, NoteImage};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -28,6 +30,10 @@ const WATCHER: &str = "org.kde.StatusNotifierWatcher";
 const WATCHER_PATH: &str = "/StatusNotifierWatcher";
 const ITEM: &str = "org.kde.StatusNotifierItem";
 const MENU: &str = "com.canonical.dbusmenu";
+#[cfg(feature = "notifications")]
+const NOTIFY: &str = "org.freedesktop.Notifications";
+#[cfg(feature = "notifications")]
+const NOTIFY_PATH: &str = "/org/freedesktop/Notifications";
 
 type Props = HashMap<String, OwnedValue>;
 
@@ -308,6 +314,14 @@ fn adopt_items(c: &Connection, owned: &Mutex<Vec<String>>) {
     }
 }
 
+/// Another daemon may still hold the name, as dunst does before the switch-over.
+#[cfg(feature = "notifications")]
+fn claim_notifications(c: &Connection) {
+    if c.request_name_with_flags(NOTIFY, RequestNameFlags::DoNotQueue.into()).is_err() {
+        eprintln!("island: another notification daemon is running; taking over when it stops");
+    }
+}
+
 fn claim_watcher(c: &Connection, owned: &Mutex<Vec<String>>) {
     let flags = RequestNameFlags::DoNotQueue.into();
     if c.request_name_with_flags(WATCHER, flags).is_ok() {
@@ -324,6 +338,8 @@ struct Tray {
     items: HashMap<String, TrayItem>,
     order: Vec<String>,
     owned: Arc<Mutex<Vec<String>>>,
+    #[cfg(feature = "notifications")]
+    notifications: bool,
 }
 
 impl Tray {
@@ -357,6 +373,10 @@ impl Tray {
     fn name_changed(&mut self, name: &str, new_owner: &str) {
         if name == WATCHER && new_owner.is_empty() {
             claim_watcher(&self.conn, &self.owned);
+        }
+        #[cfg(feature = "notifications")]
+        if name == NOTIFY && new_owner.is_empty() && self.notifications {
+            claim_notifications(&self.conn);
         }
         if name == WATCHER && !new_owner.is_empty() {
             return self.resync();
@@ -449,6 +469,75 @@ fn menu_entry(v: &Value<'_>) -> Option<MenuEntry> {
     })
 }
 
+#[cfg(feature = "notifications")]
+struct Notifier {
+    tx: crate::Tx,
+    next: std::sync::atomic::AtomicU32,
+}
+
+#[cfg(feature = "notifications")]
+fn note_image(icon: &str, hints: &Props) -> NoteImage {
+    let data = ["image-data", "image_data", "icon_data"].iter().find_map(|k| hints.get(*k));
+    if let Some(Value::Structure(s)) = data.map(|v| &**v) {
+        if let [Value::I32(w), Value::I32(h), Value::I32(stride), Value::Bool(alpha), _, _, Value::Array(bytes)] = s.fields() {
+            let raw: Vec<u8> = bytes.iter().filter_map(|b| b.downcast_ref::<u8>().ok()).collect();
+            return notify::pixels(*w, *h, *stride, *alpha, &raw);
+        }
+    }
+    let path = string(hints, "image-path").or_else(|| string(hints, "image_path")).filter(|p| !p.is_empty());
+    match path.as_deref().unwrap_or(icon) {
+        "" => NoteImage::None,
+        p => p.strip_prefix("file://").or(p.starts_with('/').then_some(p))
+            .map_or_else(|| NoteImage::Named(p.to_owned()), |f| NoteImage::Path(f.into())),
+    }
+}
+
+#[cfg(feature = "notifications")]
+#[zbus::interface(name = "org.freedesktop.Notifications")]
+impl Notifier {
+    fn get_capabilities(&self) -> Vec<String> {
+        ["body", "actions", "icon-static", "persistence"].map(String::from).to_vec()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn notify(&self, app_name: String, replaces_id: u32, app_icon: String, summary: String, body: String,
+              actions: Vec<String>, hints: Props, expire_timeout: i32) -> u32 {
+        use std::sync::atomic::Ordering;
+        let id = if replaces_id != 0 { replaces_id } else { self.next.fetch_add(1, Ordering::Relaxed) };
+        let urgency = hints.get("urgency").and_then(|v| match &**v {
+            Value::U8(u) => Some(*u),
+            _ => None,
+        }).unwrap_or(1);
+        let note = Note {
+            id,
+            image: note_image(&app_icon, &hints),
+            title: notify::plain(&summary),
+            body: notify::plain(&body),
+            app: app_name,
+            urgency,
+            // Critical stays until dealt with, whatever the app asked for.
+            sticky: urgency == 2 || expire_timeout == 0,
+            timeout: u64::try_from(expire_timeout).ok().filter(|ms| *ms > 0).map(Duration::from_millis),
+            actions: actions.chunks_exact(2).map(|a| (a[0].clone(), notify::plain(&a[1]))).collect(),
+        };
+        let _ = self.tx.send(Msg::Notify(note));
+        id
+    }
+
+    fn close_notification(&self, id: u32) {
+        let _ = self.tx.send(Msg::NoteClosed(id));
+    }
+
+    fn get_server_information(&self) -> (String, String, String, String) {
+        ("island".into(), "nurexa".into(), env!("CARGO_PKG_VERSION").into(), "1.2".into())
+    }
+
+    #[zbus(signal)]
+    async fn notification_closed(e: &SignalEmitter<'_>, id: u32, reason: u32) -> zbus::Result<()>;
+    #[zbus(signal)]
+    async fn action_invoked(e: &SignalEmitter<'_>, id: u32, action: &str) -> zbus::Result<()>;
+}
+
 /// Clones of the connection are cheap and thread-safe, and every call here runs
 /// on its own short-lived thread so a hung app can't stall the UI.
 #[derive(Clone)]
@@ -486,6 +575,31 @@ impl Bus {
         });
     }
 
+    /// 1 expired, 2 dismissed, 3 closed by the app.
+    #[cfg(feature = "notifications")]
+    pub fn note_closed(&self, id: u32, reason: u32) {
+        let conn = self.conn.clone();
+        thread::spawn(move || {
+            let Ok(iface) = conn.object_server().interface::<_, Notifier>(NOTIFY_PATH) else { return };
+            let _ = zbus::block_on(Notifier::notification_closed(iface.signal_emitter(), id, reason));
+        });
+    }
+
+    #[cfg(feature = "notifications")]
+    pub fn note_action(&self, id: u32, key: String) {
+        let conn = self.conn.clone();
+        thread::spawn(move || {
+            let Ok(iface) = conn.object_server().interface::<_, Notifier>(NOTIFY_PATH) else { return };
+            let _ = zbus::block_on(Notifier::action_invoked(iface.signal_emitter(), id, &key));
+        });
+    }
+
+    #[cfg(not(feature = "notifications"))]
+    pub fn note_closed(&self, _: u32, _: u32) {}
+
+    #[cfg(not(feature = "notifications"))]
+    pub fn note_action(&self, _: u32, _: String) {}
+
     pub fn refresh_media(&self, tx: crate::Tx) {
         let c = self.conn.clone();
         thread::spawn(move || {
@@ -500,7 +614,7 @@ fn add_match(c: &Connection, rule: &str) {
     }
 }
 
-pub fn spawn(tx: crate::Tx) -> Option<Bus> {
+pub fn spawn(tx: crate::Tx, notifications: bool) -> Option<Bus> {
     let conn = Builder::session().ok()?.method_timeout(Duration::from_secs(2)).build().ok()?;
     let owned = Arc::new(Mutex::new(Vec::new()));
     let at = conn.object_server().at(WATCHER_PATH, Watcher { items: owned.clone() });
@@ -515,12 +629,30 @@ pub fn spawn(tx: crate::Tx) -> Option<Bus> {
     ] {
         add_match(&conn, &rule);
     }
+    #[cfg(feature = "notifications")]
+    if notifications {
+        use std::sync::atomic::AtomicU32;
+        let served = conn.object_server().at(NOTIFY_PATH, Notifier { tx: tx.clone(), next: AtomicU32::new(1) });
+        if let Err(e) = served {
+            eprintln!("island: can't serve notifications: {e}");
+        }
+    }
+    #[cfg(not(feature = "notifications"))]
+    let _ = notifications;
     let bus = Bus { conn: conn.clone() };
     thread::spawn(move || {
         // Subscribe before claiming so nothing registered in between is lost.
         let signals = MessageIterator::from(&conn);
         claim_watcher(&conn, &owned);
-        let mut tray = Tray { conn: conn.clone(), tx: tx.clone(), items: HashMap::new(), order: Vec::new(), owned };
+        #[cfg(feature = "notifications")]
+        if notifications {
+            claim_notifications(&conn);
+        }
+        let mut tray = Tray {
+            conn: conn.clone(), tx: tx.clone(), items: HashMap::new(), order: Vec::new(), owned,
+            #[cfg(feature = "notifications")]
+            notifications,
+        };
         tray.resync();
         let _ = tx.send(Msg::Media(read_media(&conn)));
         for msg in signals.flatten() {

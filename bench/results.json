@@ -3,94 +3,109 @@
   "waybar_version": "Waybar v0.15.0",
   "binary_mb": {
     "waybar": 2.5,
-    "island": 3.1
+    "island": 3.3
   },
   "median": {
     "waybar": {
-      "startup_ms": 162,
-      "pss_mb": 37.3,
-      "rss_mb": 77.1,
+      "startup_ms": 106,
+      "pss_mb": 39.4,
+      "rss_mb": 68.5,
       "threads": 21,
       "processes": 1,
-      "idle_cpu_pct": 1.6,
-      "idle_wakeups_per_s": 41.2,
-      "switch_cpu_ms": 45.75
+      "idle_cpu_pct": 0.0,
+      "idle_wakeups_per_s": -0.9,
+      "switch_cpu_ms": 27.5
     },
     "island": {
-      "startup_ms": 69,
-      "pss_mb": 10.9,
-      "rss_mb": 34.7,
-      "threads": 16,
+      "startup_ms": 31,
+      "pss_mb": 13.6,
+      "rss_mb": 35.8,
+      "threads": 17,
       "processes": 2,
       "idle_cpu_pct": 0.0,
-      "idle_wakeups_per_s": 3.3,
-      "switch_cpu_ms": 2.5,
-      "morph_cpu_ms": 82.0
+      "idle_wakeups_per_s": 4.1,
+      "switch_cpu_ms": 1.25,
+      "morph_cpu_ms": 39.0
+    },
+    "dunst": {
+      "pss_mb": 7.6,
+      "rss_mb": 22.2
+    },
+    "stack_pss_mb": 47.0,
+    "stack_rss_mb": 90.7,
+    "launcher_ms": {
+      "rofi": 41,
+      "island": 8
+    },
+    "island_palette_pss_mb": {
+      "idle": 13.5,
+      "open": 16.7,
+      "after": 15.4
     }
   },
   "runs": {
     "waybar": [
       {
-        "startup_ms": 210,
-        "pss_mb": 37.3,
-        "rss_mb": 77.1,
+        "startup_ms": 318,
+        "pss_mb": 39.4,
+        "rss_mb": 68.5,
         "threads": 21,
         "processes": 1,
-        "idle_cpu_pct": 1.6,
-        "idle_wakeups_per_s": 48.3,
-        "switch_cpu_ms": 45.75
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": -0.3,
+        "switch_cpu_ms": 29.75
       },
       {
-        "startup_ms": 105,
-        "pss_mb": 37.3,
-        "rss_mb": 77.2,
+        "startup_ms": 99,
+        "pss_mb": 39.4,
+        "rss_mb": 68.4,
         "threads": 21,
         "processes": 1,
-        "idle_cpu_pct": 2.233,
-        "idle_wakeups_per_s": 41.2,
-        "switch_cpu_ms": 46.75
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": -0.9,
+        "switch_cpu_ms": 27.5
       },
       {
-        "startup_ms": 162,
-        "pss_mb": 37.2,
-        "rss_mb": 77.0,
+        "startup_ms": 106,
+        "pss_mb": 39.4,
+        "rss_mb": 68.5,
         "threads": 21,
         "processes": 1,
-        "idle_cpu_pct": 0.9,
-        "idle_wakeups_per_s": 12.8,
-        "switch_cpu_ms": 45.25
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": -1.1,
+        "switch_cpu_ms": 27.5
       }
     ],
     "island": [
       {
-        "startup_ms": 61,
-        "pss_mb": 11.0,
-        "rss_mb": 35.0,
-        "threads": 16,
-        "processes": 2,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 3.3,
-        "switch_cpu_ms": 3.25
-      },
-      {
-        "startup_ms": 69,
-        "pss_mb": 10.9,
-        "rss_mb": 34.7,
+        "startup_ms": 33,
+        "pss_mb": 13.6,
+        "rss_mb": 35.6,
         "threads": 17,
         "processes": 2,
         "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 5.4,
-        "switch_cpu_ms": 1.75
+        "idle_wakeups_per_s": 4.1,
+        "switch_cpu_ms": 1.25
       },
       {
-        "startup_ms": 77,
-        "pss_mb": 10.9,
-        "rss_mb": 34.7,
-        "threads": 16,
+        "startup_ms": 31,
+        "pss_mb": 13.7,
+        "rss_mb": 36.0,
+        "threads": 17,
+        "processes": 2,
+        "idle_cpu_pct": 0.033,
+        "idle_wakeups_per_s": 4.1,
+        "switch_cpu_ms": 1.5
+      },
+      {
+        "startup_ms": 30,
+        "pss_mb": 13.5,
+        "rss_mb": 35.8,
+        "threads": 17,
         "processes": 2,
         "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 2.4,
-        "switch_cpu_ms": 2.5
+        "idle_wakeups_per_s": 4.1,
+        "switch_cpu_ms": 1.25
       }
     ]
   }

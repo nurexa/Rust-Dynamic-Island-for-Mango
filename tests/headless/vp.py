@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive a headless compositor's pointer through zwlr_virtual_pointer_v1.
+"""Drive a headless compositor's pointer and keyboard through the virtual input protocols.
    vp.py move X Y | down [btn] | up [btn] | click X Y [btn] | scroll N | path X0 Y0 X1 Y1 STEPS MS"""
 import os, socket, struct, sys, time
 W, H = int(os.environ.get("VP_W","1920")), 1080
@@ -21,6 +21,17 @@ while not done:
 n,v=g["zwlr_virtual_pointer_manager_v1"]
 msg(2,0,struct.pack("<I",n)+sstr("zwlr_virtual_pointer_manager_v1")+struct.pack("<II",1,4))
 msg(4,0,struct.pack("<II",0,5))  # create_virtual_pointer(seat=null) -> 5
+
+# Keyboard: a seat, then a virtual keyboard holding a compiled US keymap.
+import subprocess
+n,v=g["wl_seat"]
+msg(2,0,struct.pack("<I",n)+sstr("wl_seat")+struct.pack("<II",min(v,7),6))
+n,v=g["zwp_virtual_keyboard_manager_v1"]
+msg(2,0,struct.pack("<I",n)+sstr("zwp_virtual_keyboard_manager_v1")+struct.pack("<II",1,7))
+msg(7,0,struct.pack("<II",6,8))  # create_virtual_keyboard(seat) -> 8
+keymap=subprocess.run(["xkbcli","compile-keymap","--layout","us"],capture_output=True).stdout+b"\0"
+kfd=os.memfd_create("keymap"); os.write(kfd,keymap)
+socket.send_fds(s,[struct.pack("<IHHII",8,0,16,1,len(keymap))],[kfd])
 t=[int(time.time()*1000)&0xffffffff]
 def now():
     t[0]=(t[0]+1)&0xffffffff; return t[0]
@@ -29,8 +40,27 @@ def mv(x,y): msg(5,1,struct.pack("<IIIII",now(),int(x),int(y),W,H)); fr()
 def btn(b,st): msg(5,2,struct.pack("<III",now(),b,st)); fr()
 def rel(dx,dy): msg(5,0,struct.pack("<Iii",now(),int(dx*256),int(dy*256))); fr()
 B={"l":0x110,"r":0x111,"m":0x112}
+KEYS=dict(zip("qwertyuiop",range(16,26)))|dict(zip("asdfghjkl",range(30,39)))|dict(zip("zxcvbnm",range(44,51)))
+KEYS|=dict(zip("1234567890",range(2,12)))|{" ":57,"-":12,".":52,"/":53,"Return":28,"Escape":1,"BackSpace":14,"Tab":15,"Up":103,"Down":108}
+def tap(code):
+    msg(8,1,struct.pack("<III",now(),code,1)); time.sleep(.012)
+    msg(8,1,struct.pack("<III",now(),code,0)); time.sleep(.012)
+def mods(m): msg(8,2,struct.pack("<IIII",m,0,0,0))
+def press(name):
+    # "ctrl+u", "shift+Tab", "Return"
+    *m,key=name.split("+")
+    mask=(1 if "shift" in m else 0)|(4 if "ctrl" in m else 0)
+    if mask: mods(mask); time.sleep(.012)
+    tap(KEYS[key])
+    if mask: mods(0); time.sleep(.012)
 def run(a):
     c=a[0]
+    if c=="type":
+        for ch in " ".join(a[1:]): tap(KEYS[ch])
+        return
+    if c=="key":
+        for k in a[1:]: press(k)
+        return
     if c=="move": mv(float(a[1]),float(a[2]))
     elif c=="down": btn(B[a[1] if len(a)>1 else "l"],1)
     elif c=="up": btn(B[a[1] if len(a)>1 else "l"],0)

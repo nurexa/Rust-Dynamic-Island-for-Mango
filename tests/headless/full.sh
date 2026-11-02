@@ -7,6 +7,7 @@ echo '{"mute":false,"vol":48}' > $R/sink; : > $R/events; : > $R/audio.log
 dbus-daemon --session --print-address=1 --nofork --address=unix:path=$R/bus > $R/dbus.addr 2>/dev/null &
 echo $! > $R/dbus.pid; sleep .3
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$R/bus PATH=$H/shim:$PATH
+: > $R/shim.log
 nohup setsid playerctld > /dev/null 2>&1 & echo $! > $R/pctl.pid
 sleep .3; $H/isl; sleep .3
 (nohup setsid $H/../../target/release/examples/mock $H/run/art.jpg > $R/mock.log 2>&1 & echo $! > $R/mock.pid)

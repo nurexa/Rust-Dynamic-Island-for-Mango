@@ -7,9 +7,12 @@ pub fn home() -> PathBuf {
     env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/tmp".into())
 }
 
+pub fn state_dir() -> PathBuf {
+    env::var_os("XDG_STATE_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".local/state")).join("island")
+}
+
 fn state_path() -> PathBuf {
-    env::var_os("XDG_STATE_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".local/state"))
-        .join("island/state")
+    state_dir().join("state")
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq, Debug)]
@@ -23,7 +26,7 @@ pub enum IconStyle {
 
 /// Shell commands behind the panel's controls. Empty means no action; an empty
 /// `wallpaper_pick` also hides the wallpaper button.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Commands {
     pub wifi: String,
@@ -32,12 +35,14 @@ pub struct Commands {
     pub wallpaper_pick: String,
     pub wallpaper_next: String,
     pub wallpaper_toggle: String,
+    pub lock: String,
 }
 
 impl Default for Commands {
     fn default() -> Self {
         Commands { wifi: "nm-connection-editor".into(), wifi_alt: String::new(), mixer: "pavucontrol".into(),
-                   wallpaper_pick: String::new(), wallpaper_next: String::new(), wallpaper_toggle: String::new() }
+                   wallpaper_pick: String::new(), wallpaper_next: String::new(), wallpaper_toggle: String::new(),
+                   lock: "loginctl lock-session".into() }
     }
 }
 
@@ -53,7 +58,47 @@ pub struct Custom {
     pub on_click: String,
 }
 
-#[derive(Deserialize, Debug)]
+/// A palette tab made of two shell commands. `list` prints one item per line, and
+/// `run` receives the chosen line wherever it says `{}`.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ScriptTool {
+    pub name: String,
+    #[serde(default = "default_tool_glyph")]
+    pub glyph: String,
+    pub hint: Option<String>,
+    pub list: String,
+    pub run: String,
+}
+
+fn default_tool_glyph() -> String {
+    "\u{f0349}".into()
+}
+
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct Wallpaper {
+    /// Folder to list. Empty hides the tool.
+    pub dir: String,
+    /// Optional thumbnail path, with `{file}` for the file's name.
+    pub thumb: String,
+    /// Runs on choosing one, with `{path}` as the file.
+    pub set: String,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct NotifyTimes {
+    pub low: u64,
+    pub normal: u64,
+}
+
+impl Default for NotifyTimes {
+    fn default() -> Self {
+        NotifyTimes { low: 3, normal: 5 }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Config {
     pub font: String,
@@ -68,6 +113,15 @@ pub struct Config {
     pub icons: HashMap<String, String>,
     pub commands: Commands,
     pub custom: Vec<Custom>,
+    /// Palette tabs, in order. See src/tools/mod.rs.
+    pub tools: Vec<String>,
+    pub tool: Vec<ScriptTool>,
+    /// Act as the notification daemon. Turn off to keep your own.
+    pub notifications: bool,
+    pub notify: NotifyTimes,
+    pub wallpaper: Wallpaper,
+    pub terminal: String,
+    pub screenshot_dir: String,
 }
 
 impl Default for Config {
@@ -82,10 +136,17 @@ impl Default for Config {
             clock: "%I:%M %p".into(),
             palette: "~/.config/theme/generated/colors.toml".into(),
             pill: list(&["media", "workspaces", "network", "clock"]),
-            panel: list(&["header", "workspaces", "media", "stats", "audio", "status"]),
+            panel: list(&["header", "workspaces", "media", "notifications", "stats", "audio", "status"]),
             icons: HashMap::new(),
             commands: Commands::default(),
             custom: Vec::new(),
+            tools: list(&["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power"]),
+            tool: Vec::new(),
+            notifications: true,
+            notify: NotifyTimes::default(),
+            wallpaper: Wallpaper::default(),
+            terminal: "kitty".into(),
+            screenshot_dir: "~/Pictures".into(),
         }
     }
 }
@@ -115,6 +176,7 @@ pub struct State {
     pub pos: HashMap<String, (f64, f64)>,
     pub pinned: bool,
     pub tucked: bool,
+    pub dnd: bool,
 }
 
 impl State {
@@ -130,6 +192,7 @@ impl State {
                 }
                 ["pinned"] => s.pinned = true,
                 ["tucked"] => s.tucked = true,
+                ["dnd"] => s.dnd = true,
                 _ => {}
             }
         }
@@ -146,6 +209,9 @@ impl State {
         }
         if self.tucked {
             out += "tucked\n";
+        }
+        if self.dnd {
+            out += "dnd\n";
         }
         out
     }

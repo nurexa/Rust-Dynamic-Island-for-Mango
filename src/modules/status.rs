@@ -42,7 +42,8 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     };
     p.symbol(net_symbol(&m.net), 16.0, PAD + 1.0, cy - 8.0, pal.fg);
     let w = p.text(&label, 12.5, Weight::Medium, pal.fg, PAD + 30.0, cy, 168.0);
-    p.regions.push(Region::new((PAD - 6.0, y, 40.0 + w, h), 10.0, Action::Sh(cmd.wifi.clone()))
+    let wifi = if c.cfg.tools.iter().any(|t| t == "wifi") { Action::Open("wifi") } else { Action::Sh(cmd.wifi.clone()) };
+    p.regions.push(Region::new((PAD - 6.0, y, 40.0 + w, h), 10.0, wifi)
         .right(Action::Sh(cmd.wifi_alt.clone())));
     if let Some((pct, charging)) = m.sys.battery {
         let x = PAD + 30.0 + w + 16.0;

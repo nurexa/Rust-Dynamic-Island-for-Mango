@@ -14,7 +14,7 @@ use cairo::{Context, Format, ImageSurface};
 use smithay_client_toolkit::{
     compositor::{CompositorState, FrameCallbackData, Region},
     reexports::client::{QueueHandle, protocol::{wl_output, wl_surface::WlSurface}},
-    shell::{WaylandSurface, wlr_layer::LayerSurface},
+    shell::{WaylandSurface, wlr_layer::{KeyboardInteractivity, Layer, LayerSurface}},
     shm::{Shm, slot::{Buffer, SlotPool}},
 };
 use std::time::{Duration, Instant};
@@ -145,6 +145,7 @@ pub struct Island {
     t: Spring,
     cw: Spring,
     ph: Spring,
+    pw: Spring,
     k: Spring,
     last: Option<Instant>,
     /// ISLAND_TIME_SCALE=0.1 runs animations at a tenth speed, for tuning them.
@@ -152,6 +153,8 @@ pub struct Island {
 
     pub pinned: bool,
     pub tucked: bool,
+    toast: bool,
+    raised: bool,
     hovered: bool,
     open: bool,
     suppress: bool,
@@ -203,9 +206,10 @@ impl Island {
             t: Spring::new(if pinned { 1.0 } else { 0.0 }, 0.42, 0.78, 0.002),
             cw: Spring::new(200.0, 0.36, 0.86, 0.3),
             ph: Spring::new(320.0, 0.36, 0.86, 0.3),
+            pw: Spring::new(PANEL_W, 0.36, 0.86, 0.3),
             k: Spring::new(if tucked { 1.0 } else { 0.0 }, 0.34, 0.86, 0.002),
             last: None, time_scale: std::env::var("ISLAND_TIME_SCALE").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0),
-            pinned, tucked, hovered: false, open: false, suppress: false, press: None,
+            pinned, tucked, toast: false, raised: false, hovered: false, open: false, suppress: false, press: None,
             dragging: false, sliding: false, pointer: (0.0, 0.0), hover: None, pin_at: None,
             open_at: None, close_at: None, flash_until: None, view: View::Main,
             compact: None, panel: None, compact_dirty: true, panel_dirty: true,
@@ -227,12 +231,74 @@ impl Island {
     }
 
     pub fn wants_panel(&self) -> bool {
-        (self.pinned || self.open) && !self.dragging
+        (self.pinned || self.open || self.toast || self.view == View::Palette) && !self.dragging
+    }
+
+    /// Stats only matter while the panel proper is up, not a toast or the palette.
+    pub fn wants_stats(&self) -> bool {
+        (self.pinned || self.open) && matches!(self.view, View::Main | View::Menu { .. })
+    }
+
+    pub fn hovered(&self) -> bool {
+        self.hovered
+    }
+
+    /// The overlay layer is what lets these show above a fullscreen window, and
+    /// keyboard focus is held only while the palette is open.
+    fn raise(&mut self, overlay: bool, keyboard: bool) {
+        self.layer.set_layer(if overlay { Layer::Overlay } else { Layer::Top });
+        self.layer.set_keyboard_interactivity(if keyboard { KeyboardInteractivity::Exclusive } else { KeyboardInteractivity::None });
+        self.layer.commit();
+        self.raised = overlay;
+    }
+
+    pub fn open_palette(&mut self) {
+        self.view = View::Palette;
+        self.toast = false;
+        self.raise(true, true);
+        self.panel_dirty = true;
+        self.dirty = true;
+    }
+
+    pub fn close_palette(&mut self) {
+        self.raise(false, false);
+        // Toast with no toast is the closing state: the palette's last frame stays
+        // up while the shape shrinks, and rebuild() settles it on Main.
+        self.view = if self.pinned || self.open { View::Main } else { View::Toast };
+        self.panel_dirty = true;
+        self.dirty = true;
+    }
+
+    /// Show the note the app put in `Center::showing`. Critical ones come above
+    /// fullscreen; everything else waits politely under your game.
+    pub fn show_toast(&mut self, critical: bool) {
+        self.view = View::Toast;
+        self.toast = true;
+        if critical {
+            self.raise(true, false);
+        }
+        self.panel_dirty = true;
+        self.dirty = true;
+    }
+
+    pub fn end_toast(&mut self) {
+        if !self.toast {
+            return;
+        }
+        self.toast = false;
+        if self.raised {
+            self.raise(false, false);
+        }
+        self.dirty = true;
     }
 
     /// Stats and panel contents are only worth producing while one is visible.
     pub fn panel_visible(&self) -> bool {
         self.wants_panel() || self.t.x > 0.001
+    }
+
+    fn panel_cx(&self, x: f64, w: f64) -> f64 {
+        x.clamp(w / 2.0 + 8.0, (self.out.0 - w / 2.0 - 8.0).max(w / 2.0 + 8.0))
     }
 
     pub fn invalidate(&mut self, compact: bool, panel: bool) {
@@ -310,9 +376,9 @@ impl Island {
         let t = self.t.x;
         let k = self.k.x;
         // The panel slides sideways as it opens if the pill sits near an edge.
-        let panel_cx = self.place.0.x.clamp(PANEL_W / 2.0 + 8.0, (self.out.0 - PANEL_W / 2.0 - 8.0).max(PANEL_W / 2.0 + 8.0)) - sx;
+        let panel_cx = self.panel_cx(self.place.0.x, self.pw.x) - sx;
         let cx = lerp(px, panel_cx, t.clamp(0.0, 1.0));
-        let w = lerp(lerp(self.cw.x, TUCK_W, k), PANEL_W, t);
+        let w = lerp(lerp(self.cw.x, TUCK_W, k), self.pw.x, t);
         let h = lerp(lerp(PILL_H, TUCK_H, k), self.ph.x, t);
         let top = lerp(py, if self.pos.is_none() { 2.0 } else { py }, k);
         let y = if self.opens_down() { top } else { py + PILL_H - h };
@@ -325,9 +391,10 @@ impl Island {
         let (sx, sy) = self.surface_pos();
         let (px, py) = (self.place.0.target - sx, self.place.1.target - sy);
         if self.t.target > 0.5 {
-            let cx = self.place.0.target.clamp(PANEL_W / 2.0 + 8.0, (self.out.0 - PANEL_W / 2.0 - 8.0).max(PANEL_W / 2.0 + 8.0)) - sx;
+            let w = self.pw.target;
+            let cx = self.panel_cx(self.place.0.target, w) - sx;
             let y = if self.opens_down() { py } else { py + PILL_H - self.ph.target };
-            (cx - PANEL_W / 2.0, y, PANEL_W, self.ph.target)
+            (cx - w / 2.0, y, w, self.ph.target)
         } else if self.k.target > 0.5 {
             // A thin sliver is a hard target: keep a generous hot zone around it.
             let y = if self.pos.is_none() { 0.0 } else { py };
@@ -373,7 +440,7 @@ impl Island {
     }
 
     fn springs_settled(&self) -> bool {
-        [&self.t, &self.cw, &self.ph, &self.k, &self.place.0, &self.place.1].iter().all(|s| s.settled())
+        [&self.t, &self.cw, &self.ph, &self.pw, &self.k, &self.place.0, &self.place.1].iter().all(|s| s.settled())
     }
 
     fn rebuild(&mut self, m: &Model, icons: &mut Icons, cfg: &Config) {
@@ -388,15 +455,23 @@ impl Island {
                 self.compact = Some(c);
             }
         }
+        // A hover that outlives a toast carries on as the normal panel.
+        if self.view == View::Toast && !self.toast && (self.pinned || self.open) {
+            self.view = View::Main;
+            self.panel_dirty = true;
+        }
         if self.panel_visible() {
-            if self.panel_dirty || self.panel.is_none() {
+            // While closing, keep showing what was open rather than swapping it out.
+            if (self.panel_dirty && self.wants_panel()) || self.panel.is_none() {
                 self.panel_dirty = false;
                 let first = self.panel.is_none();
                 if let Some(c) = modules::panel(m, icons, cfg, &self.name, &self.view, self.scale, self.pinned, self.tucked) {
                     if first && self.t.x < 0.01 {
                         self.ph.snap(c.h);
+                        self.pw.snap(c.w);
                     }
                     self.ph.target = c.h;
+                    self.pw.target = c.w;
                     self.panel = Some(c);
                 }
             }
@@ -425,7 +500,7 @@ impl Island {
         let now = Instant::now();
         // The first frame after idle has no meaningful gap to integrate over.
         let dt = self.last.map_or(1.0 / 240.0, |l| (now - l).as_secs_f64()).min(1.0 / 30.0) * self.time_scale;
-        for s in [&mut self.t, &mut self.cw, &mut self.ph, &mut self.k, &mut self.place.0, &mut self.place.1] {
+        for s in [&mut self.t, &mut self.cw, &mut self.ph, &mut self.pw, &mut self.k, &mut self.place.0, &mut self.place.1] {
             s.step(dt);
         }
         let animating = !self.springs_settled();
@@ -525,7 +600,7 @@ impl Island {
         }
         if let (true, Some(c)) = (a_panel > 0.003, &self.panel) {
             let y = if down { sh.y } else { sh.y + sh.h - c.h };
-            blit(cr, c, sh.cx - PANEL_W / 2.0, y, PANEL_W, c.h.min(sh.h + 8.0), a_panel);
+            blit(cr, c, sh.cx - c.w / 2.0, y, c.w, c.h.min(sh.h + 8.0), a_panel);
         }
         if morphing {
             let _ = cr.restore();
@@ -574,9 +649,9 @@ impl Island {
         let (px, py) = (self.place.0.target - sx, self.place.1.target - sy);
         if self.t.target > 0.5 {
             let c = self.panel.as_ref()?;
-            let cx = self.place.0.target.clamp(PANEL_W / 2.0 + 8.0, (self.out.0 - PANEL_W / 2.0 - 8.0).max(PANEL_W / 2.0 + 8.0)) - sx;
+            let cx = self.panel_cx(self.place.0.target, c.w) - sx;
             let y = if self.opens_down() { py } else { py + PILL_H - c.h };
-            Some((c, cx - PANEL_W / 2.0, y))
+            Some((c, cx - c.w / 2.0, y))
         } else if self.k.target > 0.5 {
             None
         } else {
@@ -646,7 +721,7 @@ impl Island {
         }
         if let Some(p) = &self.press {
             let moved = (at.0 - p.at.0).hypot(at.1 - p.at.1);
-            if p.button == BTN_LEFT && !self.dragging && moved > DRAG_START {
+            if p.button == BTN_LEFT && !self.dragging && moved > DRAG_START && self.view == View::Main {
                 self.start_drag();
             }
         }
@@ -719,6 +794,9 @@ impl Island {
             };
             return Outcome::Act(action.clone(), 0.0);
         }
+        if self.view != View::Main {
+            return Outcome::None;
+        }
         match p.button {
             BTN_LEFT => {
                 // A pin waits out the double-click window, so a double click
@@ -760,6 +838,9 @@ impl Island {
     }
 
     pub fn scroll_kind(&self) -> Scroll {
+        if self.view == View::Palette {
+            return Scroll::Palette;
+        }
         self.hover.and_then(|i| self.active()?.0.regions.get(i)?.scroll).unwrap_or(Scroll::Tags)
     }
 

@@ -13,7 +13,7 @@ const SIZES: [&str; 14] = ["scalable", "512x512", "256x256", "192x192", "128x128
     "48x48", "36x36", "32x32", "24x24", "22x22", "16x16"];
 const RESCAN: Duration = Duration::from_secs(30);
 
-fn data_dirs() -> Vec<PathBuf> {
+pub fn data_dirs() -> Vec<PathBuf> {
     let home = crate::settings::home();
     let mut dirs = vec![env::var_os("XDG_DATA_HOME").map_or(home.join(".local/share"), PathBuf::from)];
     let sys = env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
@@ -171,6 +171,8 @@ pub struct Icons {
     index: HashMap<String, String>,
     scanned: Instant,
     apps: HashMap<(String, i32), Option<ImageSurface>>,
+    /// Palette rows and notification images, by source. Emptied when the palette closes.
+    files: HashMap<(String, i32), Option<ImageSurface>>,
     symbols: HashMap<(&'static str, i32), Option<ImageSurface>>,
 }
 
@@ -184,7 +186,7 @@ impl Icons {
             }
         }
         Icons { index: HashMap::new(), scanned: Instant::now() - RESCAN, dirs, themes,
-                apps: HashMap::new(), symbols: HashMap::new() }
+                apps: HashMap::new(), files: HashMap::new(), symbols: HashMap::new() }
     }
 
     fn lookup(&mut self, appid: &str) -> Option<PathBuf> {
@@ -221,6 +223,29 @@ impl Icons {
             self.apps.insert(key, icon.clone());
         }
         icon
+    }
+
+    /// An Icon= value: a theme name or a path.
+    pub fn themed(&mut self, name: &str, px: i32) -> Option<ImageSurface> {
+        let (dirs, themes) = (&self.dirs, &self.themes);
+        self.files.entry((name.to_owned(), px)).or_insert_with(|| load(&find_file(name, dirs, themes)?, px)).clone()
+    }
+
+    /// An image file of any kind we can read, cropped to a square.
+    pub fn picture(&mut self, path: &Path, px: i32) -> Option<ImageSurface> {
+        let key = (path.to_string_lossy().into_owned(), px);
+        self.files.entry(key).or_insert_with(|| {
+            if path.extension().is_some_and(|e| e == "svg") { load_svg(path, px) } else { load_art(path, px) }
+        }).clone()
+    }
+
+    pub fn pixels(&self, rgba: &[u8], w: i32, h: i32, px: i32) -> Option<ImageSurface> {
+        fit(&from_rgba(rgba, w, h)?, px, true)
+    }
+
+    /// Give back what a closed palette loaded.
+    pub fn forget_files(&mut self) {
+        self.files.clear();
     }
 
     /// Adwaita symbolic icon as a mask, for painting in any palette color.

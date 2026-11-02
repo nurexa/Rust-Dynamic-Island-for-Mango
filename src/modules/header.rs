@@ -10,9 +10,11 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     p.text(&clock::format("%A, %B %-e"), 12.5, Weight::Medium, pal.muted, PAD + w + 12.0, cy + 4.0, -1.0);
     let rect = |i: f64| (PANEL_W - PAD + 6.0 - (i + 1.0) * 34.0, y, 32.0, 32.0);
     let cmd = &c.cfg.commands;
-    if !cmd.wallpaper_pick.is_empty() {
+    let picker = c.cfg.tools.iter().any(|t| t == "wallpaper") && !c.cfg.wallpaper.dir.is_empty();
+    if picker || !cmd.wallpaper_pick.is_empty() {
         let r = rect(3.0);
-        p.button("preferences-desktop-wallpaper", r, false, Region::new(r, 16.0, Action::Sh(cmd.wallpaper_pick.clone()))
+        let pick = if picker { Action::Open("wallpaper") } else { Action::Sh(cmd.wallpaper_pick.clone()) };
+        p.button("preferences-desktop-wallpaper", r, false, Region::new(r, 16.0, pick)
             .right(Action::Sh(cmd.wallpaper_next.clone()))
             .middle(Action::Sh(cmd.wallpaper_toggle.clone())).tip("Wallpaper: pick · right: random · middle: pause"));
     }

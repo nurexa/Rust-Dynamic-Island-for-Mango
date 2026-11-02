@@ -6,23 +6,45 @@ icon_font = "JetBrainsMono Nerd Font Propo"   # any Nerd Font; big ones cost rea
 icon_style = "glyph"              # "glyph" is two-tone, "color" uses each app's own icon
 clock = "%I:%M %p"                # strftime
 palette = "~/.config/theme/generated/colors.toml"
+terminal = "kitty"                # for apps that need one
+screenshot_dir = "~/Pictures"
 
+# Every part is optional: leave a name out and it's gone.
 pill = ["media", "workspaces", "network", "clock"]
-panel = ["header", "workspaces", "media", "stats", "audio", "status"]
+panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "status"]
+tools = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power"]
+notifications = true              # false keeps your own notification daemon
+
+[notify]                          # seconds on screen; critical stays until dismissed
+low = 3
+normal = 5
 
 [icons]
 # App id = glyph, added to the built-in table in src/pen.rs.
 # "org.gnome.nautilus" = "󰉋"
 
 [commands]
-wifi = "nm-connection-editor"     # left click on the network label
+wifi = "nm-connection-editor"     # left click on the network label, without the wifi tool
 wifi_alt = ""                     # right click
 mixer = "pavucontrol"             # right click on the volume controls
-wallpaper_pick = ""               # empty hides the wallpaper button
-wallpaper_next = ""
-wallpaper_toggle = ""
+lock = "loginctl lock-session"    # the power tool's Lock
+wallpaper_pick = ""               # the panel's wallpaper button, without the wallpaper tool
+wallpaper_next = ""               # right click on it
+wallpaper_toggle = ""             # middle click on it
 
-# A module made of a shell command. Place it with "custom:weather" in `pill` or `panel`.
+[wallpaper]
+dir = ""                          # folder to list; empty hides the wallpaper tool
+thumb = ""                        # thumbnail path, with {file} as the file's name
+set = ""                          # runs on choosing one, with {path} as the file
+
+# A palette tool made of two commands. Add its name to `tools`.
+# [[tool]]
+# name = "projects"
+# glyph = "󰉋"
+# list = "ls ~/Projects"
+# run = "kitty -d ~/Projects/{}"
+
+# A pill or panel module made of a command. Place it with "custom:weather".
 # [[custom]]
 # name = "weather"
 # exec = "curl -s 'wttr.in/?format=%t'"

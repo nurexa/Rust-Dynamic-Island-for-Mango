@@ -15,6 +15,8 @@ pub mod custom;
 mod header;
 mod media;
 mod menu;
+mod notify;
+mod palette;
 mod stats;
 mod status;
 mod workspaces;
@@ -55,6 +57,7 @@ const PANEL: &[(&str, PanelModule)] = &[
     ("header", header::panel),
     ("workspaces", workspaces::panel),
     ("media", media::panel),
+    ("notifications", notify::panel),
     ("stats", stats::panel),
     ("audio", audio::panel),
     ("status", status::panel),
@@ -112,7 +115,10 @@ pub fn panel(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, view: &View,
     let h = match view {
         View::Main => cfg.panel.iter().fold(16.0, |y, name| draw_panel(name, &mut p, &c, y)),
         View::Menu { title, entries, .. } => menu::view(&mut p, title, entries),
+        View::Palette => palette::view(&mut p, &c),
+        View::Toast => notify::toast(&mut p, &c),
     };
     let regions = std::mem::take(&mut p.regions);
-    Some(Content { surf, w: PANEL_W, h: h.min(MAX_PANEL_H), regions })
+    let w = if *view == View::Toast { notify::TOAST_W } else { PANEL_W };
+    Some(Content { surf, w, h: h.min(MAX_PANEL_H), regions })
 }

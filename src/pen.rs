@@ -30,12 +30,20 @@ pub enum Action {
     MenuClick(i32),
     MenuSub(i32),
     MenuBack,
+    Open(&'static str),
+    PaletteRow(usize),
+    PaletteTool(usize),
+    NoteAction(u32, String),
+    NoteDismiss(u32),
+    NoteClear,
+    Dnd,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Scroll {
     Tags,
     Volume,
+    Palette,
 }
 
 #[derive(Clone, Debug)]
@@ -79,6 +87,8 @@ pub struct Content {
 pub enum View {
     Main,
     Menu { item: usize, title: String, entries: Vec<MenuEntry>, root: Vec<MenuEntry> },
+    Palette,
+    Toast,
 }
 
 /// App id -> glyph. The ids match what Mango reports, lowercased; a dotted id
@@ -194,6 +204,23 @@ impl<'a> Pen<'a> {
         self.cr.move_to(x, cy - h as f64 / 2.0);
         pangocairo::functions::show_layout(&self.cr, &self.layout);
         w as f64
+    }
+
+    /// Wrapped text from a top edge, cut off after `lines`. Returns the height used.
+    pub fn wrapped(&self, s: &str, size: f64, c: Rgb, x: f64, y: f64, w: f64, lines: i32) -> f64 {
+        if s.is_empty() {
+            return 0.0;
+        }
+        self.prepare(s, &self.cfg.font, size, Weight::Normal, w);
+        self.layout.set_wrap(pango::WrapMode::WordChar);
+        self.layout.set_height(-lines);
+        let h = self.layout.pixel_size().1 as f64;
+        self.set(c, 1.0);
+        self.cr.move_to(x, y);
+        pangocairo::functions::show_layout(&self.cr, &self.layout);
+        self.layout.set_height(-1);
+        self.layout.set_wrap(pango::WrapMode::Word);
+        h
     }
 
     pub fn right(&self, s: &str, size: f64, weight: Weight, c: Rgb, x_end: f64, cy: f64) -> f64 {

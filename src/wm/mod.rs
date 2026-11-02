@@ -33,6 +33,14 @@ pub struct Client {
     pub is_focused: bool,
     pub is_minimized: bool,
     pub is_urgent: bool,
+    #[serde(default)]
+    pub x: i32,
+    #[serde(default)]
+    pub y: i32,
+    #[serde(default)]
+    pub width: i32,
+    #[serde(default)]
+    pub height: i32,
 }
 
 /// What the island needs from a compositor. `watch` must send `Msg::Monitors` and
@@ -46,6 +54,8 @@ pub trait Backend {
     fn focus(&self, window: u64);
     /// Step to the next or previous occupied workspace.
     fn cycle(&self, forward: bool);
+    /// End the session.
+    fn quit(&self);
 }
 
 /// No compositor integration: the workspaces module stays empty and every other
@@ -58,6 +68,7 @@ impl Backend for Bare {
     fn send_to(&self, _: u32) {}
     fn focus(&self, _: u64) {}
     fn cycle(&self, _: bool) {}
+    fn quit(&self) {}
 }
 
 pub fn detect() -> Box<dyn Backend> {

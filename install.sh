@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Switch this Mango session from Waybar to the island. Safe to re-run.
+# Switch this Mango session to the island. Safe to re-run.
 #
-#   ./install.sh          build, install to ~/.local/bin, switch over
-#   ./install.sh --undo   put Waybar back
+#   ./install.sh             everything: bar, launcher, notifications, clipboard, screenshots
+#   ./install.sh --bar-only  only replace Waybar; rofi, dunst and your binds stay as they are
+#   ./install.sh --undo      put it all back
 #
-# Touches exactly two files: mango/scripts/bar (the autostart loop, created if you
-# don't have one) and a marked block at the end of mango/config.conf. Originals are
-# kept in ISLAND_BACKUP.
-# Waybar itself stays installed. Nothing here needs root.
+# Your key bindings stay on the same keys: only what they run changes, and each
+# original line is kept as a comment so --undo restores it exactly. Everything else
+# added to mango/config.conf sits in a marked block. Installed packages aren't touched.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
@@ -18,6 +18,8 @@ BIN_DIR=${ISLAND_BIN_DIR:-$HOME/.local/bin}
 BACKUP=${ISLAND_BACKUP:-$HOME/.local/share/island-backup}
 BEGIN='# >>> island'
 END='# <<< island'
+WAS='#island-was# '
+OFF='#island-off# '
 
 [ -n "${MANGO_INSTANCE_SIGNATURE:-}" ] || { echo "Run this from inside the Mango session." >&2; exit 1; }
 # Matched on this compositor's socket, so only this session's processes are touched.
@@ -45,24 +47,53 @@ strip_block() {
     sed -i "/^$BEGIN\$/,/^$END\$/d" "$CONF"
 }
 
+# Point an existing bind at the island: same key, new command, old line kept above it.
+swap_bind() {
+    local pattern=$1 command=$2
+    sed -i -E "/^bind[^=]*=/{\\#/island #b;/$pattern/{h;s/^/$WAS/;p;g;s#,spawn(_shell)?,.*\$#,spawn,$BIN_DIR/island $command#}}" "$CONF"
+}
+
+take_over() {
+    swap_bind 'rofi -show drun' 'open apps'
+    swap_bind 'rofi -show run' 'open run'
+    swap_bind 'cliphist list' 'open clipboard'
+    swap_bind 'wlogout' 'open power'
+    swap_bind 'wall pick' 'open wallpaper'
+    local kind
+    for kind in output window region annotate color; do
+        swap_bind "shot $kind\$" "shot $kind"
+    done
+    # Notification daemons: stop them starting, and stop D-Bus starting them on demand.
+    sed -i -E "s/^(exec_once=(dunst|mako|swaync)( .*)?)\$/$OFF\1/" "$CONF"
+    systemctl --user mask dunst.service >/dev/null 2>&1 || true
+    pkill -x dunst "${mine[@]}" || true
+}
+
 undo() {
     stop_bars
     strip_block
+    sed -i -E "/^$WAS/{s/^$WAS//;n;d}" "$CONF"
+    systemctl --user unmask dunst.service >/dev/null 2>&1 || true
+    if grep -q "^$OFF" "$CONF"; then
+        sed -i "s/^$OFF//" "$CONF"
+        setsid -f dunst >/dev/null 2>&1 </dev/null || true
+    fi
     if [ -f "$BACKUP/bar" ]; then
         cp "$BACKUP/bar" "$BAR"
     else
         printf '#!/bin/sh\n# Waybar 0.15 can segfault in its mpris module, so bring the bar back if it dies.\nuntil waybar; do sleep 1; done\n' > "$BAR"
     fi
     start_bar
-    echo "Waybar restored."
+    echo "Your old setup is back."
 }
 
-if [ "${1:-}" = --undo ]; then
+mode=${1:-}
+if [ "$mode" = --undo ]; then
     undo
     exit 0
 fi
 
-if [ "${1:-}" != --no-build ]; then
+if [ "$mode" != --no-build ] && [ "${ISLAND_BUILD:-1}" = 1 ]; then
     cargo build --release --bins
 fi
 # Replace rather than overwrite, so a running island can't block the update.
@@ -84,12 +115,14 @@ strip_block
 # Stock configs don't run scripts/bar, so the block starts the island itself.
 autostart=""
 grep -q '^exec_once=.*scripts/bar' "$CONF" || autostart="exec_once=$BAR"$'\n'
+[ "$mode" = --bar-only ] || take_over
 cat >> "$CONF" <<BLOCK
 $BEGIN
 ${autostart}layer_rule=no_animation:1,no_shadow:1,layer_name:island
 bind=SUPER,i,spawn,$BIN_DIR/island pin
 bind=SUPER+SHIFT,i,spawn,$BIN_DIR/island tuck
 bind=SUPER+ALT,i,spawn,$BIN_DIR/island reset
+bind=SUPER,space,spawn,$BIN_DIR/island open
 $END
 BLOCK
 
@@ -108,4 +141,4 @@ if ! has_layer island; then
     undo
     exit 1
 fi
-echo "Island is running, Waybar is stopped. Undo with: ./install.sh --undo"
+echo "Island is running. Undo with: ./install.sh --undo"

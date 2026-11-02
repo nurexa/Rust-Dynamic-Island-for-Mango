@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Waybar vs the island, under identical conditions.
+"""The usual stack vs the island, under identical conditions.
 
 Both run in a private headless Mango with the same windows, the same tray app and
 media player on a private bus, and the real audio server read-only. Each bar is
@@ -178,6 +178,55 @@ def main():
             runs[name].append(r)
             print(name, r, file=sys.stderr, flush=True)
 
+    # Dunst sits in the background too, so it counts toward what the island replaces.
+    # It's measured on its own, because only one daemon can own the name at a time.
+    proc = subprocess.Popen(["dunst"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(3)
+    subprocess.run(["notify-send", "bench", "warm up"], env=env)
+    time.sleep(2)
+    dunst = {"pss_mb": round(memory_kb(proc.pid, "Pss") / 1024, 1), "rss_mb": round(memory_kb(proc.pid, "Rss") / 1024, 1)}
+    proc.terminate()
+    proc.wait(timeout=5)
+    time.sleep(0.4)
+
+    # Launcher: from the key's command to the search box being on screen.
+    rofi_ms = []
+    for _ in range(5):
+        t0 = time.monotonic()
+        proc = subprocess.Popen(["rofi", "-show", "drun"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        while not layer_up(env, "rofi") and time.monotonic() - t0 < 5:
+            time.sleep(0.002)
+        rofi_ms.append(round((time.monotonic() - t0) * 1000))
+        proc.terminate()
+        proc.wait(timeout=5)
+        time.sleep(0.4)
+
+    proc = subprocess.Popen([ISLAND], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(2.5)
+    idle_pss = memory_kb(proc.pid, "Pss")
+    island_ms = []
+    for _ in range(5):
+        t0 = time.monotonic()
+        subprocess.run([ISLAND, "open", "apps"], env=env)
+        while time.monotonic() - t0 < 5:
+            out = subprocess.run(["mmsg", "get", "all-layers"], env=env, capture_output=True, text=True).stdout
+            if '"layer":"overlay","name":"island"' in out:
+                break
+            time.sleep(0.002)
+        island_ms.append(round((time.monotonic() - t0) * 1000))
+        time.sleep(0.5)
+        subprocess.run([ISLAND, "close"], env=env)
+        time.sleep(0.7)
+    subprocess.run([ISLAND, "open", "apps"], env=env)
+    time.sleep(1)
+    open_pss = memory_kb(proc.pid, "Pss")
+    subprocess.run([ISLAND, "close"], env=env)
+    time.sleep(1.5)
+    closed_pss = memory_kb(proc.pid, "Pss")
+    proc.terminate()
+    proc.wait(timeout=5)
+    time.sleep(0.4)
+
     # Morph cost: pin toggles run the full spring without any pointer.
     proc = subprocess.Popen([ISLAND], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2.5)
@@ -196,6 +245,11 @@ def main():
     version = subprocess.run(["waybar", "--version"], capture_output=True, text=True).stdout.strip()
     median = {n: {k: statistics.median(r[k] for r in rs) for k in rs[0]} for n, rs in runs.items()}
     median["island"]["morph_cpu_ms"] = round(morph_ms, 1)
+    median["dunst"] = dunst
+    median["stack_pss_mb"] = round(median["waybar"]["pss_mb"] + dunst["pss_mb"], 1)
+    median["stack_rss_mb"] = round(median["waybar"]["rss_mb"] + dunst["rss_mb"], 1)
+    median["launcher_ms"] = {"rofi": statistics.median(rofi_ms), "island": statistics.median(island_ms)}
+    median["island_palette_pss_mb"] = {"idle": round(idle_pss / 1024, 1), "open": round(open_pss / 1024, 1), "after": round(closed_pss / 1024, 1)}
     print(json.dumps({
         "method": f"{RUNS} runs, {IDLE}s idle, {SWITCHES} workspace switches, headless Mango, same windows and apps",
         "waybar_version": version,

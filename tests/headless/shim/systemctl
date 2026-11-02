@@ -1,0 +1,4 @@
+#!/bin/bash
+# Tests must never be able to reboot the machine they run on.
+H=$(dirname "$(readlink -f "$0")")/..
+echo "systemctl $*" >> $H/run/shim.log

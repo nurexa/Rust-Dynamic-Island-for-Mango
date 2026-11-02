@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dynamic Island for MangoWC</title>
-<meta name="description" content="A Rust Dynamic Island that replaces Waybar on MangoWC: workspaces, media, stats and tray in one pill.">
+<title>Rust Dynamic Island</title>
+<meta name="description" content="A minimal, modular, all-in-one desktop tool for MangoWC: bar, launcher, notifications, clipboard and screenshots in one Rust pill.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
@@ -57,8 +57,8 @@ code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
 main { width: min(1040px, 100%); margin: 0 auto; padding: 0 24px 96px; }
 section { margin-top: 112px; }
 h1, h2 { font-family: "Unbounded", system-ui, sans-serif; font-weight: 700; letter-spacing: -.02em; line-height: 1.08; }
-h1 { font-size: clamp(2.5rem, 8.2vw, 5.6rem); max-width: 13ch; }
-h2 { font-size: clamp(1.7rem, 4.4vw, 2.9rem); max-width: 19ch; }
+h1 { font-size: clamp(2.5rem, 8.2vw, 5.6rem); max-width: 13ch; text-wrap: balance; }
+h2 { font-size: clamp(1.7rem, 4.4vw, 2.9rem); max-width: 26ch; text-wrap: balance; }
 .lede { margin-top: 18px; max-width: 54ch; font-size: 1.16rem; color: var(--ink-soft); }
 
 .hero { min-height: 100svh; display: flex; flex-direction: column; justify-content: flex-end; padding: 150px 0 72px; margin: 0; }
@@ -100,6 +100,10 @@ thead th { border-top: 0; color: var(--ink-soft); font-weight: 500; }
 td:not(:first-child), thead th:not(:first-child) { text-align: right; white-space: nowrap; }
 .fine { margin-top: 16px; font-size: .9rem; color: var(--ink-soft); max-width: 72ch; }
 
+.parts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 32px; }
+.part { padding: 16px 18px; border-radius: 18px; background: var(--paper); min-width: 0; }
+.part b { display: block; font-weight: 600; }
+.part span { display: block; margin-top: 2px; font-size: .93rem; color: var(--ink-soft); }
 .levels { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 32px; }
 .level { padding: 22px; border-radius: 22px; background: var(--paper); min-width: 0; }
 .level h3 { font-size: 1.05rem; font-weight: 600; }
@@ -150,7 +154,7 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
 @media (max-width: 640px) {
   body { font-size: 16px; }
   section { margin-top: 80px; }
-  .levels { grid-template-columns: 1fr; }
+  .levels, .parts { grid-template-columns: 1fr; }
   .card { padding: 20px 18px; }
   .bar-row { grid-template-columns: 54px 1fr; }
   th, td { padding-right: 8px; font-size: .88rem; }
@@ -187,8 +191,8 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
       <button class="chip" data-wall="ember" aria-label="Workspace 3, ember wallpaper">3 <svg><use href="#g-note"/></svg></button>
     </div>
     <div class="tiles">
-      <div class="tile"><span>Memory</span><b>10.9 MB</b></div>
-      <div class="tile"><span>Workspace switch</span><b>2.5 ms</b></div>
+      <div class="tile"><span>Memory</span><b>13.6 MB</b></div>
+      <div class="tile"><span>Workspace switch</span><b>1.25 ms</b></div>
       <div class="tile"><span>Idle CPU</span><b>&lt;0.1%</b></div>
     </div>
   </div>
@@ -196,8 +200,8 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
 
 <main>
   <section class="hero">
-    <h1>A Dynamic Island for MangoWC</h1>
-    <p class="lede">One black pill replaces Waybar. Hover it for workspaces, media, stats and the tray, drag it out of the way, and it floats over your windows without moving them.</p>
+    <h1>Your whole desktop in one pill</h1>
+    <p class="lede">A minimal, modular, all-in-one tool for MangoWC. One small Rust program is your bar, app search, notifications, clipboard and screenshots. Use all of it, or only the parts you want.</p>
     <p class="hint">That pill at the top is a working copy. Open it and pick a workspace: this page's wallpaper changes, and so does the accent, the way the real one follows yours.</p>
     <div class="actions">
       <a class="button" href="https://github.com/nurexa/Rust-Dynamic-Island-for-Mango">View on GitHub</a>
@@ -206,98 +210,122 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
   </section>
 
   <section id="demo">
-    <h2>Hover, click, drag</h2>
+    <h2>Everything happens in the pill</h2>
     <div class="screen">
-      <img src="demo.gif" width="880" height="540" loading="lazy" alt="The pill opens into a panel on hover, switches workspace on a click, then drags across the screen and docks again.">
+      <img src="demo.gif" width="880" height="540" loading="lazy" alt="The pill opens into a panel, searches apps, shows a notification, then drags out of the way and docks again.">
+    </div>
+  </section>
+
+  <section id="parts">
+    <h2>Eleven tools you can leave out</h2>
+    <p class="lede">Every part is optional. Turn it off in the config, or leave it out of the build. A tool costs nothing until you open it.</p>
+    <div class="parts">
+      <div class="part"><b>Bar</b><span>Workspaces, media, stats, audio, tray. Replaces Waybar.</span></div>
+      <div class="part"><b>App search</b><span>Favourites rise to the top. Replaces rofi.</span></div>
+      <div class="part"><b>Notifications</b><span>Appear in the pill, with history. Replaces dunst.</span></div>
+      <div class="part"><b>Clipboard</b><span>Search everything you've copied.</span></div>
+      <div class="part"><b>Screenshots</b><span>Region, window, screen, annotate, color picker.</span></div>
+      <div class="part"><b>Window switcher</b><span>Any window, on any workspace.</span></div>
+      <div class="part"><b>Run prompt</b><span>Anything on your PATH, or what you typed.</span></div>
+      <div class="part"><b>Wi-Fi</b><span>Pick a network and enter its password.</span></div>
+      <div class="part"><b>Wallpapers</b><span>Pick from a folder, with thumbnails.</span></div>
+      <div class="part"><b>Power menu</b><span>Reboot and shut down ask twice. Replaces wlogout.</span></div>
+      <div class="part"><b>Script menus</b><span>Swap <code>rofi -dmenu</code> for <code>island dmenu</code>.</span></div>
     </div>
   </section>
 
   <section id="benchmarks">
-    <h2>Less than a third of Waybar's memory</h2>
-    <p class="lede">A daily-driver Waybar config against the island, on the same compositor with the same windows and apps. Lower is better.</p>
+    <h2>All of it, in under a third of the memory</h2>
+    <p class="lede">A daily-driver Waybar config plus dunst against the island doing both jobs, on the same compositor with the same windows and apps. Lower is better.</p>
     <div class="card">
       <div class="legend" aria-label="Legend">
         <span><i style="background:var(--series-island)"></i>Island</span>
-        <span><i style="background:var(--series-waybar)"></i>Waybar v0.15.0</span>
+        <span><i style="background:var(--series-waybar)"></i>What it replaces</span>
       </div>
       <div class="metric">
         <h3>Real memory (PSS)</h3>
         <p>Memory shared with other apps is split fairly between them.</p>
-        <div class="bar-row"><span>Island</span><div class="track"><div class="bar island" style="width:calc(29.2% - 18px)" data-tip="Island: 10.9 MB"></div><span class="value">10.9 MB</span></div></div>
-        <div class="bar-row"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 62px)" data-tip="Waybar: 37.3 MB"></div><span class="value">37.3 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(28.9% - 21px)" data-tip="Island: 13.6 MB"></div><span class="value">13.6 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar + dunst</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar + dunst: 47 MB"></div><span class="value">47 MB</span></div></div>
       </div>
       <div class="metric">
         <h3>Resident memory (RSS)</h3>
         <p>Everything mapped in, shared libraries and fonts included.</p>
-        <div class="bar-row"><span>Island</span><div class="track"><div class="bar island" style="width:calc(45.0% - 28px)" data-tip="Island: 34.7 MB"></div><span class="value">34.7 MB</span></div></div>
-        <div class="bar-row"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 62px)" data-tip="Waybar: 77.1 MB"></div><span class="value">77.1 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(39.5% - 28px)" data-tip="Island: 35.8 MB"></div><span class="value">35.8 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar + dunst</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar + dunst: 90.7 MB"></div><span class="value">90.7 MB</span></div></div>
       </div>
       <div class="metric">
         <h3>CPU per workspace switch</h3>
         <p>What each switch costs the bar.</p>
-        <div class="bar-row"><span>Island</span><div class="track"><div class="bar island" style="width:calc(5.5% - 3px)" data-tip="Island: 2.5 ms"></div><span class="value">2.5 ms</span></div></div>
-        <div class="bar-row"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 62px)" data-tip="Waybar: 45.75 ms"></div><span class="value">45.75 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(4.5% - 3px)" data-tip="Island: 1.25 ms"></div><span class="value">1.25 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 27.5 ms"></div><span class="value">27.5 ms</span></div></div>
       </div>
       <div class="metric">
-        <h3>Startup</h3>
+        <h3>Bar startup</h3>
         <p>From launch to first frame on screen.</p>
-        <div class="bar-row"><span>Island</span><div class="track"><div class="bar island" style="width:calc(42.6% - 26px)" data-tip="Island: 69 ms"></div><span class="value">69 ms</span></div></div>
-        <div class="bar-row"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 62px)" data-tip="Waybar: 162 ms"></div><span class="value">162 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(29.2% - 21px)" data-tip="Island: 31 ms"></div><span class="value">31 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 106 ms"></div><span class="value">106 ms</span></div></div>
+      </div>
+      <div class="metric">
+        <h3>Launcher open</h3>
+        <p>From the keybind to taking your typing.</p>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(19.5% - 14px)" data-tip="Island: 8 ms"></div><span class="value">8 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>rofi</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="rofi: 41 ms"></div><span class="value">41 ms</span></div></div>
       </div>
     </div>
     <div class="card">
       <table>
         <caption>Everything we measured</caption>
-        <thead><tr><th scope="col">Median of 3 runs</th><th scope="col">Waybar</th><th scope="col">Island</th></tr></thead>
+        <thead><tr><th scope="col">Median of 3 runs</th><th scope="col">Waybar + dunst</th><th scope="col">Island</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Real memory (PSS)</th><td>37.3 MB</td><td>10.9 MB</td></tr>
-          <tr><th scope="row">Resident memory (RSS)</th><td>77.1 MB</td><td>34.7 MB</td></tr>
-          <tr><th scope="row">CPU per workspace switch</th><td>45.75 ms</td><td>2.5 ms</td></tr>
-          <tr><th scope="row">Startup</th><td>162 ms</td><td>69 ms</td></tr>
-          <tr><th scope="row">Threads</th><td>21</td><td>16</td></tr>
-          <tr><th scope="row">Linked shared libraries</th><td>117</td><td>39</td></tr>
-          <tr><th scope="row">Idle CPU, across 12 runs</th><td>0–2.2%</td><td>0–0.1%</td></tr>
-          <tr><th scope="row">Idle wakeups per second, across 12 runs</th><td>0–48</td><td>2–8</td></tr>
-          <tr><th scope="row">Binary size</th><td>2.5 MB</td><td>3.1 MB</td></tr>
+          <tr><th scope="row">Real memory (PSS)</th><td>47 MB</td><td>13.6 MB</td></tr>
+          <tr><th scope="row">Resident memory (RSS)</th><td>90.7 MB</td><td>35.8 MB</td></tr>
+          <tr><th scope="row">CPU per workspace switch</th><td>27.5 ms</td><td>1.25 ms</td></tr>
+          <tr><th scope="row">Bar startup</th><td>106 ms</td><td>31 ms</td></tr>
+          <tr><th scope="row">Launcher open, against rofi</th><td>41 ms</td><td>8 ms</td></tr>
+          <tr><th scope="row">Linked shared libraries, Waybar alone</th><td>117</td><td>40</td></tr>
+          <tr><th scope="row">Idle CPU, across all runs</th><td>0–2.2%</td><td>0–0.1%</td></tr>
+          <tr><th scope="row">Idle wakeups per second, across all runs</th><td>0–48</td><td>2–8</td></tr>
+          <tr><th scope="row">Binary size, Waybar alone</th><td>2.5 MB</td><td>3.3 MB</td></tr>
         </tbody>
       </table>
-      <p class="fine">Measured in a private headless Mango against a real daily-driver Waybar config: workspace pills, media, audio, tray, network and clock. The island's numbers include its pactl listener. Waybar's switch cost includes the helper commands its custom workspace modules run, but not the separate script that feeds them. Treat idle as a tie: both sit near zero, and Waybar moves with audio server activity. Waybar has the smaller binary. Run <code>bench/run.py</code> to reproduce this.</p>
+      <p class="fine">Measured in a private headless Mango against a real daily-driver Waybar config: workspace pills, media, audio, tray, network and clock. Memory counts Waybar and dunst together, because the island does both jobs, and includes the island's pactl listener. Waybar's switch cost includes the helper commands its custom workspace modules run, but not the separate script that feeds them. Launcher times stop when rofi's window maps and when the island has raised itself and taken the keyboard, so treat that gap as indicative. Idle is a tie: both sit near zero, and Waybar moves with audio server activity. Waybar has the smaller binary. Opening the palette adds about 3 MB while it's open. Run <code>bench/run.py</code> to reproduce this.</p>
     </div>
   </section>
 
   <section id="mod">
     <h2>Change anything</h2>
-    <p class="lede">Most changes take a line of config. When they don't, a new module is one file.</p>
+    <p class="lede">Most changes take a line of config. When they don't, a new tool or module is one file.</p>
     <div class="levels">
       <div class="level">
-        <h3>Rearrange it</h3>
-        <p>The pill and panel are ordered lists of modules. Reload without restarting.</p>
+        <h3>Keep only what you want</h3>
+        <p>Everything is an ordered list. Reload without restarting.</p>
 <pre>pill = ["workspaces", "clock"]
-panel = ["header", "media", "audio"]</pre>
+tools = ["apps", "clipboard"]
+notifications = false</pre>
       </div>
       <div class="level">
-        <h3>Add a module with a script</h3>
-        <p>Any shell command works. Its output is the module.</p>
-<pre>[[custom]]
-name = "weather"
-exec = "curl -s 'wttr.in/?format=%t'"
-interval = 600</pre>
+        <h3>Add a tool with a script</h3>
+        <p>Two shell commands make a searchable tool.</p>
+<pre>[[tool]]
+name = "projects"
+list = "ls ~/Projects"
+run = "kitty -d ~/Projects/{}"</pre>
       </div>
       <div class="level">
-        <h3>Write one in Rust</h3>
-        <p>A module is one function that draws and returns where it ended.</p>
-<pre>pub fn pill(p: &amp;mut Pen, c: &amp;Ctx, x: f64) -&gt; f64 {
-    x + p.text("hi", 13.0, Weight::Bold,
-               p.pal.fg, x, 16.0, -1.0)
-}</pre>
+        <h3>Build only what you need</h3>
+        <p>Compile parts out for a smaller binary, or write your own in one file.</p>
+<pre>cargo build --release \
+  --no-default-features \
+  --features "apps,clipboard"</pre>
       </div>
       <div class="level">
         <h3>Port it to your compositor</h3>
-        <p>Compositor support sits behind a five-method trait, so a port is one file.</p>
+        <p>Compositor support sits behind a six-method trait, so a port is one file.</p>
 <pre>trait Backend {
     fn watch(&amp;self, tx: Tx);
     fn view(&amp;self, tag: u32, monitor: &amp;str);
-    // send_to, focus, cycle
+    // send_to, focus, cycle, quit
 }</pre>
       </div>
     </div>
@@ -306,11 +334,11 @@ interval = 600</pre>
 
   <section id="install" class="install">
     <h2>Install it</h2>
-    <p class="lede">Run this inside a Mango session. It keeps your originals, and <code>--undo</code> puts Waybar back.</p>
+    <p class="lede">Run this inside a Mango session. Your keys stay the same and only what they open changes. <code>--undo</code> restores your config exactly.</p>
 <pre>git clone https://github.com/nurexa/Rust-Dynamic-Island-for-Mango
 cd Rust-Dynamic-Island-for-Mango
 ./install.sh</pre>
-    <p class="fine">You'll need Rust, cairo, pango, a Nerd Font, adwaita-icon-theme, and playerctl for media. The island replaces Waybar's tray watcher too, so your tray apps keep working.</p>
+    <p class="fine">You'll need Rust, cairo, pango, libxkbcommon, a Nerd Font, adwaita-icon-theme, and playerctl for media. Prefer only the bar? Use <code>./install.sh --bar-only</code>.</p>
   </section>
 
   <section id="stars" class="stars">

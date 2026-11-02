@@ -1,0 +1,11 @@
+#!/bin/bash
+# A pretend network list, and a log of what was asked for. Passwords read from stdin
+# are recorded separately, so a test can prove they never reached argv.
+H=$(dirname "$(readlink -f "$0")")/..
+echo "nmcli $*" >> $H/run/shim.log
+case "$*" in
+ "-g WIFI radio") echo enabled;;
+ "-t -f NAME connection show") echo Home;;
+ *"device wifi list"*) printf '*:90:WPA2:Home\n :60:WPA2:Cafe\n :40:--:Open Net\n';;
+ "--ask device wifi connect"*) read -r p; echo "$p" > $H/run/wifi.password;;
+esac

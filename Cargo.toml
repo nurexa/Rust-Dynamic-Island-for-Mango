@@ -2,12 +2,26 @@
 name = "island"
 version = "0.1.0"
 edition = "2024"
-description = "An Apple-style Dynamic Island for Wayland, with first-class MangoWC support"
+description = "A minimal, modular all-in-one desktop tool for Wayland: bar, launcher, notifications, clipboard and screenshots in one Dynamic Island"
 license = "GPL-3.0-only"
 repository = "https://github.com/nurexa/Rust-Dynamic-Island-for-Mango"
 
+[features]
+# Everything's on by default. To build less:
+#   cargo build --release --no-default-features --features "apps,clipboard"
+default = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power", "notifications"]
+apps = []
+run = []
+windows = []
+clipboard = []
+screenshot = []
+wifi = []
+wallpaper = []
+power = []
+notifications = []
+
 [dependencies]
-smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop"] }
+smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop", "xkbcommon"] }
 cairo-rs = { version = "0.22", default-features = false, features = ["png"] }
 pango = { version = "0.22", features = ["v1_50"] }
 pangocairo = "0.22"

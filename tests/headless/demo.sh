@@ -1,6 +1,6 @@
 #!/bin/bash
 # Records docs/demo.gif in a private headless Mango, with neutral windows, a mock
-# player and no network name, so nothing personal can end up in it. Animations run
+# player, sample clipboard text and no network name, so nothing personal can end up in it. Animations run
 # at a tenth of real speed and the capture is sped back up, because grim is far
 # slower than the spring. Needs ffmpeg and awww.
 H=$(dirname "$(readlink -f "$0")")
@@ -23,9 +23,17 @@ ffmpeg -nostdin -v error -y -f lavfi -i "gradients=s=1920x1080:c0=0x2b3a78:c1=0x
 nohup setsid awww-daemon >/dev/null 2>&1 & echo $! > $R/awww.pid
 sleep .5; awww img $R/wall.png --transition-type none >/dev/null 2>&1
 
+# Private history and app list: nothing from this machine's user can show up.
+export XDG_CACHE_HOME=$R/cache XDG_DATA_HOME=$R/data
+mkdir -p $XDG_CACHE_HOME $XDG_DATA_HOME
+for t in 'git clone https://github.com/nurexa/Rust-Dynamic-Island-for-Mango' 'cargo build --release' 'Meeting moved to 3pm'; do
+  printf '%s' "$t" | cliphist store
+done
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/nonexistent ISLAND_TIME_SCALE=0.1
 $H/full.sh
-sleep .5; $V move 1500 800; sleep .5
+BIN=${ISLAND_BIN:-$ROOT/target/release/island}
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$R/bus PATH=$H/shim:$PATH
+sleep .5; $V move 1400 620; sleep .5
 
 F=$R/frames; rm -rf $F; mkdir -p $F
 (n=0; while :; do grim -c -t ppm $F/$(printf %05d $n).ppm 2>/dev/null; n=$((n+1)); done) &
@@ -33,20 +41,23 @@ CAP=$!
 START=$(date +%s.%N)
 pos(){ read -r _ _ X Y < <(grep pos $R/island/state); X=${X%.*}; Y=${Y%.*}; }
 
-sleep 7                                   # the pill on its own, windows behind it
-$V path 1400 620 1000 24 24 12; sleep 9   # hover: it opens
-$V path 1000 24 806 106 18 16; sleep 2
-$V down; sleep .1; $V up; sleep 6         # switch workspace from the panel
-$V path 806 106 712 106 12 16; sleep 1.5
-$V down; sleep .1; $V up; sleep 5         # and back
-$V path 712 106 1400 620 20 12; sleep 8   # leave: it closes
+sleep 5                                   # the pill, windows running behind it
+$V path 1400 620 1000 24 24 12; sleep 9   # hover: the panel
+$V path 1000 24 1400 620 20 12; sleep 7   # leave: it closes
+$BIN open apps; sleep 7                   # the launcher
+for k in b l e n; do $V type $k; sleep 1.2; done
+sleep 3; $V key Escape; sleep 7
+$BIN open clipboard; sleep 7              # clipboard search
+for k in m e e; do $V type $k; sleep 1.2; done
+sleep 3; $V key Escape; sleep 7
+notify-send -t 8000 -i "$R/art.jpg" "New message" "Are we still on for tonight?"; sleep 12
 $V path 1400 620 1010 22 20 10; sleep .1
 $V drag 300 420 60 34; sleep 2            # drag it out of the way
 sleep 1.5; pos
 $V move $((X+150)) $((Y+90)); sleep 1
-$V path $((X+150)) $((Y+90)) $((X+110)) $((Y+16)) 10 14
-$V dbl $((X+110)) $((Y+16)); sleep 8      # double-click: home
-$V path $((X+110)) $((Y+16)) 1400 620 14 10; sleep 4
+$V path $((X+150)) $((Y+90)) $((X+120)) $((Y+16)) 10 14
+$V dbl $((X+120)) $((Y+16)); sleep 8      # double-click: home
+$V path $((X+120)) $((Y+16)) 1400 620 14 10; sleep 3
 
 kill $CAP; sleep .3
 SECS=$(python3 -c "import time;print(time.time()-$START)")
