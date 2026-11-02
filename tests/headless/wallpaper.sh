@@ -11,7 +11,7 @@ mkdir -p $R/bin $R/walls $R/cfg/island; ln -sf $BIN $R/bin/island
 # A 21:9 clip: the case black bars exist for.
 ffmpeg -nostdin -y -v error -f lavfi -i "testsrc2=s=2560x1080:r=30:d=2" -pix_fmt yuv420p $R/walls/wide.mp4
 export PATH=$R/bin:$PATH XDG_CONFIG_HOME=$R/cfg XDG_STATE_HOME=$R XDG_CACHE_HOME=$R/cache
-printf '[wallpaper]\ndir = "%s/walls"\n[commands]\nwallpaper_opt = "%s opt"\n' $R $WALL > $R/cfg/island/config.toml
+printf 'panel = ["header", "wallpaper"]\n[wallpaper]\ndir = "%s/walls"\n[commands]\nwallpaper_opt = "%s opt"\n' $R $WALL > $R/cfg/island/config.toml
 $H/isl; sleep .3
 $WALL set $R/walls/wide.mp4
 rate(){ ffprobe -v error -show_entries stream=width,height,r_frame_rate -of csv=p=0 "$1" | tr , ' '; }

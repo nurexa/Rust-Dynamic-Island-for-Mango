@@ -615,7 +615,14 @@ impl Island {
                     cr.set_source_rgba(fr, fg, fb, 0.1);
                     let _ = cr.fill();
                     if let (Some(tip), true) = (&reg.tip, self.t.target > 0.5 && !tip_is_empty(reg.tip.as_deref())) {
-                        self.paint_tip(cr, tip, sh, pal, cfg);
+                        if matches!(reg.left, Action::PaletteTool(_)) {
+                            // The tool tabs live in the search row, so their tip goes beside them, not over the results.
+                            let left = c.regions.iter().filter(|r| matches!(r.left, Action::PaletteTool(_)))
+                                .map(|r| r.rect.0).fold(f64::MAX, f64::min);
+                            self.paint_row_tip(cr, tip, (ox + left - 8.0, oy + y + h / 2.0), pal, cfg);
+                        } else {
+                            self.paint_tip(cr, tip, sh, pal, cfg);
+                        }
                     }
                 }
             }
@@ -638,6 +645,27 @@ impl Island {
         cr.move_to(sh.x + sh.w - 20.0 - 300.0, sh.y + 55.0);
         let (r, g, b) = pal.fg;
         cr.set_source_rgba(r, g, b, 0.75);
+        pangocairo::functions::show_layout(cr, &layout);
+    }
+
+    /// A tip right-aligned to `end` (x, centre y), on a backing that hides the search text under it.
+    fn paint_row_tip(&self, cr: &Context, tip: &str, end: (f64, f64), pal: &crate::theme::Palette, cfg: &Config) {
+        let layout = pangocairo::functions::create_layout(cr);
+        let mut d = pango::FontDescription::new();
+        d.set_family(&cfg.font);
+        d.set_weight(pango::Weight::Medium);
+        d.set_absolute_size(11.5 * pango::SCALE as f64);
+        layout.set_font_description(Some(&d));
+        layout.set_text(tip);
+        let (w, h) = layout.pixel_size();
+        let (x, y) = (end.0 - w as f64, end.1 - h as f64 / 2.0);
+        squircle(cr, x - 9.0, y - 4.0, w as f64 + 18.0, h as f64 + 8.0, 9.0, 0.0);
+        let (r, g, b) = pal.bg;
+        cr.set_source_rgba(r, g, b, 1.0);
+        let _ = cr.fill();
+        cr.move_to(x, y);
+        let (r, g, b) = pal.fg;
+        cr.set_source_rgba(r, g, b, 0.8);
         pangocairo::functions::show_layout(cr, &layout);
     }
 
@@ -715,7 +743,8 @@ impl Island {
         self.pointer = at;
         if self.sliding {
             let region = self.press.as_ref().and_then(|p| p.region).unwrap_or(0);
-            return Outcome::Act(Action::Volume, self.slider_frac(region));
+            let action = self.active().map_or(Action::Volume, |(c, ..)| c.regions[region].left.clone());
+            return Outcome::Act(action, self.slider_frac(region));
         }
         if let Some(p) = &self.press {
             let moved = (at.0 - p.at.0).hypot(at.1 - p.at.1);
@@ -760,10 +789,11 @@ impl Island {
         self.press = Some(Press { button, at: self.pointer, region });
         if button == BTN_LEFT {
             if let Some(i) = region {
-                let is_slider = self.active().is_some_and(|(c, ..)| c.regions[i].left == Action::Volume);
-                if is_slider {
+                let slider = self.active().map(|(c, ..)| c.regions[i].left.clone())
+                    .filter(|a| matches!(a, Action::Volume | Action::Brightness));
+                if let Some(action) = slider {
                     self.sliding = true;
-                    return Outcome::Act(Action::Volume, self.slider_frac(i));
+                    return Outcome::Act(action, self.slider_frac(i));
                 }
             }
         }

@@ -35,26 +35,35 @@ your session, and they should stay small, separate programs.
 
 ## Benchmarks
 
-Measured with a daily-driver Waybar config on the same compositor, with the same
-windows and apps. Each number is the median of 3 runs, and child processes count.
+Island, Waybar 0.15.0 and [mangobar](https://github.com/mangowm/mangobar) 0.2.2 (stock config),
+in one private headless Mango with the same windows and apps. Each number is the median of
+5 runs, with the order rotated so none gets the warm cache, and child processes count.
+Lower is better, and the best is bold.
 
-| | Waybar + dunst | Island |
-|---|---|---|
-| Real memory (PSS) | 47 MB | **13.6 MB** |
-| Resident memory (RSS) | 90.7 MB | **35.8 MB** |
-| CPU per workspace switch | 27.5 ms | **1.25 ms** |
-| Bar startup | 106 ms | **31 ms** |
-| Launcher open, against rofi | 41 ms | **8 ms** |
-| Idle CPU, across all runs | 0–2.2% | 0–0.1% |
-| Binary size, Waybar alone | **2.5 MB** | 3.3 MB |
+| | Waybar | mangobar | Island |
+|---|---|---|---|
+| Real memory (PSS) | 34.1 MB | 18.7 MB | **12.4 MB** |
+| Resident memory (RSS) | 70.7 MB | 40.9 MB | **39.6 MB** |
+| CPU per workspace switch | 42 ms | **0.75 ms** | 1.75 ms |
+| Bar startup | 103 ms | 52 ms | **39 ms** |
+| Idle wakeups per second | n/a | 11.9 | **4.0** |
+| Idle CPU | 0–0.3% | 0.03–0.07% | 0–0.03% |
+| Binary size | 2.5 MB | **0.3 MB** | 3.4 MB |
 
-Memory counts Waybar and dunst together, because the island does both jobs, and includes
-the island's `pactl` listener. Idle is effectively a tie, since both sit near zero and
-Waybar moves with audio server activity. Waybar's switch cost includes the helper
-commands its custom workspace modules run, but not the separate script that feeds
-them. Launcher times stop when rofi's window maps and when the island has raised
-itself and taken the keyboard, so treat that gap as indicative. Opening the palette
-adds about 3 MB while it's open.
+Two things to read carefully. mangobar is the faster of the two small bars at drawing a
+workspace change, because it's a 0.3 MB C program that only draws a bar, and it is
+dynamically linked to more libraries (65 against the island's 41). The island does that
+and the launcher, notifications, clipboard and screenshots, and still uses less memory.
+Waybar's wakeup count measured negative (threads exit between samples), so it's left out.
+Idle CPU is a tie between all three. Waybar's switch cost includes the helper commands its
+custom workspace modules run, not the separate script that feeds them. Opening the
+palette adds about 3 MB while it's open, and the first Waybar run was a cold start
+(201 ms), which is why the median matters. A busy desktop moves these numbers, so rerun it
+on yours.
+
+The previous run, against Waybar plus dunst and rofi (both since uninstalled on the test
+machine), had 47 MB for the Waybar and dunst stack against 13.6 MB, and 41 ms for rofi
+against 8 ms for the island's launcher.
 
 Run `bench/run.py` to reproduce this; raw results are in `bench/results.json`.
 
@@ -125,15 +134,15 @@ Panel controls:
 ## Wallpapers
 
 `wall/wall` is a small animated-wallpaper engine (needs `gslapper`, `ffmpeg`, `awww`) that
-the installer puts in `~/.local/bin`. Set `wallpaper_opt = "wall opt"` and the panel gains a
-wallpaper section: fit (fill, or the whole picture with black bars for non-16:9 videos),
-speed, frame rate and quality, for every wallpaper or just the one showing.
+the installer puts in `~/.local/bin`. Set `wallpaper_opt = "wall opt"` and the wallpaper picker gains **Settings ›**: fit (fill,
+or the whole picture with black bars for non-16:9 videos), speed, frame rate and quality,
+for every wallpaper or just the one showing.
 
 Videos play from a cached copy encoded once at your monitor's exact size and frame rate, so
 nothing is rescaled or retimed while playing. Changing a setting re-encodes once (with a
-crossfade when it's ready) and is remembered. The same settings sit in the wallpaper
-picker (`island open wallpaper`) under **Settings ›**, which expands into Fit, Speed, FPS,
-Quality and Apply to; Esc steps back out. If your config sets `panel` yourself, add `"wallpaper"` to it. `wall opt` does the same from a terminal.
+crossfade when it's ready) and is remembered. Open the picker with `island open wallpaper`; Settings expands into Fit, Speed, FPS,
+Quality and Apply to, and Esc steps back out. `wall opt` does the same from a terminal.
+They stay out of the main panel by default; add `"wallpaper"` to `panel` if you want them there.
 
 ## Make it yours
 

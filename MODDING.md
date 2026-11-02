@@ -11,7 +11,7 @@ Leave a name out of a list and that part is gone.
 
 ```toml
 pill = ["media", "workspaces", "network", "clock"]
-panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "status", "wallpaper"]
+panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status"]
 tools = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power"]
 notifications = true          # false keeps your own notification daemon
 ```
@@ -31,6 +31,8 @@ notifications = true          # false keeps your own notification daemon
 | `notifications` | Recent notifications, do not disturb |
 | `stats` | CPU, GPU, RAM, network tiles |
 | `audio` | Output device and volume slider |
+| `brightness` | Brightness slider; hidden without a backlight or `brightness_get` |
+| `wallpaper` | Wallpaper engine chips (fit, speed, fps, quality); off by default, the picker has them |
 | `status` | Network, battery, tray |
 | `wallpaper` | Wallpaper fit, speed, fps, quality (needs `wallpaper_opt`) |
 

@@ -10,6 +10,7 @@ use crate::{
 };
 
 mod audio;
+mod brightness;
 mod clock;
 pub mod custom;
 mod header;
@@ -61,6 +62,7 @@ const PANEL: &[(&str, PanelModule)] = &[
     ("notifications", notify::panel),
     ("stats", stats::panel),
     ("audio", audio::panel),
+    ("brightness", brightness::panel),
     ("status", status::panel),
     ("wallpaper", wallpaper::panel),
 ];

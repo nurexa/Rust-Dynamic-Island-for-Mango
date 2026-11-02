@@ -1,111 +1,208 @@
 {
-  "method": "3 runs, 30s idle, 40 workspace switches, headless Mango, same windows and apps",
+  "method": "5 runs, 30s idle, 40 workspace switches, headless Mango, same windows and apps",
   "waybar_version": "Waybar v0.15.0",
+  "mangobar_version": "mangobar 0.2.2",
   "binary_mb": {
     "waybar": 2.5,
-    "island": 3.3
+    "mangobar": 0.3,
+    "island": 3.4
   },
   "median": {
     "waybar": {
-      "startup_ms": 106,
-      "pss_mb": 39.4,
-      "rss_mb": 68.5,
+      "startup_ms": 103,
+      "pss_mb": 34.1,
+      "rss_mb": 70.7,
       "threads": 21,
       "processes": 1,
       "idle_cpu_pct": 0.0,
-      "idle_wakeups_per_s": -0.9,
-      "switch_cpu_ms": 27.5
+      "idle_wakeups_per_s": -0.8,
+      "switch_cpu_ms": 42.0
+    },
+    "mangobar": {
+      "startup_ms": 52,
+      "pss_mb": 18.7,
+      "rss_mb": 40.9,
+      "threads": 2,
+      "processes": 1,
+      "idle_cpu_pct": 0.033,
+      "idle_wakeups_per_s": 11.9,
+      "switch_cpu_ms": 0.75
     },
     "island": {
-      "startup_ms": 31,
-      "pss_mb": 13.6,
-      "rss_mb": 35.8,
+      "startup_ms": 39,
+      "pss_mb": 12.4,
+      "rss_mb": 39.6,
       "threads": 17,
       "processes": 2,
       "idle_cpu_pct": 0.0,
-      "idle_wakeups_per_s": 4.1,
-      "switch_cpu_ms": 1.25,
-      "morph_cpu_ms": 39.0
+      "idle_wakeups_per_s": 4.0,
+      "switch_cpu_ms": 1.75,
+      "morph_cpu_ms": 67.0
     },
-    "dunst": {
-      "pss_mb": 7.6,
-      "rss_mb": 22.2
-    },
-    "stack_pss_mb": 47.0,
-    "stack_rss_mb": 90.7,
     "launcher_ms": {
-      "rofi": 41,
-      "island": 8
+      "island": 15
     },
     "island_palette_pss_mb": {
-      "idle": 13.5,
-      "open": 16.7,
-      "after": 15.4
+      "idle": 12.3,
+      "open": 15.1,
+      "after": 13.9
     }
   },
   "runs": {
     "waybar": [
       {
-        "startup_ms": 318,
-        "pss_mb": 39.4,
-        "rss_mb": 68.5,
+        "startup_ms": 201,
+        "pss_mb": 33.4,
+        "rss_mb": 70.3,
         "threads": 21,
         "processes": 1,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": -0.3,
-        "switch_cpu_ms": 29.75
+        "idle_cpu_pct": 0.033,
+        "idle_wakeups_per_s": -0.8,
+        "switch_cpu_ms": 41.0
       },
       {
-        "startup_ms": 99,
-        "pss_mb": 39.4,
-        "rss_mb": 68.4,
+        "startup_ms": 103,
+        "pss_mb": 34.1,
+        "rss_mb": 70.7,
         "threads": 21,
         "processes": 1,
         "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": -0.9,
-        "switch_cpu_ms": 27.5
+        "idle_wakeups_per_s": -0.6,
+        "switch_cpu_ms": 46.25
       },
       {
-        "startup_ms": 106,
-        "pss_mb": 39.4,
-        "rss_mb": 68.5,
+        "startup_ms": 111,
+        "pss_mb": 34.0,
+        "rss_mb": 70.7,
         "threads": 21,
         "processes": 1,
         "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": -1.1,
-        "switch_cpu_ms": 27.5
+        "idle_wakeups_per_s": -1.0,
+        "switch_cpu_ms": 46.75
+      },
+      {
+        "startup_ms": 95,
+        "pss_mb": 34.1,
+        "rss_mb": 70.7,
+        "threads": 21,
+        "processes": 1,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": -1.2,
+        "switch_cpu_ms": 42.0
+      },
+      {
+        "startup_ms": 101,
+        "pss_mb": 34.1,
+        "rss_mb": 70.9,
+        "threads": 21,
+        "processes": 1,
+        "idle_cpu_pct": 0.267,
+        "idle_wakeups_per_s": 7.5,
+        "switch_cpu_ms": 39.5
+      }
+    ],
+    "mangobar": [
+      {
+        "startup_ms": 51,
+        "pss_mb": 18.6,
+        "rss_mb": 40.7,
+        "threads": 2,
+        "processes": 1,
+        "idle_cpu_pct": 0.033,
+        "idle_wakeups_per_s": 11.8,
+        "switch_cpu_ms": 0.75
+      },
+      {
+        "startup_ms": 52,
+        "pss_mb": 18.7,
+        "rss_mb": 40.9,
+        "threads": 2,
+        "processes": 1,
+        "idle_cpu_pct": 0.067,
+        "idle_wakeups_per_s": 11.9,
+        "switch_cpu_ms": 0.5
+      },
+      {
+        "startup_ms": 52,
+        "pss_mb": 18.9,
+        "rss_mb": 40.9,
+        "threads": 2,
+        "processes": 1,
+        "idle_cpu_pct": 0.067,
+        "idle_wakeups_per_s": 11.9,
+        "switch_cpu_ms": 0.5
+      },
+      {
+        "startup_ms": 53,
+        "pss_mb": 17.2,
+        "rss_mb": 39.1,
+        "threads": 2,
+        "processes": 1,
+        "idle_cpu_pct": 0.033,
+        "idle_wakeups_per_s": 12.0,
+        "switch_cpu_ms": 1.0
+      },
+      {
+        "startup_ms": 50,
+        "pss_mb": 23.2,
+        "rss_mb": 45.3,
+        "threads": 2,
+        "processes": 1,
+        "idle_cpu_pct": 0.033,
+        "idle_wakeups_per_s": 11.9,
+        "switch_cpu_ms": 0.75
       }
     ],
     "island": [
       {
-        "startup_ms": 33,
-        "pss_mb": 13.6,
-        "rss_mb": 35.6,
-        "threads": 17,
-        "processes": 2,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.1,
-        "switch_cpu_ms": 1.25
-      },
-      {
-        "startup_ms": 31,
-        "pss_mb": 13.7,
-        "rss_mb": 36.0,
+        "startup_ms": 30,
+        "pss_mb": 12.3,
+        "rss_mb": 39.6,
         "threads": 17,
         "processes": 2,
         "idle_cpu_pct": 0.033,
-        "idle_wakeups_per_s": 4.1,
-        "switch_cpu_ms": 1.5
+        "idle_wakeups_per_s": 4.0,
+        "switch_cpu_ms": 2.0
       },
       {
-        "startup_ms": 30,
-        "pss_mb": 13.5,
-        "rss_mb": 35.8,
+        "startup_ms": 33,
+        "pss_mb": 12.2,
+        "rss_mb": 39.4,
+        "threads": 16,
+        "processes": 2,
+        "idle_cpu_pct": 0.033,
+        "idle_wakeups_per_s": 2.1,
+        "switch_cpu_ms": 1.75
+      },
+      {
+        "startup_ms": 48,
+        "pss_mb": 12.4,
+        "rss_mb": 39.6,
+        "threads": 16,
+        "processes": 2,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 2.0,
+        "switch_cpu_ms": 1.25
+      },
+      {
+        "startup_ms": 41,
+        "pss_mb": 12.4,
+        "rss_mb": 39.7,
+        "threads": 17,
+        "processes": 2,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 4.8,
+        "switch_cpu_ms": 2.0
+      },
+      {
+        "startup_ms": 39,
+        "pss_mb": 12.4,
+        "rss_mb": 39.6,
         "threads": 17,
         "processes": 2,
         "idle_cpu_pct": 0.0,
         "idle_wakeups_per_s": 4.1,
-        "switch_cpu_ms": 1.25
+        "switch_cpu_ms": 1.75
       }
     ]
   }

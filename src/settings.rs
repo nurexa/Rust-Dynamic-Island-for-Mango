@@ -39,6 +39,10 @@ pub struct Commands {
     pub lock: String,
     /// Prefix of the wallpaper settings command, e.g. `wall opt`. Empty hides the settings in the panel.
     pub wallpaper_opt: String,
+    /// Prints the brightness as 0-100. Empty reads /sys/class/backlight; no backlight hides the slider.
+    pub brightness_get: String,
+    /// Sets it, with `{}` as the percentage. Empty uses `brightnessctl`.
+    pub brightness_set: String,
 }
 
 impl Default for Commands {
@@ -46,7 +50,7 @@ impl Default for Commands {
         Commands { wifi: "nm-connection-editor".into(), wifi_alt: String::new(), mixer: "pavucontrol".into(),
                    wallpaper_pick: String::new(), wallpaper_next: String::new(), wallpaper_toggle: String::new(),
                    lock: "loginctl lock-session".into(),
-                   wallpaper_opt: String::new() }
+                   wallpaper_opt: String::new(), brightness_get: String::new(), brightness_set: String::new() }
     }
 }
 
@@ -250,7 +254,7 @@ impl Default for Config {
             clock: "%I:%M %p".into(),
             palette: "~/.config/theme/generated/colors.toml".into(),
             pill: list(&["media", "workspaces", "network", "clock"]),
-            panel: list(&["header", "workspaces", "media", "notifications", "stats", "audio", "status", "wallpaper"]),
+            panel: list(&["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status"]),
             icons: HashMap::new(),
             commands: Commands::default(),
             custom: Vec::new(),

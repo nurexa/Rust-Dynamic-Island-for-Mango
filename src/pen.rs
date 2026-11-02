@@ -21,6 +21,7 @@ pub enum Action {
     Sh(String),
     Mute,
     Volume,
+    Brightness,
     Pin,
     Reset,
     Tuck,

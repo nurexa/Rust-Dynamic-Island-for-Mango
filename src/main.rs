@@ -1,5 +1,6 @@
 //! A Dynamic Island for MangoWC. See README.md.
 mod audio;
+mod brightness;
 mod bus;
 mod icons;
 mod island;
@@ -93,6 +94,7 @@ pub struct Model {
     pub custom: HashMap<String, String>,
     pub sys: sys::Snapshot,
     pub audio: Option<audio::State>,
+    pub brightness: Option<u32>,
     pub media: Option<bus::Track>,
     pub art_small: Option<ImageSurface>,
     pub art_large: Option<ImageSurface>,
@@ -482,6 +484,7 @@ impl App {
             "reload" => {
                 self.cfg = Config::load();
                 self.model.pal = theme::load(&self.cfg.palette);
+                self.model.brightness = brightness::read(&self.cfg.commands);
                 self.all(true, true);
             }
             "wall" => {
@@ -518,6 +521,17 @@ impl App {
             Action::Volume => {
                 let pct = (frac * 100.0).round() as u32;
                 spawn_sh(&format!("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ {pct}%"));
+            }
+            Action::Brightness => {
+                let pct = (frac * 100.0).round() as u32;
+                // A drag fires per pixel; only act when the percentage moves.
+                if self.model.brightness != Some(pct) {
+                    if let Some(cmd) = brightness::set_cmd(&self.cfg.commands, pct) {
+                        spawn_sh(&cmd);
+                        self.model.brightness = Some(pct);
+                        self.all(false, true);
+                    }
+                }
             }
             Action::Pin => {
                 self.state.pinned = !self.state.pinned;
@@ -667,6 +681,14 @@ impl App {
         self.next_stats = Some(now + STATS_EVERY);
         let _ = self.stats.send(sys::Cmd::Sample);
         let _ = self.net_poke.send(());
+        // Something else may have changed it; a file read is cheap, a custom command only runs on open.
+        if first || brightness::is_cheap(&self.cfg.commands) {
+            let now = brightness::read(&self.cfg.commands);
+            if now != self.model.brightness {
+                self.model.brightness = now;
+                self.all(false, true);
+            }
+        }
         if first {
             if let Some(b) = &self.bus {
                 b.refresh_media(self.tx.clone());
@@ -1071,7 +1093,7 @@ fn main() {
         islands: Vec::new(),
         under_pointer: None,
         model: Model { monitors: Vec::new(), clients: Vec::new(), custom: HashMap::new(), sys: sys::Snapshot::default(),
-                       audio: None, media: None, art_small: None, art_large: None, net: net::State::Unknown,
+                       audio: None, brightness: brightness::read(&cfg.commands), media: None, art_small: None, art_large: None, net: net::State::Unknown,
                        tray: Vec::new(), pal: theme::load(&cfg.palette), palette: None,
                        notes: notify::Center::new(state.dnd),
                        wall: modules::wallpaper::load() },

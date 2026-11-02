@@ -25,6 +25,9 @@ HOME = Path.home()
 WAYBAR_CONFIG = Path(os.environ.get("WAYBAR_CONFIG", HOME / ".config/waybar/config.jsonc"))
 WAYBAR_STYLE = WAYBAR_CONFIG.with_name("style.css")
 FEEDER = HOME / ".config/mango/scripts/mangobar"
+# mangobar needs building (meson); its stock config is used, so no config file is read.
+MANGOBAR = Path(os.environ.get("MANGOBAR", HOME / ".cache/claude-tmp/mb/src/build/mangobar"))
+MANGOBAR_LIBS = os.environ.get("MANGOBAR_LIBS", "")  # LD_LIBRARY_PATH for a prefix-installed fcft
 ISLAND = ROOT / "target/release/island"
 MOCK = ROOT / "target/release/examples/mock"
 
@@ -144,7 +147,7 @@ def measure(name, cmd, env):
 
 
 def main():
-    for tool in (ISLAND, MOCK, WAYBAR_CONFIG):
+    for tool in (ISLAND, MOCK, WAYBAR_CONFIG, MANGOBAR):
         if not Path(tool).exists():
             sys.exit(f"missing {tool}: run cargo build --release --bins --examples")
 
@@ -169,29 +172,36 @@ def main():
         helpers.append(subprocess.Popen([feed / "mangobar"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     time.sleep(0.5)
 
-    runs = {"waybar": [], "island": []}
-    commands = {"waybar": ["waybar", "-c", WAYBAR_CONFIG, "-s", WAYBAR_STYLE], "island": [ISLAND]}
+    runs = {"waybar": [], "mangobar": [], "island": []}
+    commands = {"waybar": ["waybar", "-c", WAYBAR_CONFIG, "-s", WAYBAR_STYLE], "island": [ISLAND], "mangobar": [MANGOBAR]}
+    mb_env = dict(env, XDG_CONFIG_HOME=str(run / "nocfg"))
+    if MANGOBAR_LIBS:
+        mb_env["LD_LIBRARY_PATH"] = MANGOBAR_LIBS
+    envs = {"mangobar": mb_env}
+    order = ["waybar", "mangobar", "island"]
     for i in range(RUNS):
-        # Alternate the order so neither bar always gets the warm page cache.
-        for name in (("waybar", "island") if i % 2 == 0 else ("island", "waybar")):
-            r = measure(name, commands[name], env)
+        # Rotate the order so no bar always gets the warm page cache.
+        for name in order[i % 3:] + order[:i % 3]:
+            r = measure(name, commands[name], envs.get(name, env))
             runs[name].append(r)
             print(name, r, file=sys.stderr, flush=True)
 
     # Dunst sits in the background too, so it counts toward what the island replaces.
     # It's measured on its own, because only one daemon can own the name at a time.
-    proc = subprocess.Popen(["dunst"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(3)
-    subprocess.run(["notify-send", "bench", "warm up"], env=env)
-    time.sleep(2)
-    dunst = {"pss_mb": round(memory_kb(proc.pid, "Pss") / 1024, 1), "rss_mb": round(memory_kb(proc.pid, "Rss") / 1024, 1)}
-    proc.terminate()
-    proc.wait(timeout=5)
-    time.sleep(0.4)
+    dunst = None
+    if shutil.which("dunst"):
+        proc = subprocess.Popen(["dunst"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(3)
+        subprocess.run(["notify-send", "bench", "warm up"], env=env)
+        time.sleep(2)
+        dunst = {"pss_mb": round(memory_kb(proc.pid, "Pss") / 1024, 1), "rss_mb": round(memory_kb(proc.pid, "Rss") / 1024, 1)}
+        proc.terminate()
+        proc.wait(timeout=5)
+        time.sleep(0.4)
 
     # Launcher: from the key's command to the search box being on screen.
     rofi_ms = []
-    for _ in range(5):
+    for _ in range(5 if shutil.which("rofi") else 0):
         t0 = time.monotonic()
         proc = subprocess.Popen(["rofi", "-show", "drun"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         while not layer_up(env, "rofi") and time.monotonic() - t0 < 5:
@@ -245,15 +255,20 @@ def main():
     version = subprocess.run(["waybar", "--version"], capture_output=True, text=True).stdout.strip()
     median = {n: {k: statistics.median(r[k] for r in rs) for k in rs[0]} for n, rs in runs.items()}
     median["island"]["morph_cpu_ms"] = round(morph_ms, 1)
-    median["dunst"] = dunst
-    median["stack_pss_mb"] = round(median["waybar"]["pss_mb"] + dunst["pss_mb"], 1)
-    median["stack_rss_mb"] = round(median["waybar"]["rss_mb"] + dunst["rss_mb"], 1)
-    median["launcher_ms"] = {"rofi": statistics.median(rofi_ms), "island": statistics.median(island_ms)}
+    if dunst:
+        median["dunst"] = dunst
+        median["stack_pss_mb"] = round(median["waybar"]["pss_mb"] + dunst["pss_mb"], 1)
+        median["stack_rss_mb"] = round(median["waybar"]["rss_mb"] + dunst["rss_mb"], 1)
+    median["launcher_ms"] = {"island": statistics.median(island_ms)}
+    if rofi_ms:
+        median["launcher_ms"]["rofi"] = statistics.median(rofi_ms)
     median["island_palette_pss_mb"] = {"idle": round(idle_pss / 1024, 1), "open": round(open_pss / 1024, 1), "after": round(closed_pss / 1024, 1)}
     print(json.dumps({
         "method": f"{RUNS} runs, {IDLE}s idle, {SWITCHES} workspace switches, headless Mango, same windows and apps",
         "waybar_version": version,
+        "mangobar_version": subprocess.run([MANGOBAR, "-v"], env=mb_env, capture_output=True, text=True).stdout.strip(),
         "binary_mb": {"waybar": round(Path(shutil.which("waybar")).stat().st_size / 1e6, 1),
+                      "mangobar": round(MANGOBAR.stat().st_size / 1e6, 1),
                       "island": round(ISLAND.stat().st_size / 1e6, 1)},
         "median": median,
         "runs": runs,
