@@ -287,7 +287,7 @@ impl App {
             A::Focus(window) => self.wm.focus(window),
             A::Quit => self.wm.quit(),
             A::Task(task) => tools::run_task(task, self.tool_ctx(), self.tx.clone()),
-            A::Confirm(..) | A::Ask { .. } | A::Reply(_) => {}
+            A::Confirm(..) | A::Ask { .. } | A::Reply(_) | A::Open(_) | A::Back => {}
         }
     }
 

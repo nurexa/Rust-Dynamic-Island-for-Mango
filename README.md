@@ -131,7 +131,9 @@ speed, frame rate and quality, for every wallpaper or just the one showing.
 
 Videos play from a cached copy encoded once at your monitor's exact size and frame rate, so
 nothing is rescaled or retimed while playing. Changing a setting re-encodes once (with a
-crossfade when it's ready) and is remembered. If your config sets `panel` yourself, add `"wallpaper"` to it. `wall opt` does the same from a terminal.
+crossfade when it's ready) and is remembered. The same settings sit in the wallpaper
+picker (`island open wallpaper`) under **Settings ›**, which expands into Fit, Speed, FPS,
+Quality and Apply to; Esc steps back out. If your config sets `panel` yourself, add `"wallpaper"` to it. `wall opt` does the same from a terminal.
 
 ## Make it yours
 

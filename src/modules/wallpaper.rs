@@ -30,7 +30,7 @@ pub struct Wall {
 
 impl Wall {
     /// The setting as the chips spell it, so a chip is lit when its value matches.
-    fn get(&self, key: &str) -> String {
+    pub fn get(&self, key: &str) -> String {
         match key {
             "fit" => self.now.fit.clone(),
             "speed" => self.now.speed.to_string(),
@@ -54,8 +54,8 @@ fn parse(src: &str) -> Option<Wall> {
 }
 
 /// (label, wall opt key, [(chip label, value)])
-type Row = (&'static str, &'static str, &'static [(&'static str, &'static str)]);
-const ROWS: &[Row] = &[
+pub type Row = (&'static str, &'static str, &'static [(&'static str, &'static str)]);
+pub const ROWS: &[Row] = &[
     ("Fit", "fit", &[("Fill", "fill"), ("Bars", "fit"), ("Stretch", "stretch")]),
     ("Speed", "speed", &[("0.5×", "0.5"), ("0.75×", "0.75"), ("1×", "1"), ("1.25×", "1.25"), ("1.5×", "1.5"), ("2×", "2")]),
     ("FPS", "fps", &[("Source", "source"), ("24", "24"), ("30", "30"), ("60", "60")]),

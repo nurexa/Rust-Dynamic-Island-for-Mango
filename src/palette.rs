@@ -33,6 +33,8 @@ pub struct Palette {
     /// Row waiting for its second Enter.
     pub confirming: Option<usize>,
     pub dmenu: Option<Dmenu>,
+    /// Lists left behind by `Act::Open`, innermost last.
+    pub back: Vec<Vec<Item>>,
 }
 
 pub enum Outcome {
@@ -85,7 +87,7 @@ fn score_sub(query: &str, text: &str) -> Option<i32> {
 impl Palette {
     pub fn new(entries: Vec<Entry>, current: usize, generation: u64) -> Self {
         Palette { entries, current, query: String::new(), items: Vec::new(), shown: Vec::new(), selected: 0, top: 0,
-                  generation, loading: true, ask: None, confirming: None, dmenu: None }
+                  generation, loading: true, ask: None, confirming: None, dmenu: None, back: Vec::new() }
     }
 
     pub fn dmenu(prompt: String, password: bool, items: Vec<Item>, dmenu: Dmenu) -> Self {
@@ -103,6 +105,7 @@ impl Palette {
     pub fn set_items(&mut self, generation: u64, items: Vec<Item>) {
         if generation == self.generation {
             self.items = items;
+            self.back.clear();
             self.loading = false;
             self.refilter();
         }
@@ -175,8 +178,24 @@ impl Palette {
                 Outcome::Redraw
             }
             Act::Reply(text) => self.reply(text),
+            Act::Open(items) => {
+                self.back.push(std::mem::replace(&mut self.items, items));
+                self.query.clear();
+                self.refilter();
+                Outcome::Redraw
+            }
+            Act::Back => self.pop(),
             act => Outcome::Run(act),
         }
+    }
+
+    /// One level out of a nested list. False when already at the top.
+    fn pop(&mut self) -> Outcome {
+        let Some(items) = self.back.pop() else { return Outcome::Nothing };
+        self.items = items;
+        self.query.clear();
+        self.refilter();
+        Outcome::Redraw
     }
 
     fn reply(&mut self, text: String) -> Outcome {
@@ -194,6 +213,7 @@ impl Palette {
         self.query.clear();
         self.ask = None;
         self.items.clear();
+        self.back.clear();
         self.refilter();
         self.loading = true;
         self.generation += 1;
@@ -211,6 +231,7 @@ impl Palette {
             Outcome::Redraw
         };
         match sym {
+            Keysym::Escape if !self.back.is_empty() => return self.pop(),
             Keysym::Escape => return Outcome::Close,
             Keysym::Return | Keysym::KP_Enter => return self.choose(),
             Keysym::Up => self.move_selection(-1),
@@ -350,5 +371,22 @@ mod tests {
         p.key(Keysym::a, Some("a"), Modifiers::default());
         p.key(Keysym::Return, None, Modifiers::default());
         assert_eq!(rx.recv().unwrap(), "a");
+    }
+
+    #[test]
+    fn open_nests_a_list_and_escape_or_back_returns_to_it() {
+        let mut p = palette(&[]);
+        let leaf = Item::new("fill", Icon::None, Act::Quit);
+        p.items = vec![Item::new("Settings", Icon::None, Act::Open(vec![Item::new("up", Icon::None, Act::Back), leaf.clone()]))];
+        p.refilter();
+        assert!(matches!(p.choose(), Outcome::Redraw));
+        assert_eq!(p.items.len(), 2);
+        assert!(matches!(p.key(Keysym::Escape, None, Modifiers::default()), Outcome::Redraw));
+        assert_eq!(p.items[0].title, "Settings");
+        // At the top Escape closes, as before.
+        assert!(matches!(p.key(Keysym::Escape, None, Modifiers::default()), Outcome::Close));
+        p.choose();
+        p.selected = 0;
+        assert!(matches!(p.choose(), Outcome::Redraw) && p.items[0].title == "Settings");
     }
 }

@@ -42,7 +42,7 @@ notifications = true          # false keeps your own notification daemon
 | `clipboard` | Searches history and restores an entry | `cliphist`, `wl-clipboard` |
 | `screenshot` | Region, window, screen, annotate, color picker | `grim`, `slurp`; `satty` to annotate |
 | `wifi` | Lists networks and connects, asking for a password | `nmcli` |
-| `wallpaper` | Picks from a folder, with thumbnails | `[wallpaper]` in config |
+| `wallpaper` | Picks from a folder, with thumbnails; **Settings ›** nests the engine's options when `wallpaper_opt` is set | `[wallpaper]` in config |
 | `power` | Lock, suspend, log out, reboot, shut down | |
 
 A tool whose programs are missing simply doesn't appear. To drop parts from the binary

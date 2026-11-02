@@ -55,6 +55,9 @@ pub enum Act {
     Reply(String),
     /// Run a tool's own code on a worker thread.
     Task(Task),
+    /// Expands into a nested list; Esc or `Back` returns to the one it came from.
+    Open(Vec<Item>),
+    Back,
 }
 
 #[derive(Clone, Debug, PartialEq)]
