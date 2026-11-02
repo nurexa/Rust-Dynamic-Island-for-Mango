@@ -11,5 +11,6 @@ $H/fresh.sh 1 >/dev/null; $H/full.sh; $H/controls.sh; $H/theme.sh
 $H/fresh.sh 1 >/dev/null; $H/full.sh; $H/tools.sh; $H/notifications.sh; $H/palette-soak.sh
 $H/fresh.sh 1 >/dev/null; $H/takeover.sh
 $H/fresh.sh 1 >/dev/null; $H/modules.sh; $H/bare.sh
+$H/fresh.sh 1 >/dev/null; $H/wallpaper.sh
 $H/fresh.sh 1 >/dev/null; $H/full.sh; $H/isl stop; $H/cutover.sh
 for f in $H/run/*pid; do kill $(cat "$f") 2>/dev/null; done

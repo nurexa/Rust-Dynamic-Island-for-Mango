@@ -100,6 +100,10 @@ fi
 install -Dm755 target/release/island "$BIN_DIR/island.new"
 mv -f "$BIN_DIR/island.new" "$BIN_DIR/island"
 
+# The wallpaper engine the panel's wallpaper settings drive (see wall/wall).
+install -Dm755 wall/wall "$BIN_DIR/wall.new"
+mv -f "$BIN_DIR/wall.new" "$BIN_DIR/wall"
+
 mkdir -p "$BACKUP"
 # Only ever back up the pre-island originals, so a re-run can't overwrite them.
 [ ! -f "$BAR" ] || grep -q island "$BAR" || cp "$BAR" "$BACKUP/bar"

@@ -122,6 +122,17 @@ Panel controls:
 | Tray icon | Activate | App's menu | Secondary activate | |
 | Album art on the pill | Play or pause | Next | Previous | |
 
+## Wallpapers
+
+`wall/wall` is a small animated-wallpaper engine (needs `gslapper`, `ffmpeg`, `awww`) that
+the installer puts in `~/.local/bin`. Set `wallpaper_opt = "wall opt"` and the panel gains a
+wallpaper section: fit (fill, or the whole picture with black bars for non-16:9 videos),
+speed, frame rate and quality, for every wallpaper or just the one showing.
+
+Videos play from a cached copy encoded once at your monitor's exact size and frame rate, so
+nothing is rescaled or retimed while playing. Changing a setting re-encodes once (with a
+crossfade when it's ready) and is remembered. If your config sets `panel` yourself, add `"wallpaper"` to it. `wall opt` does the same from a terminal.
+
 ## Make it yours
 
 Everything is in `~/.config/island/config.toml`, and `island reload` applies changes

@@ -19,6 +19,7 @@ mod notify;
 mod palette;
 mod stats;
 mod status;
+pub mod wallpaper;
 mod workspaces;
 
 pub const PILL_H: f64 = 32.0;
@@ -61,6 +62,7 @@ const PANEL: &[(&str, PanelModule)] = &[
     ("stats", stats::panel),
     ("audio", audio::panel),
     ("status", status::panel),
+    ("wallpaper", wallpaper::panel),
 ];
 
 fn draw_pill(name: &str, p: &mut Pen, c: &Ctx, x: f64) -> f64 {

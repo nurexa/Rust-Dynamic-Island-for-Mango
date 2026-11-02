@@ -1,0 +1,599 @@
+#!/usr/bin/env python3
+"""Wallpapers for the island: videos and stills from one folder, swapped with a crossfade.
+
+  wall pick                 rofi thumbnail grid
+  wall next                 random other wallpaper
+  wall set FILE             that wallpaper
+  wall toggle               pause or resume by hand
+  wall hold on|off          pause under fullscreen windows (sent by mangobar)
+  wall restore              start the last wallpaper, at login
+  wall prep                 build every missing cached copy
+  wall opt                  show the settings
+  wall opt KEY VALUE        fit fill|fit|stretch    speed 0.25..4    fps source|24|30|60
+                            quality low|balanced|high|max    scope all|this
+  wall opt reset            drop this wallpaper's own settings
+
+Originals are never changed. Videos play from a cached copy encoded once at the
+monitor's exact size, frame rate and speed, so the player never rescales or
+retimes anything: that is what keeps it sharp and steady. The island's panel
+drives `wall opt`; settings live in $XDG_STATE_HOME/island/wallpaper.json and
+the optional [wallpaper] table of the island's config.toml sets the folders.
+"""
+import fcntl
+import hashlib
+import json
+import os
+import random
+import shlex
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import tomllib
+from pathlib import Path
+
+HOME = Path.home()
+RUN = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", HOME / ".config")) / "island/config.toml"
+STORE = Path(os.environ.get("XDG_STATE_HOME", HOME / ".local/state")) / "island/wallpaper.json"
+SOCK, PID = RUN / "gslapper.sock", RUN / "gslapper.pid"
+PAUSED = RUN / "wall.paused"  # set by `toggle`, so `hold off` won't resume over it
+HELD = RUN / "wall.held"
+BUSY = RUN / "wall.busy"  # an encode is running; a file so every process sees it
+VIDEO = {".mp4", ".mkv", ".webm", ".mov", ".avi"}
+IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+DEFAULTS = {"fit": "fill", "speed": 1.0, "fps": "source", "quality": "high"}
+CHOICES = {"fit": ("fill", "fit", "stretch"), "fps": ("source", "24", "30", "60"),
+           "quality": ("low", "balanced", "high", "max")}
+CQ = {"low": 28, "balanced": 23, "high": 19, "max": 15}  # constant quality: lower is cleaner
+SCALE = "flags=lanczos+accurate_rnd+full_chroma_int"
+TRANSITION = ["--transition-type", "grow", "--transition-pos", "center",
+              "--transition-duration", "0.9", "--transition-fps", "120",
+              "--transition-bezier", ".16,1,.3,1"]
+SETTLE = 0.45  # first video frame takes this long; the transition's still covers it
+
+
+# ---- paths and config ------------------------------------------------------
+
+def settings():
+    try:
+        w = tomllib.loads(CONFIG.read_text()).get("wallpaper", {})
+    except (OSError, tomllib.TOMLDecodeError):
+        w = {}
+    x = lambda key, default: Path(os.path.expanduser(str(w.get(key, default))))
+    return {"dir": x("dir", "~/Pictures/wallpapers"),
+            "cache": Path(os.environ.get("XDG_CACHE_HOME", HOME / ".cache")) / "wallpapers",
+            "on_change": str(w.get("on_change", "")), "size": w.get("size", "")}
+
+
+def sources():
+    d = settings()["dir"]
+    return sorted(p for p in d.iterdir() if p.is_file() and p.suffix.lower() in VIDEO | IMAGE) if d.is_dir() else []
+
+
+def monitor_size():
+    """The biggest current output, or `size = "WxH"` from the config. 1080p if nothing answers."""
+    try:
+        if s := settings()["size"]:
+            w, h = str(s).lower().split("x")
+            return int(w), int(h)
+        outs = json.loads(subprocess.run(["wlr-randr", "--json"], capture_output=True, text=True, timeout=3).stdout)
+        sizes = [(m["width"], m["height"]) for o in outs if o.get("enabled", True)
+                 for m in o["modes"] if m["current"]]
+        return max(sizes, key=lambda s: s[0] * s[1])
+    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+        return 1920, 1080
+
+
+# ---- settings store: scope, global, per, current (the wallpaper), now (what the panel draws), playing, busy ---
+
+def load():
+    try:
+        s = json.loads(STORE.read_text())
+    except (OSError, ValueError):
+        s = {}
+    s = s if isinstance(s, dict) else {}
+    dicts = lambda k: s[k] if isinstance(s.get(k), dict) else {}
+    per = {n: v for n, v in dicts("per").items() if isinstance(v, dict)}
+    return {"scope": "this" if s.get("scope") == "this" else "all", "global": dicts("global"), "per": per,
+            "current": s.get("current") if isinstance(s.get("current"), str) else None,
+            "now": dicts("now"), "playing": dicts("playing") or None, "busy": BUSY.exists()}
+
+
+def effective(store, name):
+    """Global settings, then this wallpaper's own, each checked so a hand-edit can't break encoding."""
+    o = dict(DEFAULTS)
+    for layer in (store["global"], store["per"].get(name, {})):
+        for k, v in layer.items():
+            if k in o and valid(k, v):
+                o[k] = v
+    return o
+
+
+def valid(key, value):
+    if key == "speed":
+        return isinstance(value, (int, float)) and 0.25 <= value <= 4
+    return key in CHOICES and value in CHOICES[key]
+
+
+def save(store, notify=True):
+    """Atomic, so the island never reads half a file. `now` is what the panel draws."""
+    cur = current(store)
+    store["now"] = {"name": cur.name, **effective(store, cur.name)} if cur else {}
+    STORE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = STORE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(store, indent=1))
+    tmp.replace(STORE)
+    if notify:
+        if shutil.which("island"):
+            subprocess.run(["island", "wall"], capture_output=True, check=False, timeout=3)
+
+
+def update(**fields):
+    """Re-read, change, write: clicks that landed during a long encode must not be overwritten
+    by the copy `apply` loaded before it started."""
+    store = load()
+    if "busy" in fields:
+        BUSY.touch() if fields.pop("busy") else BUSY.unlink(missing_ok=True)
+        store["busy"] = BUSY.exists()
+    store.update(fields)
+    save(store)
+    return store
+
+
+# ---- cache -----------------------------------------------------------------
+
+def is_video(src):
+    return src.suffix.lower() in VIDEO
+
+
+def probe_fps(path):
+    """'60/1' -> 60.0. Stills and unreadable files come back 0."""
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                          "stream=r_frame_rate", "-of", "csv=p=0", str(path)], capture_output=True, text=True).stdout.strip()
+    try:
+        n, _, d = out.partition("/")
+        return float(n) / float(d or 1)
+    except (ValueError, ZeroDivisionError):
+        return 0.0
+
+
+def out_fps(o, src_fps):
+    """The cached frame rate as an ffmpeg rational. Source rates stay exact (23.976 is not 24)."""
+    if o["fps"] != "source":
+        return o["fps"]
+    for rational in ("24000/1001", "30000/1001", "60000/1001"):
+        n, d = map(int, rational.split("/"))
+        if abs(n / d - src_fps) < 0.02:
+            return rational
+    return str(round(min(src_fps or 30, 60)))
+
+
+def tag(src, o, size):
+    """Everything that changes the bytes of the cached copy. The file name carries it, so a
+    changed setting is a cache miss rather than a stale hit."""
+    t = f"{size[0]}x{size[1]}-{o['fit']}"
+    if is_video(src):
+        t += f"-{o['speed']:g}x-{o['fps']}-{o['quality']}"
+    return t
+
+
+def cached(src, t, ext):
+    return settings()["cache"] / f"{src.name}.{t}{ext}"
+
+
+def media(src, t):
+    return cached(src, t, ".mp4" if is_video(src) else ".jpg")
+
+
+def is_fresh(path, src):
+    return path.exists() and path.stat().st_mtime >= src.stat().st_mtime
+
+
+def ffmpeg(*args):
+    return subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error", *args]).returncode == 0
+
+
+def fit_filter(fit, w, h):
+    # force_divisible_by keeps the bars symmetric: yuv420p needs even sizes.
+    graph = {"fill": f"scale={w}:{h}:force_original_aspect_ratio=increase:{SCALE},crop={w}:{h}",
+            "fit": f"scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2:{SCALE},"
+                   f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black",
+            "stretch": f"scale={w}:{h}:{SCALE}"}
+    return graph[fit] + ",setsar=1"  # square pixels, or a player may rescale by a hair
+
+
+def encoders(quality):
+    cq = str(CQ[quality])
+    return (["-c:v", "h264_nvenc", "-preset", "p6", "-tune", "hq", "-rc", "vbr", "-cq", cq, "-b:v", "0",
+             "-maxrate", "60M", "-bufsize", "120M", "-spatial-aq", "1", "-temporal-aq", "1",
+             "-rc-lookahead", "24", "-profile:v", "high"],
+            ["-c:v", "libx264", "-preset", "medium", "-crf", cq, "-profile:v", "high"])
+
+
+def still(source, out, vf, quality=2):
+    return ffmpeg("-i", str(source), "-frames:v", "1", "-q:v", str(quality), "-update", "1", "-vf", vf, str(out))
+
+
+def prep(src, o, size):
+    """Build the cached copy, poster and thumbnail for these settings. True when usable."""
+    cache = settings()["cache"]
+    cache.mkdir(parents=True, exist_ok=True)
+    t, (w, h) = tag(src, o, size), size
+    out, poster, thumb = media(src, t), cached(src, t, ".jpg"), cache / f"{src.name}.thumb.jpg"
+    fit = fit_filter(o["fit"], w, h)
+    # One encoder per output: `apply` and `prep_all` hold different locks and can want the same file.
+    gate = open(RUN / f"wall.enc.{hashlib.sha1(out.name.encode()).hexdigest()[:16]}.lock", "w")
+    fcntl.flock(gate, fcntl.LOCK_EX)
+    if is_video(src) and not is_fresh(out, src):
+        # Retime first, then drop to the target rate, then resize: the least work for 4K60 sources.
+        vf = ",".join([f"setpts=PTS/{o['speed']:g}", f"fps={out_fps(o, probe_fps(src))}", fit, "format=yuv420p"])
+        tmp = out.with_suffix(".tmp.mp4")
+        for encoder in encoders(o["quality"]):
+            if ffmpeg("-hwaccel", "cuda", "-i", str(src), "-an", "-vf", vf, *encoder,
+                      "-movflags", "+faststart", str(tmp)):
+                tmp.replace(out)
+                break
+        else:
+            tmp.unlink(missing_ok=True)
+            return False
+    if not is_fresh(poster, src):
+        # A video's poster is its own first frame, already sized; a still gets sized now.
+        if not (still(out, poster, "null") if is_video(src) else still(src, poster, fit)):
+            return False
+    if not is_fresh(thumb, src):
+        still(poster, thumb, "scale=320:-2")
+    return True
+
+
+def prune(store, size):
+    """Drop cached files no wallpaper would use now: old settings, removed wallpapers.
+    What's playing is always kept, even if a setting has just moved on from it."""
+    keep = set()
+    if store["playing"] and {"name", "tag"} <= store["playing"].keys():
+        p = store["playing"]
+        keep |= {f"{p['name']}.{p['tag']}.mp4", f"{p['name']}.{p['tag']}.jpg"}
+    for src in sources():
+        t = tag(src, effective(store, src.name), size)
+        keep |= {media(src, t).name, cached(src, t, ".jpg").name, f"{src.name}.thumb.jpg"}
+    for f in settings()["cache"].iterdir():
+        # A minute of grace, so a file another run just wrote isn't swept from under it.
+        try:
+            if f.name not in keep and time.time() - f.stat().st_mtime > 60:
+                f.unlink(missing_ok=True)
+        except FileNotFoundError:
+            pass
+
+
+# ---- the player ------------------------------------------------------------
+
+def notify(text):
+    subprocess.run(["notify-send", "-a", "wall", "-t", "2500", "Wallpaper", text], check=False)
+
+
+def ipc(command):
+    try:
+        with socket.socket(socket.AF_UNIX) as s:
+            s.settimeout(1)
+            s.connect(str(SOCK))
+            s.sendall(f"{command}\n".encode())
+            return s.recv(256).decode()
+    except OSError:
+        return ""
+
+
+def playing_pid():
+    try:
+        pid = int(PID.read_text())
+        # A recycled PID must not be mistaken for the player: stop() would kill a stranger.
+        return pid if Path(f"/proc/{pid}/comm").read_text().strip() == "gslapper" else None
+    except (OSError, ValueError):
+        return None
+
+
+def play(path):
+    """Start gslapper on top of whatever is showing. Returns once it's up."""
+    sock = RUN / f"gslapper-{os.getpid()}.sock"
+    # gslapper only takes 30, 60 or 100 as a cap; a cap at or above the video's rate
+    # never drops a frame, which is what keeps the pace constant.
+    rate = probe_fps(path)
+    cap = 30 if rate <= 30.5 else 60 if rate <= 60.5 else 100
+    # '*' is one pipeline for every monitor. No -p: a pause stops frame callbacks,
+    # which -p reads as "hidden", so its hold outlives any IPC resume. Pausing is
+    # `wall hold`, from mangobar (fullscreen) and hypridle (monitor asleep).
+    proc = subprocess.Popen(
+        ["gslapper", "--no-save-state", "--fps-cap", str(cap), "-I", str(sock),
+         "-o", "no-audio loop fill", "*", str(path)],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True)
+    for _ in range(50):
+        if sock.exists():
+            break
+        time.sleep(0.05)
+    SOCK.unlink(missing_ok=True)
+    SOCK.symlink_to(sock)
+    PID.write_text(str(proc.pid))
+    if PAUSED.exists() or HELD.exists():
+        ipc("pause")
+    return proc.pid
+
+
+def stop(pid):
+    """SIGTERM can deadlock gslapper (seen stuck in futex_wait), so it gets a second to exit."""
+    if not pid:
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(20):
+            time.sleep(0.05)
+            os.kill(pid, 0)
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass  # already gone
+
+
+def current(store):
+    path = Path(store["current"]) if store["current"] else None
+    return path if path and path.is_file() else None
+
+
+def crossfade(old, new_media, new_poster):
+    """Stills fade with awww, which sits above the old wallpaper for the swap.
+
+    gslapper can only fade between images, and mango doesn't animate wallpaper
+    layers, so a video-to-video swap is: cut to a still of the old one, fade to
+    the new first frame, start the new video over that same frame, drop the rest.
+    """
+    pid = playing_pid()
+    daemon = subprocess.Popen(["awww-daemon", "--no-cache"], stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, start_new_session=True)
+    try:
+        for _ in range(40):
+            if subprocess.run(["awww", "query"], capture_output=True).returncode == 0:
+                break
+            time.sleep(0.05)
+        if old and old.exists():
+            subprocess.run(["awww", "img", "-t", "none", str(old)], check=False)
+        subprocess.run(["awww", "img", *TRANSITION, str(new_poster)], check=False)
+        time.sleep(0.95)
+        play(new_media)
+        time.sleep(SETTLE)
+        stop(pid)
+    finally:
+        daemon.terminate()
+    # The old instance's socket goes with it; keep only the live one.
+    keep = os.path.realpath(SOCK)
+    for sock in RUN.glob("gslapper-*.sock"):
+        if str(sock) != keep:
+            sock.unlink(missing_ok=True)
+
+
+def apply(block):
+    """Make what's playing match what's wanted. Idempotent, so a click storm collapses into
+    one real swap: the queued runs find the work already done and return."""
+    lock = open(RUN / "wall.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | (0 if block else fcntl.LOCK_NB))
+    except OSError:
+        return  # a swap is already running
+    store, size = load(), monitor_size()
+    src = current(store)
+    if not src:
+        return
+    o = effective(store, src.name)
+    t = tag(src, o, size)
+    playing = store["playing"]
+    if playing and playing == {"name": src.name, "tag": t} and playing_pid():
+        update(playing=playing)
+        return
+    if not (is_fresh(media(src, t), src) and is_fresh(cached(src, t, ".jpg"), src)):
+        update(busy=True)
+        notify(f"Optimizing {src.stem}…")
+        try:
+            ok = prep(src, o, size)
+        finally:
+            update(busy=False)
+        if not ok:
+            # Back to what's playing, so the panel and the next login don't keep a broken file.
+            if playing:
+                update(current=str(src.parent / playing["name"]))
+            return notify(f"Couldn't read {src.name}")
+    old = playing and cached(src.parent / playing["name"], playing["tag"], ".jpg")
+    store = update(playing={"name": src.name, "tag": t})
+    retheme(src, size)
+    crossfade(old, media(src, t), cached(src, t, ".jpg"))
+    prune(load(), size)
+
+
+def retheme(src, size):
+    """Hand the colour-theme hook a full-size still of the wallpaper (never with black bars)."""
+    hook = settings()["on_change"]
+    if not hook:
+        return
+    img = settings()["cache"] / f"{src.name}.still.png"
+    if ffmpeg("-i", str(src), "-frames:v", "1", "-update", "1", "-vf", fit_filter("fill", *size), str(img)):
+        subprocess.Popen(hook.replace("{image}", shlex.quote(str(img))), shell=True, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+# ---- commands --------------------------------------------------------------
+
+def set_wallpaper(src):
+    """Pick a wallpaper. Dropped when a swap is already running, so mashing `next` can't queue up."""
+    lock = open(RUN / "wall.pick.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return
+    store = load()
+    store["current"] = str(src)
+    save(store, notify=False)
+    apply(block=True)
+
+
+def pick():
+    walls, cache = sources(), settings()["cache"]
+    rows = []
+    for src in walls:
+        thumb = cache / f"{src.name}.thumb.jpg"
+        rows.append(f"{src.stem}\0icon\x1f{thumb}" if thumb.exists() else src.stem)
+    theme = ["-theme", "wallpaper"] if (HOME / ".config/rofi/wallpaper.rasi").exists() else []
+    chosen = subprocess.run(["rofi", "-dmenu", "-i", "-show-icons", "-p", "Wallpaper", "-format", "i", *theme],
+                            input="\n".join(rows), capture_output=True, text=True).stdout.strip()
+    if chosen:
+        set_wallpaper(walls[int(chosen)])
+
+
+def next_wallpaper():
+    now = current(load())
+    others = [p for p in sources() if p != now]
+    if others:
+        set_wallpaper(random.choice(others))
+
+
+def toggle():
+    if PAUSED.exists():
+        PAUSED.unlink()
+        if not HELD.exists():
+            ipc("resume")
+    else:
+        PAUSED.touch()
+        ipc("pause")
+
+
+def hold(on):
+    if on:
+        HELD.touch()
+        ipc("pause")
+    else:
+        HELD.unlink(missing_ok=True)
+        if not PAUSED.exists():
+            ipc("resume")
+
+
+def restore():
+    PAUSED.unlink(missing_ok=True)
+    HELD.unlink(missing_ok=True)
+    store, size = load(), monitor_size()
+    src = current(store) or (sources() or [None])[0]
+    if src:
+        t = tag(src, effective(store, src.name), size)
+        ready = media(src, t)
+        # The raw file is the stopgap for a first run; `prep` below swaps it for the cached copy.
+        store["current"] = str(src)
+        store["playing"] = {"name": src.name, "tag": t} if ready.exists() else None
+        old = playing_pid()
+        play(ready if ready.exists() else src)
+        stop(old if old != playing_pid() else None)
+        save(store)
+    # Build anything new in the background, at the lowest priority.
+    subprocess.Popen(["nice", "-n", "19", sys.argv[0], "prep"], stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def prep_all():
+    lock = open(RUN / "wall.prep.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return
+    for src in sources():
+        prep(src, effective(load(), src.name), size)
+    size = monitor_size()
+    prune(load(), size)
+    apply(block=False)  # the first-run stopgap, or a setting changed meanwhile
+
+
+def opt(args):
+    store = load()
+    cur = current(store)
+    if not args:
+        print(json.dumps(store["now"] or DEFAULTS, indent=1))
+        return
+    key, value = args[0], args[1] if len(args) > 1 else ""
+    if key == "scope" and value in ("all", "this"):
+        store["scope"] = value
+    elif key == "reset" and cur:
+        store["per"].pop(cur.name, None)
+    elif key in DEFAULTS:
+        try:
+            value = float(value) if key == "speed" else value
+        except ValueError:
+            sys.exit(f"wall opt: {value!r} isn't a number")
+        if not valid(key, value):
+            sys.exit(f"wall opt {key}: {value!r} is not one of {CHOICES.get(key, '0.25..4')}")
+        if store["scope"] == "this" and cur:
+            store["per"].setdefault(cur.name, {})[key] = value
+        else:
+            store["global"][key] = value
+    else:
+        sys.exit(__doc__)
+    save(store)
+    apply(block=True)
+
+
+def selftest():
+    global STORE, CONFIG
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        STORE, CONFIG = tmp / "s/wallpaper.json", tmp / "c.toml"
+        os.environ["XDG_CACHE_HOME"] = str(tmp)
+        CONFIG.write_text(f'[wallpaper]\ndir = "{tmp}/w"\nsize = "1280x720"\n')
+        (tmp / "w").mkdir()
+        a, b = tmp / "w/a.mp4", tmp / "w/a.png"
+        a.touch(), b.touch()
+        size = monitor_size()
+        assert size == (1280, 720)
+        o = dict(DEFAULTS)
+        # A video and a still with the same stem can't share a cache file, and any setting that
+        # changes the bytes changes the name.
+        assert media(a, tag(a, o, size)) != media(b, tag(b, o, size))
+        assert tag(a, o, size) != tag(a, {**o, "speed": 1.5}, size) != tag(a, {**o, "fit": "fit"}, size)
+        assert tag(b, o, size) == tag(b, {**o, "speed": 2.0, "quality": "low"}, size)  # stills ignore these
+        # Source rates stay exact: 23.976 must not round to 24, or the loop drifts.
+        assert out_fps(o, 24000 / 1001) == "24000/1001" and out_fps(o, 59.94) == "60000/1001"
+        assert out_fps(o, 120) == "60" and out_fps({**o, "fps": "30"}, 60) == "30"
+        # Hand-edited garbage falls back to defaults instead of reaching ffmpeg.
+        s = {"scope": "all", "global": {"speed": 99, "fit": "weird", "fps": "30"}, "per": {"a.mp4": {"speed": 2}}}
+        assert effective(s, "a.mp4") == {**DEFAULTS, "fps": "30", "speed": 2}
+        assert effective(s, "b.mp4") == {**DEFAULTS, "fps": "30"}
+        for fit in CHOICES["fit"]:
+            assert fit_filter(fit, 1280, 720).count("1280") >= 1
+        old, new = tmp / "old", tmp / "new"
+        old.touch()
+        os.utime(old, (1, 1))
+        new.touch()
+        assert is_fresh(new, old) and not is_fresh(old, new) and not is_fresh(tmp / "none", new)
+    stuck = subprocess.Popen(["sh", "-c", "trap '' TERM; exec sleep 30"])
+    time.sleep(0.2)
+    stop(stuck.pid)
+    assert stuck.wait(2) == -signal.SIGKILL
+    print("ok")
+
+
+def main():
+    cmd, args = (sys.argv[1] if len(sys.argv) > 1 else ""), sys.argv[2:]
+    if cmd == "--selftest":
+        return selftest()
+    if not shutil.which("gslapper"):
+        sys.exit("gslapper is not installed")
+    if cmd == "set" and len(args) == 1:
+        set_wallpaper(Path(args[0]).resolve())
+    elif cmd == "hold" and len(args) == 1:
+        hold(args[0] == "on")
+    elif cmd == "opt":
+        opt(args)
+    elif cmd in ACTIONS and not args:
+        ACTIONS[cmd]()
+    else:
+        sys.exit(__doc__)
+
+
+ACTIONS = {"pick": pick, "next": next_wallpaper, "toggle": toggle, "restore": restore, "prep": prep_all}
+
+if __name__ == "__main__":
+    main()

@@ -101,6 +101,7 @@ pub struct Model {
     pub pal: theme::Palette,
     pub palette: Option<Palette>,
     pub notes: notify::Center,
+    pub wall: Option<modules::wallpaper::Wall>,
 }
 
 pub struct App {
@@ -482,6 +483,13 @@ impl App {
                 self.cfg = Config::load();
                 self.model.pal = theme::load(&self.cfg.palette);
                 self.all(true, true);
+            }
+            "wall" => {
+                let wall = modules::wallpaper::load();
+                if wall != self.model.wall {
+                    self.model.wall = wall;
+                    self.all(false, true);
+                }
             }
             "quit" => self.quit = true,
             "" => {} // a second instance checking whether we're alive
@@ -1009,10 +1017,10 @@ fn main() {
         let args: Vec<String> = env::args().skip(1).collect();
         match cmd.as_str() {
             "dmenu" => run_dmenu(&args[1..]),
-            "pin" | "toggle" | "tuck" | "reset" | "reload" | "quit" | "dnd" | "open" | "close" | "shot" => run_client(&args.join(" ")),
+            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" => run_client(&args.join(" ")),
             _ => {}
         }
-        eprintln!("usage: island [pin|tuck|reset|reload|quit|dnd|close|open [tool]|shot <kind>|dmenu [-p prompt]]");
+        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|dmenu [-p prompt]]");
         std::process::exit(2);
     }
 
@@ -1065,7 +1073,8 @@ fn main() {
         model: Model { monitors: Vec::new(), clients: Vec::new(), custom: HashMap::new(), sys: sys::Snapshot::default(),
                        audio: None, media: None, art_small: None, art_large: None, net: net::State::Unknown,
                        tray: Vec::new(), pal: theme::load(&cfg.palette), palette: None,
-                       notes: notify::Center::new(state.dnd) },
+                       notes: notify::Center::new(state.dnd),
+                       wall: modules::wallpaper::load() },
         icons: Icons::new(),
         tray_items: Vec::new(),
         cfg,

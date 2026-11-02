@@ -36,13 +36,16 @@ pub struct Commands {
     pub wallpaper_next: String,
     pub wallpaper_toggle: String,
     pub lock: String,
+    /// Prefix of the wallpaper settings command, e.g. `wall opt`. Empty hides the settings in the panel.
+    pub wallpaper_opt: String,
 }
 
 impl Default for Commands {
     fn default() -> Self {
         Commands { wifi: "nm-connection-editor".into(), wifi_alt: String::new(), mixer: "pavucontrol".into(),
                    wallpaper_pick: String::new(), wallpaper_next: String::new(), wallpaper_toggle: String::new(),
-                   lock: "loginctl lock-session".into() }
+                   lock: "loginctl lock-session".into(),
+                   wallpaper_opt: String::new() }
     }
 }
 
@@ -83,6 +86,9 @@ pub struct Wallpaper {
     pub thumb: String,
     /// Runs on choosing one, with `{path}` as the file.
     pub set: String,
+    /// Read by wall/wall, not by the island. Declared so the table documents itself.
+    pub size: String,
+    pub on_change: String,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -136,7 +142,7 @@ impl Default for Config {
             clock: "%I:%M %p".into(),
             palette: "~/.config/theme/generated/colors.toml".into(),
             pill: list(&["media", "workspaces", "network", "clock"]),
-            panel: list(&["header", "workspaces", "media", "notifications", "stats", "audio", "status"]),
+            panel: list(&["header", "workspaces", "media", "notifications", "stats", "audio", "status", "wallpaper"]),
             icons: HashMap::new(),
             commands: Commands::default(),
             custom: Vec::new(),

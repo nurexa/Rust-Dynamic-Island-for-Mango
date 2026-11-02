@@ -11,7 +11,7 @@ screenshot_dir = "~/Pictures"
 
 # Every part is optional: leave a name out and it's gone.
 pill = ["media", "workspaces", "network", "clock"]
-panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "status"]
+panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "status", "wallpaper"]
 tools = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power"]
 notifications = true              # false keeps your own notification daemon
 
@@ -31,11 +31,15 @@ lock = "loginctl lock-session"    # the power tool's Lock
 wallpaper_pick = ""               # the panel's wallpaper button, without the wallpaper tool
 wallpaper_next = ""               # right click on it
 wallpaper_toggle = ""             # middle click on it
+wallpaper_opt = ""                # "wall opt" adds fit, speed, fps and quality to the panel
 
 [wallpaper]
 dir = ""                          # folder to list; empty hides the wallpaper tool
 thumb = ""                        # thumbnail path, with {file} as the file's name
 set = ""                          # runs on choosing one, with {path} as the file
+# Read by `wall` (wall/wall), the engine behind wallpaper_opt:
+size = ""                         # "2560x1440" to override the monitor size it detects
+on_change = ""                    # shell command on each new wallpaper; {image} is a full-size still
 
 # A palette tool made of two commands. Add its name to `tools`.
 # [[tool]]
