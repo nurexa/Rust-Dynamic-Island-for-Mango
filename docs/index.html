@@ -115,42 +115,12 @@ pre {
 .stars img { display: block; width: 100%; height: auto; border-radius: 14px; }
 footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
 
-/* The island. Same geometry and spring as src/island.rs. */
-#island {
-  position: fixed; left: 50%; top: 10px; z-index: 20;
-  width: 196px; height: 36px; border-radius: 18px; overflow: hidden;
-  background: var(--island); color: var(--island-fg); touch-action: none; user-select: none; cursor: default;
-  box-shadow: 0 8px 26px rgb(5 6 11 / .32);
-  transform: translateX(-50%);
-  font-family: "Instrument Sans", system-ui, sans-serif;
-  font-variant-numeric: tabular-nums;
-}
-#island button { font: inherit; border: 0; cursor: pointer; }
-.pill, .panel { position: absolute; top: 0; }
-.pill { left: 50%; transform: translateX(-50%); width: 196px; height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px 0 7px; }
-.pill .time { font-size: 13.5px; font-weight: 600; }
-.chips { display: flex; align-items: center; gap: 3px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 13px; font-size: 12.5px; font-weight: 700; color: var(--island-muted); }
-.chip svg { width: 16px; height: 16px; color: var(--island-fg); }
-.chip.on { background: var(--accent); color: var(--on-accent); }
-.chip.on svg { color: var(--on-accent); }
-.panel { left: 50%; transform: translateX(-50%); width: var(--panel-w); padding: 18px 20px 20px; opacity: 0; visibility: hidden; }
-.panel .head { display: flex; align-items: baseline; gap: 12px; }
-.panel .clock { font-size: 26px; font-weight: 600; }
-.panel .date { font-size: 13px; color: var(--island-muted); }
-.panel .label { margin-top: 14px; display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; color: var(--island-muted); }
-.panel .label::before { content: ""; width: 6px; height: 6px; border-radius: 3px; background: var(--accent); }
-.panel .chips { margin-top: 7px; gap: 6px; flex-wrap: wrap; }
-.panel .chip { height: 36px; padding: 0 12px; border-radius: 13px; background: rgb(230 232 245 / .07); font-size: 13px; }
-.panel .chip.on { background: var(--accent); }
-.panel .chip:hover { filter: brightness(1.2); }
-.slider { display: grid; grid-template-columns: 92px 1fr 40px; align-items: center; gap: 10px; margin-top: 12px; font-size: 12.5px; font-weight: 500; }
-.slider input { width: 100%; accent-color: var(--accent); }
-.slider output { text-align: right; color: var(--island-muted); font-size: 12px; }
-.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
-.tile { padding: 9px 12px 10px; border-radius: 14px; background: rgb(230 232 245 / .055); min-width: 0; }
-.tile span { display: block; font-size: 10.5px; font-weight: 500; color: var(--island-muted); white-space: nowrap; }
-.tile b { display: block; font-size: 17px; font-weight: 600; margin-top: 2px; }
+/* The island is drawn on a canvas by a port of src/island.rs, in the real fonts. */
+@font-face { font-family: "Island Sans"; src: url(fonts/island-sans.woff) format("woff"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "Island Glyphs"; src: url(fonts/glyphs.woff) format("woff"); font-weight: 700; font-display: block; }
+#island { position: fixed; inset: 0; z-index: 20; width: 100vw; height: 100vh; pointer-events: none; }
+#island-hit { position: fixed; z-index: 21; touch-action: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+#island-hit:focus-visible { outline: 2px solid var(--series-island); outline-offset: 3px; border-radius: 16px; }
 
 @media (max-width: 640px) {
   body { font-size: 16px; }
@@ -169,43 +139,14 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
 <body>
 <div class="wallpaper" aria-hidden="true"></div>
 
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="g-term" viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 4v10h16V8H4Zm2 2 1.4-1.4L11.8 13l-4.4 4.4L6 16l3-3-3-3Zm6 6h6v2h-6v-2Z"/></symbol>
-  <symbol id="g-globe" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm7.9 9h-3a15 15 0 0 0-1.3-5.4A8 8 0 0 1 19.900 11ZM12 4c.9 1.300 1.700 3.700 1.900 7h-3.800C10.300 7.700 11.100 5.300 12 4ZM8.400 5.600A15 15 0 0 0 7.100 11h-3a8 8 0 0 1 4.300-5.400ZM4.100 13h3a15 15 0 0 0 1.300 5.400A8 8 0 0 1 4.100 13Zm7.900 7c-.9-1.300-1.700-3.700-1.900-7h3.800c-.2 3.300-1 5.700-1.900 7Zm3.600-1.600a15 15 0 0 0 1.300-5.400h3a8 8 0 0 1-4.300 5.400Z"/></symbol>
-  <symbol id="g-note" viewBox="0 0 24 24"><path fill="currentColor" d="M21 3v12.500a3.500 3.500 0 1 1-2-3.160V7.500L9 9.700v7.800a3.500 3.500 0 1 1-2-3.160V5.200L21 3Z"/></symbol>
-</svg>
-
-<div id="island" role="group" aria-label="Live demo of the island">
-  <div class="pill">
-    <div class="chips">
-      <span class="chip on" data-chip="arona">1 <svg><use href="#g-term"/></svg></span>
-      <span class="chip" data-chip="azure">2 <svg><use href="#g-globe"/></svg></span>
-    </div>
-    <span class="time" data-time></span>
-  </div>
-  <div class="panel">
-    <div class="head"><span class="clock" data-time></span><span class="date" data-date></span></div>
-    <div class="label">Workspaces</div>
-    <div class="chips">
-      <button class="chip on" data-wall="arona" aria-label="Workspace 1, Arona wallpaper">1 <svg><use href="#g-term"/></svg></button>
-      <button class="chip" data-wall="azure" aria-label="Workspace 2, Azure Horizon wallpaper">2 <svg><use href="#g-globe"/></svg></button>
-      <button class="chip" data-wall="grass" aria-label="Workspace 3, Wavy Grass wallpaper">3 <svg><use href="#g-note"/></svg></button>
-    </div>
-    <div class="tiles">
-      <div class="tile"><span>Memory</span><b>12.4 MB</b></div>
-      <div class="tile"><span>Workspace switch</span><b>1.75 ms</b></div>
-      <div class="tile"><span>Idle CPU</span><b>&lt;0.1%</b></div>
-    </div>
-    <label class="slider"><span>Speakers</span><input type="range" min="0" max="100" value="48" aria-label="Volume"><output>48%</output></label>
-    <label class="slider"><span>Brightness</span><input type="range" min="0" max="100" value="70" aria-label="Brightness"><output>70%</output></label>
-  </div>
-</div>
+<canvas id="island" aria-hidden="true"></canvas>
+<div id="island-hit" role="button" tabindex="0" aria-pressed="false" aria-label="Live demo of the island. Press Enter to keep the panel open."></div>
 
 <main>
   <section class="hero">
     <h1>Your whole desktop in one pill</h1>
     <p class="lede">A minimal, modular, all-in-one tool for MangoWC. One small Rust program is your bar, app search, notifications, clipboard and screenshots. Use all of it, or only the parts you want.</p>
-    <p class="hint">That pill at the top is a working copy. Open it and pick a workspace: this page's wallpaper changes, and so does the accent, the way the real one follows yours.</p>
+    <p class="hint">That pill at the top is the real one, ported to your browser with made-up stats. Hover it to open the panel, then press the wallpaper button: this page's wallpaper changes, and the accent follows, the way the real one follows yours. Drag it anywhere, double-click it to send it home.</p>
     <div class="actions">
       <a class="button" href="https://github.com/nurexa/Rust-Dynamic-Island-for-Mango">View on GitHub</a>
       <a class="button quiet" href="#install">Install</a>
@@ -367,143 +308,676 @@ cd Rust-Dynamic-Island-for-Mango
 <div class="tooltip" id="tip" role="status"></div>
 
 <script>
-// A copy of the real thing. These are the springs from src/island.rs, and like
-// the real one it only runs while something is moving.
-const el = document.getElementById("island");
-const panel = el.querySelector(".panel");
-const pillEl = el.querySelector(".pill");
+// The island, ported line for line from src/island.rs, src/pen.rs and src/modules/:
+// same constants, springs, squircle, shadow, layout and hit regions, drawn on a
+// canvas the way cairo draws it. Only the model is mocked; the palettes are what
+// matugen makes of each wallpaper, run through src/theme.rs.
+// Symbols: Adwaita icon theme (CC BY-SA 3.0 / LGPL-3.0). Glyphs: JetBrainsMono Nerd Font (OFL).
+const SYMBOLS = {"preferences-desktop-wallpaper":[["M1.063 1.031a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1H15.03a1 1 0 0 0 1-1v-12a1 1 0 0 0-1-1zm1 2H14.03v10H2.062z",1.0,false],["M9.406 7.969a1.919 1.919 0 0 0-1.474.676c-.2.234-.315.474-.418.664-.102.187-.2.342-.305.449a.87.87 0 0 1-.363.222h-.002c-.133.04-.313.051-.532.051h-5.28v1h5.28c.236 0 .518-.002.82-.093.303-.092.575-.258.792-.479a2.88 2.88 0 0 0 .469-.672c.114-.21.205-.382.3-.494a.966.966 0 0 1 .71-.324c.262 0 .546.131.724.332.105.118.205.296.33.51.127.215.278.455.502.671.226.22.503.384.81.473.308.09.596.092.84.092l2.422-.016v-1l-2.422.016a2.091 2.091 0 0 1-.56-.053.96.96 0 0 1-.395-.23 2.205 2.205 0 0 1-.334-.461c-.113-.192-.24-.433-.447-.666a1.979 1.979 0 0 0-1.467-.668M5.531 5.031c-.822 0-1.5.678-1.5 1.5 0 .823.678 1.5 1.5 1.5.823 0 1.5-.677 1.5-1.5 0-.822-.677-1.5-1.5-1.5m0 1c.282 0 .5.218.5.5s-.218.5-.5.5a.493.493 0 0 1-.5-.5c0-.282.218-.5.5-.5",1.0,false]],"go-home":[["M8 .363281c-.5 0-1 .167969-1.40625.507813L2.128906 4.59375C1.414062 5.1875 1 6.070312 1 7v6c0 1.65625 1.34375 3 3 3h8c1.65625 0 3-1.34375 3-3V7c0-.929688-.414062-1.8125-1.128906-2.40625L9.40625.871094C9 .53125 8.5.363281 8 .363281m-.015625 1.996094c.050781-.003906.101563.011719.144531.046875l4.464844 3.722656C12.851562 6.34375 13 6.664062 13 7v6c0 .5625-.4375 1-1 1h-2V9c0-.554688-.445312-1-1-1H7c-.554688 0-1 .445312-1 1v5H4c-.5625 0-1-.4375-1-1V7c0-.335938.148438-.65625.40625-.871094L7.871094 2.40625c.035156-.027344.074218-.042969.113281-.046875m0 0",1.0,false]],"pan-up":[["m3.300781 9.203125 4-3.917969c.390625-.378906 1.007813-.378906 1.394531 0l4 3.917969c.398438.382813.40625 1.015625.019532 1.414063-.382813.394531-1.015625.402343-1.414063.019531L8 7.394531l-3.300781 3.242188c-.398438.382812-1.03125.375-1.417969-.019531-.382812-.398438-.375-1.03125.019531-1.414063m0 0",1.0,true]],"view-pin":[["M5 0c-.550781 0-1 .449219-1 1s.449219 1 1 1h.140625l.515625 3.59375C4.023438 6.460938 3.003906 8.152344 3 10h10c-.003906-1.847656-1.023438-3.539062-2.65625-4.40625L10.855469 2H11c.550781 0 1-.449219 1-1 0-.265625-.105469-.519531-.292969-.707031S11.265625 0 11 0zm2 11v4l1 1 1-1v-4zm0 0",1.0,false]],"audio-volume-low":[["M7 1.007812c-.296875-.003906-.578125.125-.769531.351563L3 5H2C.90625 5 0 5.84375 0 7v2c0 1.089844.910156 2 2 2h1l3.230469 3.640625c.210937.253906.492187.363281.769531.359375zm2.957031 2.980469C9.757812 4 9.5625 4.0625 9.394531 4.191406c-.441406.332032-.53125.960938-.195312 1.402344 1.074219 1.425781 1.074219 3.386719 0 4.8125-.335938.441406-.246094 1.070312.195312 1.402344.441407.332031 1.066407.242187 1.398438-.195313C11.597656 10.542969 12 9.273438 12 8s-.402344-2.542969-1.207031-3.613281c-.183594-.246094-.464844-.382813-.753907-.398438h-.085937zm0 0",1.0,false]],"audio-volume-medium":[["M7 1.007812c-.296875-.003906-.578125.125-.769531.351563L3 5H2C.90625 5 0 5.84375 0 7v2c0 1.089844.910156 2 2 2h1l3.230469 3.640625c.210937.253906.492187.363281.769531.359375zm3.039062 2.980469c-.222656-.007812-.453124.058594-.644531.203125-.261719.199219-.394531.5-.394531.804688V5.0625c.011719.1875.078125.371094.199219.527344 1.074219 1.429687 1.074219 3.390625 0 4.816406-.121094.160156-.1875.34375-.199219.53125v.066406c0 .304688.132812.605469.394531.804688.441407.332031 1.066407.242187 1.398438-.199219C11.597656 10.542969 12 9.273438 12 8s-.402344-2.542969-1.207031-3.613281c-.183594-.246094-.464844-.382813-.753907-.398438m0 0",1.0,false],["M13.460938 1.96875c-.191407-.003906-.386719.054688-.558594.167969-.457032.3125-.578125.933593-.269532 1.390625 1.824219 2.707031 1.824219 6.238281 0 8.945312-.308593.457032-.1875 1.078125.269532 1.390625.457031.308594 1.078125.1875 1.390625-.269531C15.429688 11.902344 16 9.953125 16 8s-.570312-3.902344-1.707031-5.59375c-.195313-.285156-.511719-.4375-.832031-.4375m0 0",0.34902,false]],"audio-volume-high":[["M7 1.007812c-.296875-.003906-.578125.125-.769531.351563L3 5H2C.90625 5 0 5.84375 0 7v2c0 1.089844.910156 2 2 2h1l3.230469 3.640625c.210937.253906.492187.363281.769531.359375zm6.460938.960938c-.191407-.003906-.386719.054688-.558594.167969-.457032.3125-.578125.933593-.269532 1.390625 1.824219 2.707031 1.824219 6.238281 0 8.945312-.308593.457032-.1875 1.078125.269532 1.390625.457031.308594 1.078125.1875 1.390625-.269531C15.429688 11.902344 16 9.953125 16 8s-.570312-3.902344-1.707031-5.59375c-.195313-.285156-.511719-.4375-.832031-.4375m-3.421876 2.019531c-.222656-.007812-.453124.058594-.644531.203125-.261719.199219-.394531.5-.394531.804688v.058594c.011719.191406.074219.375.199219.535156 1.074219 1.429687 1.074219 3.390625 0 4.816406-.125.164062-.1875.347656-.199219.535156v.0625c0 .304688.132812.605469.394531.804688.441407.332031 1.066407.242187 1.398438-.199219C11.597656 10.542969 12 9.273438 12 8s-.402344-2.542969-1.207031-3.613281c-.183594-.246094-.464844-.382813-.753907-.398438m0 0",1.0,false]],"audio-volume-muted":[["M7 1.007812c-.296875-.003906-.578125.125-.769531.351563L3 5H2C.90625 5 0 5.84375 0 7v2c0 1.089844.910156 2 2 2h1l3.230469 3.640625c.210937.253906.492187.363281.769531.359375zm0 0",1.0,false],["M10 5c-.265625 0-.519531.105469-.707031.292969-.390625.390625-.390625 1.023437 0 1.414062L10.585938 8 9.292969 9.292969c-.390625.390625-.390625 1.023437 0 1.414062s1.023437.390625 1.414062 0L12 9.414062l1.292969 1.292969c.390625.390625 1.023437.390625 1.414062 0s.390625-1.023437 0-1.414062L13.414062 8l1.292969-1.292969c.390625-.390625.390625-1.023437 0-1.414062C14.519531 5.105469 14.265625 5 14 5s-.519531.105469-.707031.292969L12 6.585938l-1.292969-1.292969C10.519531 5.105469 10.265625 5 10 5m0 0",1.0,false]],"network-wireless-signal-excellent":[["M8 1.992188c-2.617188 0-5.238281.933593-7.195312 2.808593l-.496094.480469c-.398438.378906-.410156 1.011719-.03125 1.410156.382812.398438 1.015625.410156 1.414062.03125l.5-.476562c3.085938-2.957032 8.53125-2.957032 11.617188 0l.5.476562c.398437.378906 1.03125.367188 1.414062-.03125.378906-.398437.367188-1.03125-.03125-1.410156l-.496094-.484375C13.238281 2.925781 10.617188 1.992188 8 1.992188M7.96875 6c-1.570312.011719-3.128906.628906-4.207031 1.8125l-.5.550781c-.179688.195313-.277344.453125-.261719.71875.011719.265625.128906.515625.328125.695313.195313.179687.453125.273437.71875.257812.265625-.011718.515625-.128906.695313-.328125l.496093-.546875c1.277344-1.402344 4.160157-1.496094 5.523438.003906l.5.542969c.175781.199219.425781.316407.691406.328125.265625.015625.523437-.078125.722656-.257812.195313-.179688.3125-.429688.324219-.695313.011719-.261719-.082031-.523437-.261719-.71875l-.5-.546875C11.117188 6.582031 9.535156 5.988281 7.96875 6M8 10c-.511719 0-1.023438.195312-1.414062.585938-.78125.78125-.78125 2.046874 0 2.828124s2.046874.78125 2.828124 0 .78125-2.046874 0-2.828124C9.023438 10.195312 8.511719 10 8 10m0 0",1.0,false]],"edit-paste":[["M7 0c-.554688 0-1 .445312-1 1H4C2.355469 1 1 2.355469 1 4v9c0 1.644531 1.355469 3 3 3h8c1.644531 0 3-1.355469 3-3V4c0-1.644531-1.355469-3-3-3h-2c0-.554688-.445312-1-1-1zM4 3h1v1c0 .554688.445312 1 1 1h4c.554688 0 1-.445312 1-1V3h1c.570312 0 1 .429688 1 1v9c0 .570312-.429688 1-1 1H4c-.570312 0-1-.429688-1-1V4c0-.570312.429688-1 1-1m0 0",1.0,false]]};
+const PILL_H = 32, PANEL_W = 560, MAX_PANEL_H = 680, MAX_COMPACT_W = 680, MIN_COMPACT_W = 168;
+const PAD = 20, PILL_PAD = [10, 16], PILL_GAP = 9;
+const DOCK_Y = 6, SHADOW = 26, PANEL_R = 30, SNAP = 56, DRAG_START = 5, DOUBLE_CLICK = 280;
+const TUCK_W = 72, TUCK_H = 5, HOVER_OPEN = 130, HOVER_CLOSE = 280, STATS_EVERY = 1500;
+const FONT = '"Island Sans"', GLYPH_FONT = '"Island Glyphs"';
+const GLYPHS = { kitty: "\u{f018d}", zen: "\u{f0239}", "org.kde.dolphin": "\u{f024b}", discord: "\u{f066f}" };
+const GENERIC_GLYPH = "\u{f08c6}";
+const hex = s => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16));
+const WALLS = {
+  arona: { bg: "#0a0705", fg: "#efe0d5", muted: "#9e8e82", accent: "#ffb778", on_accent: "#4c2700", error: "#ffb4ab" },
+  azure: { bg: "#060709", fg: "#e2e2e9", muted: "#8e9099", accent: "#abc7ff", on_accent: "#0c305f", error: "#ffb4ab" },
+  grass: { bg: "#060805", fg: "#e1e4d9", muted: "#8d9286", accent: "#aad291", on_accent: "#183807", error: "#ffb4ab" },
+};
+for (const p of Object.values(WALLS)) for (const k in p) p[k] = hex(p[k]);
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = t => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function spring(period, zeta) {
-  const w = 2 * Math.PI / period;
-  return { x: 0, v: 0, target: 0, k: w * w, c: 2 * zeta * w,
-    tune(p, z) { const w = 2 * Math.PI / p; this.k = w * w; this.c = 2 * z * w; },
-    step(dt) {
-      for (let left = dt; left > 0; left -= 0.001) {
-        const h = Math.min(left, 0.001);
-        this.v += (-this.k * (this.x - this.target) - this.c * this.v) * h;
-        this.x += this.v * h;
-      }
-      if (Math.abs(this.x - this.target) < 0.002 && Math.abs(this.v) < 0.02) { this.x = this.target; this.v = 0; }
-    },
-    get settled() { return this.x === this.target && this.v === 0; } };
+// ponytail: mock model, the shape of what Mango, PipeWire and /proc feed the real one.
+const GB = 1024 ** 3;
+const M = {
+  wall: "arona", tag: 1, mon: { name: "DP-2", layout: "DW", active: true },
+  clients: [
+    { id: 1, appid: "kitty", title: "~/Projects/island", tag: 1 },
+    { id: 2, appid: "zen", title: "Rust Dynamic Island — Zen Browser", tag: 1 },
+    { id: 3, appid: "org.kde.dolphin", title: "Home — Dolphin", tag: 2 },
+    { id: 4, appid: "discord", title: "#general - Discord", tag: 3 },
+  ],
+  focus: { 1: 1, 2: 3, 3: 4 }, // each tag's last focused window, which Mango restores on view
+  sys: { cpu: 11, cpu_temp: 42, gpu: 16, gpu_temp: 43, mem: [5.4 * GB, 31.1 * GB], rx: 193e3, tx: 13e3 },
+  audio: { device: "Built-in Audio Analog Stereo", volume: 35, muted: false },
+  net: "Starlight 5G",
+  tray: [["edit-paste", "Clipboard"]],
+};
+const pal = () => WALLS[M.wall];
+const on = tag => M.clients.filter(c => c.tag === tag);
+const focused = w => w.tag === M.tag && M.focus[M.tag] === w.id;
+
+// Spring: same integrator, substeps and settle test as island.rs.
+class Spring {
+  constructor(x, period, zeta, eps) { this.x = this.target = x; this.v = 0; this.eps = eps; this.tune(period, zeta); }
+  tune(period, zeta) { const w = 2 * Math.PI / period; this.k = w * w; this.c = 2 * zeta * w; }
+  step(dt) {
+    if (reduced) return this.snap(this.target);
+    for (let left = dt; left > 0; left -= 0.001) {
+      const h = Math.min(left, 0.001);
+      this.v += (-this.k * (this.x - this.target) - this.c * this.v) * h;
+      this.x += this.v * h;
+    }
+    if (this.settled()) { this.x = this.target; this.v = 0; }
+  }
+  settled() { return Math.abs(this.x - this.target) < this.eps && Math.abs(this.v) < this.eps * 10; }
+  snap(x) { this.x = this.target = x; this.v = 0; }
 }
 
-const morph = spring(0.42, 0.74);
-const slide = { x: spring(0.34, 0.82), y: spring(0.34, 0.82) };
-let raf = 0, last = 0, open = false, pinned = false, hovered = false, suppressed = false;
-let hoverTimer = 0, leaveTimer = 0;
-
-const smooth = t => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
-const lerp = (a, b, t) => a + (b - a) * t;
-function panelWidth() { return Math.min(560, innerWidth - 16); }
-function panelHeight() { return panel.scrollHeight; }
-
-function paint() {
-  const t = morph.x, c = Math.min(1, Math.max(0, t));
-  const w = lerp(196, panelWidth(), t), h = lerp(36, panelHeight(), t);
-  el.style.width = w + "px";
-  el.style.height = h + "px";
-  el.style.borderRadius = Math.min(lerp(18, 30, c), h / 2) + "px";
-  el.style.transform = `translate(calc(-50% + ${slide.x.x}px), ${slide.y.x}px)`;
-  pillEl.style.opacity = 1 - smooth(c / 0.45);
-  panel.style.opacity = smooth((c - 0.32) / 0.68);
-  panel.style.visibility = c > 0.05 ? "visible" : "hidden";
+function squircle(cr, x, y, w, h, r, s) {
+  const lead = Math.min(r * (1 + 0.3 * s), w / 2, h / 2);
+  const c = lead * lerp(0.4477, 0.26, s);
+  const rx = x + w, by = y + h;
+  cr.beginPath();
+  cr.moveTo(x + lead, y);
+  cr.lineTo(rx - lead, y);
+  cr.bezierCurveTo(rx - c, y, rx, y + c, rx, y + lead);
+  cr.lineTo(rx, by - lead);
+  cr.bezierCurveTo(rx, by - c, rx - c, by, rx - lead, by);
+  cr.lineTo(x + lead, by);
+  cr.bezierCurveTo(x + c, by, x, by - c, x, by - lead);
+  cr.lineTo(x, y + lead);
+  cr.bezierCurveTo(x, y + c, x + c, y, x + lead, y);
+  cr.closePath();
 }
 
-function tick(now) {
-  const dt = Math.min((now - last) / 1000, 1 / 30);
-  last = now;
-  morph.step(dt); slide.x.step(dt); slide.y.step(dt);
-  paint();
-  raf = (morph.settled && slide.x.settled && slide.y.settled) ? 0 : requestAnimationFrame(tick);
+const paths = {};
+for (const [n, ps] of Object.entries(SYMBOLS)) paths[n] = ps.map(([d, a, even]) => [new Path2D(d), a, even ? "evenodd" : "nonzero"]);
+
+// Pen: pango text on a canvas. Text is vertically centred on its logical box,
+// widths are pango's rounded pixel sizes, and the font has tabular figures baked in.
+const metrics = {};
+function setFont(cr, size, weight, family = FONT) {
+  const f = `${weight} ${size}px ${family}`;
+  cr.font = f;
+  if (!metrics[f]) { const m = cr.measureText("Hg"); metrics[f] = [m.fontBoundingBoxAscent, m.fontBoundingBoxDescent]; }
+  return metrics[f];
 }
-function kick() {
-  if (reduced) { morph.x = morph.target; slide.x.x = slide.x.target; slide.y.x = slide.y.target; morph.v = 0; return paint(); }
-  if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); }
+function ellipsize(cr, s, max) {
+  if (max <= 0 || cr.measureText(s).width <= max) return s;
+  let n = s.length;
+  while (n > 0 && cr.measureText(s.slice(0, n) + "…").width > max) n--;
+  return s.slice(0, n) + "…";
 }
-function setOpen(want) {
-  if (want === open) return;
-  open = want;
-  if (want) morph.tune(0.42, 0.74); else morph.tune(0.34, 0.92);
-  morph.target = want ? 1 : 0;
-  kick();
+class Pen {
+  constructor(w, h, scale) {
+    this.c = document.createElement("canvas");
+    this.c.width = Math.ceil(w * scale); this.c.height = Math.ceil(h * scale);
+    this.w = w; this.h = h;
+    this.cr = this.c.getContext("2d");
+    this.cr.scale(scale, scale);
+    this.regions = [];
+  }
+  clear() { this.cr.clearRect(0, 0, this.w, this.h); this.regions = []; }
+  font(size, weight, family) { return setFont(this.cr, size, weight, family); }
+  width(s, size, weight) { this.font(size, weight); return Math.round(this.cr.measureText(s).width); }
+  text(s, size, weight, c, x, cy, max = -1) {
+    const [asc, desc] = this.font(size, weight);
+    s = ellipsize(this.cr, s, max);
+    const h = Math.round(asc + desc);
+    this.cr.fillStyle = rgba(c, 1);
+    this.cr.fillText(s, x, cy - h / 2 + asc);
+    return Math.round(this.cr.measureText(s).width);
+  }
+  right(s, size, weight, c, end, cy) { const w = this.width(s, size, weight); this.text(s, size, weight, c, end - w, cy); return w; }
+  fill([x, y, w, h], r, c, a) {
+    r = Math.min(r, w / 2, h / 2);
+    this.cr.beginPath(); this.cr.roundRect(x, y, w, h, r);
+    this.cr.fillStyle = rgba(c, a); this.cr.fill();
+  }
+  symbol(name, size, x, y, c) {
+    const cr = this.cr;
+    cr.save(); cr.translate(x, y); cr.scale(size / 16, size / 16);
+    for (const [p, a, rule] of paths[name]) { cr.fillStyle = rgba(c, a); cr.fill(p, rule); }
+    cr.restore();
+  }
+  app(appid, size, x, y, c) {
+    const [asc, desc] = this.font(size, 700, GLYPH_FONT);
+    const g = GLYPHS[appid] || GENERIC_GLYPH;
+    const w = Math.round(this.cr.measureText(g).width), h = Math.round(asc + desc);
+    this.cr.fillStyle = rgba(c, 1);
+    this.cr.fillText(g, x + (size - w) / 2, y + (size - h) / 2 + asc);
+  }
+  button(symbol, rect, on, region) {
+    if (on) this.fill(rect, rect[2] / 2, pal().accent, 0.22);
+    const c = on ? pal().accent : pal().fg;
+    this.symbol(symbol, 16, rect[0] + (rect[2] - 16) / 2, rect[1] + (rect[3] - 16) / 2, c);
+    this.regions.push(region);
+  }
+}
+const R = (rect, radius, left, more = {}) => ({ rect, radius, left, right: null, middle: null, scroll: null, tip: null, ...more });
+
+// Modules, in the order of the default config.
+const fmtClock = d => `${(d.getHours() + 11) % 12 + 1}:${String(d.getMinutes()).padStart(2, "0")} ${d.getHours() < 12 ? "AM" : "PM"}`;
+const fmtDate = d => d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+function workspacesPill(p, x) {
+  const P = pal(), cy = PILL_H / 2;
+  const total = M.clients.length;
+  const maxIcons = total > 12 ? 2 : total > 7 ? 3 : 5;
+  for (let tag = 1; tag <= 9; tag++) {
+    const wins = on(tag), active = tag === M.tag;
+    if (!wins.length && !active) continue;
+    const label = String(tag % 10);
+    const digit = p.width(label, 12.5, 700);
+    const shown = Math.min(wins.length, maxIcons), extra = wins.length - shown;
+    const more = extra > 0 ? `+${extra}` : null;
+    const moreW = more ? p.width(more, 11, 500) + 4 : 0;
+    const w = 8 + digit + 8 + shown * 22 + moreW + (shown > 0 || more ? 4 : 0);
+    if (x + w + 90 > MAX_COMPACT_W) break;
+    const rect = [x, cy - 12.5, w, 25];
+    if (active) p.fill(rect, 12.5, P.accent, 1);
+    const [dc, ic] = active ? [P.on_accent, P.on_accent] : [P.muted, P.fg];
+    p.text(label, 12.5, 700, dc, x + 8, cy);
+    p.regions.push(R(rect, 12.5, ["view", tag], { right: ["move", tag] }));
+    let ix = x + 8 + digit + 6;
+    for (const win of wins.slice(0, shown)) {
+      p.app(win.appid, 18, ix, cy - 9, ic);
+      if (focused(win)) p.fill([ix + 7.5, cy + 9.5, 3, 3], 1.5, ic, 1);
+      p.regions.push(R([ix - 2, cy - 12, 22, 24], 7, ["focus", win.id], { right: ["move", tag], tip: win.title }));
+      ix += 22;
+    }
+    if (more) p.text(more, 11, 500, dc, ix + 2, cy);
+    x += w + 3;
+  }
+  return x - 3;
 }
 
-el.addEventListener("pointerenter", e => {
-  if (e.pointerType === "touch") return;
-  hovered = true; clearTimeout(leaveTimer);
-  if (!suppressed) hoverTimer = setTimeout(() => setOpen(true), 130);
+const clockPill = (p, x) => x + p.text(fmtClock(new Date()), 13, 600, pal().fg, x, PILL_H / 2);
+const PILL = [workspacesPill, clockPill];
+
+function header(p, y) {
+  const P = pal(), cy = y + 16, now = new Date();
+  const w = p.text(fmtClock(now), 26, 600, P.fg, PAD, cy);
+  p.text(fmtDate(now), 12.5, 500, P.muted, PAD + w + 12, cy + 4);
+  const rect = i => [PANEL_W - PAD + 6 - (i + 1) * 34, y, 32, 32];
+  let r = rect(3);
+  p.button("preferences-desktop-wallpaper", r, false, R(r, 16, ["wall", 1], { right: ["wall", 2], tip: "Wallpaper: pick · right: random · middle: pause" }));
+  r = rect(2); p.button("go-home", r, false, R(r, 16, ["reset"], { tip: "Back to top centre" }));
+  r = rect(1); p.button("pan-up", r, I.tucked, R(r, 16, ["tuck"], { tip: "Tuck away" }));
+  r = rect(0); p.button("view-pin", r, I.pinned, R(r, 16, ["pin"], { tip: "Keep open" }));
+  return y + 32 + 14;
+}
+
+function chips(p, mon, y) {
+  const P = pal(), left = PAD, right = PANEL_W - PAD, h = 36;
+  let x = left;
+  for (let tag = 1; tag <= 9; tag++) {
+    const wins = on(tag), active = tag === M.tag;
+    if (!wins.length && !active && tag > 5) continue;
+    const label = String(tag % 10);
+    const digit = p.width(label, 13, 700);
+    const shown = Math.min(wins.length, 6);
+    const w = !wins.length ? 36 : 12 + digit + 8 + shown * 26 + 8;
+    if (x + w > right && x > left) { x = left; y += h + 6; }
+    const rect = [x, y, w, h];
+    const lead = active && mon.active;
+    if (lead) p.fill(rect, 13, P.accent, 1);
+    else if (active) p.fill(rect, 13, P.accent, 0.22);
+    else if (wins.length) p.fill(rect, 13, P.fg, 0.07);
+    const [dc, ic] = lead ? [P.on_accent, P.on_accent] : active ? [P.fg, P.fg] : !wins.length ? [P.muted, P.muted] : [P.muted, P.fg];
+    p.text(label, 13, 700, dc, !wins.length ? x + (w - digit) / 2 : x + 12, y + h / 2);
+    p.regions.push(R(rect, 13, ["view", tag], { right: ["move", tag], tip: `Workspace ${label}` }));
+    let ix = x + 12 + digit + 8;
+    for (const win of wins.slice(0, shown)) {
+      p.app(win.appid, 20, ix, y + 8, ic);
+      if (focused(win)) p.fill([ix + 8.5, y + h - 5, 3, 3], 1.5, ic, 1);
+      p.regions.push(R([ix - 3, y + 3, 26, h - 6], 8, ["focus", win.id], { right: ["move", tag], tip: win.title }));
+      ix += 26;
+    }
+    x += w + 6;
+  }
+  return y + h;
+}
+
+function workspacesPanel(p, y) {
+  const P = pal(), mon = M.mon, cy = y + 7;
+  let x = PAD;
+  if (mon.active) { p.fill([x + 1, cy - 3, 6, 6], 3, P.accent, 1); x += 13; }
+  const w = p.text(mon.name, 11, 600, P.muted, x, cy);
+  p.text(mon.layout, 11, 500, P.muted, x + w + 8, cy);
+  return chips(p, mon, y + 20) + 14;
+}
+
+function rate(v) {
+  return v >= 1e9 ? `${(v / 1e9).toFixed(1)} GB/s` : v >= 1e6 ? `${(v / 1e6).toFixed(1)} MB/s` : v >= 1e3 ? `${(v / 1e3).toFixed(0)} KB/s` : `${v.toFixed(0)} B/s`;
+}
+
+function stats(p, y) {
+  const P = pal(), s = M.sys, gib = v => (v / GB).toFixed(1);
+  const tiles = [
+    ["CPU", `${s.cpu.toFixed(0)}%`, `${s.cpu_temp.toFixed(0)}°`, s.cpu / 100],
+    ["GPU", `${s.gpu.toFixed(0)}%`, `${s.gpu_temp.toFixed(0)}°`, s.gpu / 100],
+    ["RAM", `${gib(s.mem[0])} GB`, `of ${gib(s.mem[1])}`, s.mem[0] / s.mem[1]],
+    ["NET", `↓ ${rate(s.rx)}`, `↑ ${rate(s.tx)}`, null],
+  ];
+  const n = tiles.length, gap = 8, w = (PANEL_W - 2 * PAD - (n - 1) * gap) / n, h = 58;
+  tiles.forEach(([label, value, sub, bar], i) => {
+    const x = PAD + i * (w + gap);
+    p.fill([x, y, w, h], 14, P.fg, 0.055);
+    p.text(label, 10.5, 500, P.muted, x + 12, y + 15);
+    if (sub) p.right(sub, 11, 500, P.muted, x + w - 12, y + 15);
+    p.text(value, 17, 600, P.fg, x + 12, y + 35, w - 24);
+    const track = [x + 12, y + h - 10, w - 24, 3];
+    if (bar !== null) {
+      p.fill(track, 1.5, P.fg, 0.1);
+      p.fill([track[0], track[1], track[2] * clamp(bar, 0.015, 1), 3], 1.5, P.accent, 1);
+    }
+  });
+  return y + h + 12;
+}
+
+function volumeSymbol(v, muted) {
+  return muted ? "audio-volume-muted" : v <= 33 ? "audio-volume-low" : v <= 66 ? "audio-volume-medium" : "audio-volume-high";
+}
+
+function audio(p, y) {
+  const P = pal(), a = M.audio, h = 30, cy = y + h / 2;
+  const mute = [PAD - 6, y, 30, h];
+  p.button(volumeSymbol(a.volume, a.muted), mute, a.muted, R(mute, 15, ["mute"], { tip: "Mute" }));
+  const labelW = 168;
+  p.text(a.device, 12.5, 500, P.fg, PAD + 30, cy, labelW);
+  const x = PAD + 30 + labelW + 12, w = PANEL_W - PAD - 40 - x;
+  p.fill([x, cy - 2, w, 4], 2, P.fg, 0.14);
+  const frac = Math.min(a.volume, 100) / 100;
+  p.fill([x, cy - 2, w * frac, 4], 2, a.muted ? P.muted : P.accent, 1);
+  p.fill([x + w * frac - 6, cy - 6, 12, 12], 6, P.fg, 1);
+  p.right(`${a.volume}%`, 12, 500, P.muted, PANEL_W - PAD, cy);
+  p.regions.push(R([x - 6, y, w + 12, h], 8, ["volume"], { scroll: "volume" }));
+  return y + h + 2;
+}
+
+function status(p, y) {
+  const P = pal(), h = 30, cy = y + h / 2;
+  p.symbol("network-wireless-signal-excellent", 16, PAD + 1, cy - 8, P.fg);
+  const w = p.text(M.net, 12.5, 500, P.fg, PAD + 30, cy, 168);
+  p.regions.push(R([PAD - 6, y, 40 + w, h], 10, null));
+  let x = PANEL_W - PAD - 30;
+  for (const [icon, title] of [...M.tray].reverse()) {
+    p.symbol(icon, 18, x + 6, cy - 9, P.fg);
+    p.regions.push(R([x, y, 30, h], 10, null, { tip: title }));
+    x -= 32;
+  }
+  return y + h + 12;
+}
+const PANEL = [header, workspacesPanel, stats, audio, status];
+
+function buildPill(scale) {
+  const p = new Pen(MAX_COMPACT_W, PILL_H, scale);
+  let spare = 0, w;
+  for (;;) {
+    let x = PILL_PAD[0];
+    PILL.forEach((draw, i) => {
+      if (i + 1 === PILL.length) x += spare;
+      const end = draw(p, x);
+      x = end > x ? end + PILL_GAP : x;
+    });
+    w = x - PILL_GAP + PILL_PAD[1];
+    if (spare > 0 || w >= MIN_COMPACT_W) { w = Math.max(w, MIN_COMPACT_W); break; }
+    spare = MIN_COMPACT_W - w;
+    p.clear();
+  }
+  return { pen: p, w, h: PILL_H, regions: p.regions };
+}
+
+function buildPanel(scale) {
+  const p = new Pen(PANEL_W, MAX_PANEL_H, scale);
+  const h = PANEL.reduce((y, draw) => draw(p, y), 16);
+  return { pen: p, w: PANEL_W, h: Math.min(h, MAX_PANEL_H), regions: p.regions };
+}
+
+// The island itself: state machine, springs and paint from island.rs. The page
+// is the output; on a narrow screen the whole thing is drawn smaller, not reflowed.
+const canvas = document.getElementById("island");
+const hitEl = document.getElementById("island-hit");
+const cr = canvas.getContext("2d");
+let S = 1, dpr = 1, out = [innerWidth, innerHeight];
+
+const I = {
+  pos: null,
+  place: [new Spring(innerWidth / 2, 0.34, 0.82, 0.3), new Spring(DOCK_Y, 0.34, 0.82, 0.3)],
+  t: new Spring(0, 0.42, 0.78, 0.002),
+  cw: new Spring(200, 0.36, 0.86, 0.3),
+  ph: new Spring(320, 0.36, 0.86, 0.3),
+  pw: new Spring(PANEL_W, 0.36, 0.86, 0.3),
+  k: new Spring(0, 0.34, 0.86, 0.002),
+  last: null, pinned: false, tucked: false, hovered: false, open: false, suppress: false,
+  press: null, dragging: false, sliding: false, pointer: [0, 0], hover: null,
+  pinAt: null, openAt: null, closeAt: null,
+  compact: null, panel: null, compactDirty: true, panelDirty: true, raf: 0,
+};
+const springs = () => [I.t, I.cw, I.ph, I.pw, I.k, I.place[0], I.place[1]];
+const home = () => [out[0] / 2, DOCK_Y];
+const wantsPanel = () => (I.pinned || I.open) && !I.dragging;
+const panelVisible = () => wantsPanel() || I.t.x > 0.001;
+const opensDown = () => I.place[1].x + PILL_H / 2 < out[1] / 2;
+const panelCx = (x, w) => clamp(x, w / 2 + 8, Math.max(out[0] - w / 2 - 8, w / 2 + 8));
+function clampPos([x, y], pillW) {
+  const half = pillW / 2 + 4;
+  return [clamp(x, Math.min(half, out[0] / 2), Math.max(out[0] - half, out[0] / 2)), clamp(y, 4, Math.max(out[1] - PILL_H - 4, 4))];
+}
+
+function shape() {
+  const [px, py] = [I.place[0].x, I.place[1].x], t = I.t.x, k = I.k.x, tc = clamp(t, 0, 1);
+  const cx = lerp(px, panelCx(I.place[0].x, I.pw.x), tc);
+  const w = lerp(lerp(I.cw.x, TUCK_W, k), I.pw.x, t);
+  const h = lerp(lerp(PILL_H, TUCK_H, k), I.ph.x, t);
+  const top = lerp(py, I.pos === null ? 2 : py, k);
+  const y = opensDown() ? top : py + PILL_H - h;
+  const r = Math.min(lerp(PILL_H / 2, PANEL_R, tc), h / 2);
+  return { x: cx - w / 2, y, w, h, r, cx };
+}
+
+function targetRect() {
+  const [px, py] = [I.place[0].target, I.place[1].target];
+  if (I.t.target > 0.5) {
+    const w = I.pw.target, cx = panelCx(px, w);
+    return [cx - w / 2, opensDown() ? py : py + PILL_H - I.ph.target, w, I.ph.target];
+  }
+  if (I.k.target > 0.5) return [px - 70, I.pos === null ? 0 : py, 140, 12];
+  return [px - I.cw.target / 2, py, I.cw.target, PILL_H];
+}
+
+function active() {
+  const [px, py] = [I.place[0].target, I.place[1].target];
+  if (I.t.target > 0.5) {
+    const c = I.panel; if (!c) return null;
+    return [c, panelCx(px, c.w) - c.w / 2, opensDown() ? py : py + PILL_H - c.h];
+  }
+  if (I.k.target > 0.5) return null;
+  const c = I.compact; if (!c) return null;
+  return [c, px - c.w / 2, py];
+}
+
+function hit([x, y]) {
+  const a = active(); if (!a) return null;
+  const [c, ox, oy] = a; x -= ox; y -= oy;
+  for (let i = c.regions.length - 1; i >= 0; i--) {
+    const [rx, ry, rw, rh] = c.regions[i].rect;
+    if (x >= rx && x < rx + rw && y >= ry && y < ry + rh) return i;
+  }
+  return null;
+}
+
+function sliderFrac(i) {
+  const a = active(); if (!a) return 0;
+  const r = a[0].regions[i].rect;
+  return clamp((I.pointer[0] - a[1] - r[0] - 6) / (r[2] - 12), 0, 1);
+}
+
+function updateTargets() {
+  const opening = wantsPanel();
+  if (opening && I.t.target < 0.5) I.t.tune(0.42, 0.74);
+  else if (!opening && I.t.target > 0.5) I.t.tune(0.34, 0.92);
+  I.t.target = opening ? 1 : 0;
+  I.k.target = I.tucked && !opening && !I.dragging ? 1 : 0;
+}
+
+function rebuild() {
+  const scale = dpr * S;
+  if (I.compactDirty) {
+    I.compactDirty = false;
+    const c = buildPill(scale);
+    if (!I.compact) I.cw.snap(c.w);
+    I.cw.target = c.w;
+    I.compact = c;
+  }
+  if (panelVisible()) {
+    if ((I.panelDirty && wantsPanel()) || !I.panel) {
+      I.panelDirty = false;
+      const first = !I.panel, c = buildPanel(scale);
+      if (first && I.t.x < 0.01) { I.ph.snap(c.h); I.pw.snap(c.w); }
+      I.ph.target = c.h; I.pw.target = c.w;
+      I.panel = c;
+    }
+  } else if (I.panel) { I.panel = null; I.panelDirty = true; }
+}
+
+function blit(c, x, y, w, h, a) {
+  cr.save();
+  cr.beginPath(); cr.rect(x, y, w, h); cr.clip();
+  cr.globalAlpha = a;
+  cr.drawImage(c.pen.c, x, y, c.pen.w, c.pen.h);
+  cr.restore();
+}
+
+function paint(sh, animating) {
+  const P = pal(), t = clamp(I.t.x, 0, 1), k = clamp(I.k.x, 0, 1);
+  cr.setTransform(1, 0, 0, 1, 0, 0);
+  cr.clearRect(0, 0, canvas.width, canvas.height);
+  cr.setTransform(dpr * S, 0, 0, dpr * S, 0, 0);
+
+  const lift = 1 - k;
+  if (lift > 0) {
+    const depth = lerp(12, 24, t);
+    for (let i = 6; i >= 1; i--) {
+      const f = i / 6;
+      squircle(cr, sh.x, sh.y + 2, sh.w, sh.h, sh.r, t);
+      cr.lineWidth = 2 * depth * f;
+      cr.strokeStyle = `rgba(0,0,0,${0.055 * lift * (1 - f * 0.7)})`;
+      cr.stroke();
+    }
+  }
+  squircle(cr, sh.x, sh.y, sh.w, sh.h, sh.r, t);
+  cr.fillStyle = rgba(P.bg, lerp(0.97, 0.72, k));
+  cr.fill();
+
+  const aCompact = (1 - smooth(t / 0.45)) * (1 - k), aPanel = smooth((t - 0.32) / 0.68);
+  const down = opensDown();
+  const morphing = animating && ((t > 0 && t < 1) || (k > 0 && k < 1));
+  if (morphing) { cr.save(); squircle(cr, sh.x, sh.y, sh.w, sh.h, sh.r, t); cr.clip(); }
+  if (aCompact > 0.003 && I.compact) {
+    const c = I.compact, w = Math.min(sh.w, c.w);
+    blit(c, sh.w > c.w ? sh.cx - c.w / 2 : sh.cx - w / 2, down ? sh.y : sh.y + sh.h - PILL_H, w, PILL_H, aCompact);
+  }
+  if (aPanel > 0.003 && I.panel) {
+    const c = I.panel;
+    blit(c, sh.cx - c.w / 2, down ? sh.y : sh.y + sh.h - c.h, c.w, Math.min(c.h, sh.h + 8), aPanel);
+  }
+  if (morphing) cr.restore();
+
+  // Hover feedback over the cached content, and the tip in the panel's top right.
+  const a = !I.dragging && I.hover !== null && active();
+  const reg = a && a[0].regions[I.hover];
+  if (reg) {
+    const [x, y, w, h] = reg.rect;
+    squircle(cr, a[1] + x, a[2] + y, w, h, reg.radius, 0);
+    cr.fillStyle = rgba(P.fg, 0.1); cr.fill();
+    if (reg.tip && I.t.target > 0.5) {
+      const [asc] = setFont(cr, 11, 500), s = ellipsize(cr, reg.tip, 300);
+      cr.fillStyle = rgba(P.fg, 0.75);
+      cr.fillText(s, sh.x + sh.w - 20 - cr.measureText(s).width, sh.y + 55 + asc);
+    }
+  }
+}
+
+function render(now) {
+  I.raf = 0;
+  updateTargets();
+  rebuild();
+  const dt = I.last === null ? 1 / 240 : Math.min((now - I.last) / 1000, 1 / 30);
+  springs().forEach(s => s.step(dt));
+  const animating = !springs().every(s => s.settled());
+  I.last = animating ? now : null;
+  const r = targetRect();
+  Object.assign(hitEl.style, { left: r[0] * S + "px", top: r[1] * S + "px", width: r[2] * S + "px", height: r[3] * S + "px" });
+  if (I.hovered && !I.dragging) I.hover = hit(I.pointer);
+  paint(shape(), animating);
+  if (animating) dirty();
+}
+const dirty = () => { if (!I.raf) I.raf = requestAnimationFrame(render); };
+function invalidate(compact, panel) {
+  I.compactDirty ||= compact; I.panelDirty ||= panel;
+  if ((compact && I.t.x < 0.999) || (panel && panelVisible())) dirty();
+}
+
+// Deadlines, like the real event loop's timers.
+let timer = 0;
+function schedule() {
+  clearTimeout(timer);
+  const next = [I.openAt, I.closeAt, I.pinAt].filter(t => t !== null);
+  if (next.length) timer = setTimeout(tick, Math.max(0, Math.min(...next) - performance.now()));
+}
+function tick() {
+  const now = performance.now();
+  if (I.openAt !== null && I.openAt <= now) { I.openAt = null; if (I.hovered && !I.press) { I.open = true; dirty(); } }
+  if (I.closeAt !== null && I.closeAt <= now) { I.closeAt = null; if (!I.hovered) { I.open = false; dirty(); } }
+  if (I.pinAt !== null && I.pinAt <= now) { I.pinAt = null; act(["pin"]); }
+  schedule();
+}
+
+function act(a, frac = 0) {
+  if (!a) return;
+  const [kind, arg] = a;
+  if (kind === "view") M.tag = arg;
+  else if (kind === "focus") { const w = M.clients.find(c => c.id === arg); M.tag = w.tag; M.focus[w.tag] = w.id; }
+  else if (kind === "move") {
+    const w = M.clients.find(c => c.id === M.focus[M.tag] && c.tag === M.tag);
+    if (!w || arg === M.tag) return;
+    w.tag = arg; M.focus[arg] = w.id;
+    M.focus[M.tag] = (on(M.tag)[0] || {}).id;
+  } else if (kind === "cycle") {
+    const tags = [...new Set(M.clients.map(c => c.tag))].sort((x, y) => x - y);
+    const next = arg ? tags.find(t => t > M.tag) : tags.reverse().find(t => t < M.tag);
+    if (next === undefined) return;
+    M.tag = next;
+  } else if (kind === "volume") M.audio.volume = Math.round(frac * 100);
+  else if (kind === "vol+") M.audio.volume = clamp(M.audio.volume + arg, 0, 100);
+  else if (kind === "mute") M.audio.muted = !M.audio.muted;
+  else if (kind === "pin") I.pinned = !I.pinned;
+  else if (kind === "tuck") I.tucked = !I.tucked;
+  else if (kind === "reset") { I.tucked = false; reset(); }
+  else if (kind === "wall") {
+    // ponytail: the picker is its own palette view; here left steps, right picks at random.
+    const names = Object.keys(WALLS), i = names.indexOf(M.wall);
+    M.wall = names[(i + (arg === 1 ? 1 : 1 + Math.floor(Math.random() * (names.length - 1)))) % names.length];
+    document.documentElement.dataset.wall = M.wall;
+  }
+  hitEl.setAttribute("aria-pressed", I.pinned);
+  invalidate(true, true);
+  dirty();
+}
+
+function reset() { I.pos = null; const h = home(); I.place[0].target = h[0]; I.place[1].target = h[1]; dirty(); }
+
+function finishDrag() {
+  I.dragging = false; I.suppress = true;
+  const [x, y] = [I.place[0].x, I.place[1].x], h = home();
+  if (Math.hypot(x - h[0], y - h[1]) < SNAP) reset();
+  else {
+    const at = clampPos([x, y], I.cw.target);
+    I.pos = at; I.place[0].target = at[0]; I.place[1].target = at[1];
+  }
+  dirty();
+}
+
+const BTN = { 0: "left", 1: "middle", 2: "right" };
+const at = e => [e.clientX / S, e.clientY / S];
+let lastClient = null;
+hitEl.addEventListener("pointerenter", e => {
+  I.hovered = true; I.closeAt = null; I.pointer = at(e);
+  if (!I.suppress && !I.open && e.pointerType !== "touch") I.openAt = performance.now() + HOVER_OPEN;
+  schedule(); dirty();
 });
-el.addEventListener("pointerleave", e => {
-  if (e.pointerType === "touch") return;
-  hovered = false; suppressed = false; clearTimeout(hoverTimer);
-  leaveTimer = setTimeout(() => { if (!pinned) setOpen(false); }, 280);
+hitEl.addEventListener("pointerleave", () => {
+  if (I.press) return; // the real pointer grab holds through a press
+  I.hovered = false; I.suppress = false; I.openAt = null; I.sliding = false;
+  if (I.open) I.closeAt = performance.now() + HOVER_CLOSE;
+  I.hover = null; schedule(); dirty();
 });
-
-// Drag it anywhere; drop it near home and it docks. Hover stays off until you leave.
-let press = null;
-el.addEventListener("pointerdown", e => {
-  if (e.target.closest("button, input")) return;
-  press = { x: e.clientX, y: e.clientY, sx: slide.x.target, sy: slide.y.target, drag: false, touch: e.pointerType === "touch" };
-  clearTimeout(hoverTimer);
-  el.setPointerCapture(e.pointerId);
-});
-el.addEventListener("pointermove", e => {
-  if (!press) return;
-  const dx = e.clientX - press.x, dy = e.clientY - press.y;
-  if (!press.drag && Math.hypot(dx, dy) > 5) { press.drag = true; setOpen(false); }
-  if (press.drag) {
-    slide.x.target = slide.x.x = press.sx + dx; slide.y.target = slide.y.x = press.sy + dy;
-    slide.x.v = slide.y.v = 0;
-    kick();
+hitEl.addEventListener("pointerdown", e => {
+  hitEl.setPointerCapture(e.pointerId);
+  lastClient = [e.clientX, e.clientY];
+  I.pointer = at(e); I.openAt = null;
+  const region = hit(I.pointer), btn = BTN[e.button];
+  I.press = { btn, at: I.pointer, region };
+  if (btn === "left" && region !== null) {
+    const a = active()[0].regions[region].left;
+    if (a && a[0] === "volume") { I.sliding = true; act(a, sliderFrac(region)); }
   }
 });
-el.addEventListener("pointerup", () => {
-  if (!press) return;
-  const { drag, touch } = press;
-  press = null;
-  if (drag) {
-    suppressed = true;
-    if (Math.hypot(slide.x.target, slide.y.target) < 56) { slide.x.target = 0; slide.y.target = 0; kick(); }
-    return;
+hitEl.addEventListener("pointermove", e => {
+  I.pointer = at(e);
+  if (I.sliding) return act(["volume"], sliderFrac(I.press.region));
+  if (I.press && I.press.btn === "left" && !I.dragging && Math.hypot(I.pointer[0] - I.press.at[0], I.pointer[1] - I.press.at[1]) > DRAG_START) {
+    I.dragging = true; I.openAt = I.closeAt = null; I.hover = null;
+    I.pos = [I.place[0].x, I.place[1].x];
   }
-  pinned = !pinned;
-  if (touch) setOpen(pinned); else if (pinned) setOpen(true);
+  if (I.dragging && lastClient) {
+    const x = clamp(I.place[0].x + (e.clientX - lastClient[0]) / S, 0, out[0]);
+    const y = clamp(I.place[1].x + (e.clientY - lastClient[1]) / S, 0, out[1] - PILL_H);
+    I.place[0].snap(x); I.place[1].snap(y); I.pos = [x, y];
+  }
+  lastClient = [e.clientX, e.clientY];
+  if (!I.dragging) I.hover = hit(I.pointer);
+  dirty();
 });
-el.addEventListener("dblclick", e => {
-  if (e.target.closest("button")) return;
-  slide.x.target = 0; slide.y.target = 0; pinned = false; setOpen(false); kick();
-});
-el.addEventListener("focusin", () => setOpen(true));
-el.addEventListener("focusout", () => { if (!pinned && !hovered) setOpen(false); });
-addEventListener("keydown", e => { if (e.key === "Escape") { pinned = false; setOpen(false); } });
-addEventListener("resize", paint);
-
-el.querySelectorAll(".slider").forEach(l => {
-  const i = l.querySelector("input"), o = l.querySelector("output");
-  const set = () => { o.textContent = i.value + "%"; i.style.background = ""; };
-  i.addEventListener("input", set);
-});
-
-// Workspaces are wallpapers here: switching one retints the page.
-el.querySelectorAll("[data-wall]").forEach(b => b.addEventListener("click", () => {
-  document.documentElement.dataset.wall = b.dataset.wall;
-  el.querySelectorAll("[data-wall]").forEach(x => x.classList.toggle("on", x === b));
-  el.querySelectorAll("[data-chip]").forEach(x => x.classList.toggle("on", x.dataset.chip === b.dataset.wall));
-}));
-
-function clock() {
-  const now = new Date();
-  const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  el.querySelectorAll("[data-time]").forEach(n => n.textContent = time);
-  el.querySelector("[data-date]").textContent = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-  setTimeout(clock, 60000 - now.getSeconds() * 1000);
+function release(e) {
+  const p = I.press; I.press = null; lastClient = null;
+  if (!p) return;
+  if (I.sliding) { I.sliding = false; }
+  else if (I.dragging) finishDrag();
+  else if (p.region !== null && hit(I.pointer) === p.region) {
+    const r = active()[0].regions[p.region];
+    act(r[p.btn]);
+  } else if (p.btn === "left") {
+    // A pin waits out the double-click window, so a double click doesn't flash the panel open.
+    if (I.pinAt !== null) { I.pinAt = null; act(["reset"]); }
+    else I.pinAt = performance.now() + DOUBLE_CLICK;
+  } else if (p.btn === "middle") act(["tuck"]);
+  schedule(); dirty();
 }
-clock();
-el.style.setProperty("--panel-w", panelWidth() + "px");
-addEventListener("resize", () => el.style.setProperty("--panel-w", panelWidth() + "px"));
-paint();
+hitEl.addEventListener("pointerup", release);
+hitEl.addEventListener("pointercancel", release);
+hitEl.addEventListener("contextmenu", e => e.preventDefault());
+hitEl.addEventListener("wheel", e => {
+  e.preventDefault();
+  const a = I.hover !== null && active();
+  const scroll = a && a[0].regions[I.hover].scroll;
+  act(scroll === "volume" ? ["vol+", e.deltaY > 0 ? -5 : 5] : ["cycle", e.deltaY > 0]);
+}, { passive: false });
+hitEl.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(["pin"]); } });
+
+function resize() {
+  dpr = devicePixelRatio || 1;
+  S = Math.min(1, innerWidth / (PANEL_W + 16));
+  out = [innerWidth / S, innerHeight / S];
+  canvas.width = Math.round(innerWidth * dpr); canvas.height = Math.round(innerHeight * dpr);
+  const at = I.pos ? clampPos(I.pos, I.cw.target) : home();
+  I.place[0].snap(at[0]); I.place[1].snap(at[1]);
+  I.compact = I.panel = null; I.compactDirty = I.panelDirty = true;
+  dirty();
+}
+addEventListener("resize", resize);
+
+// Mock stats move while the panel is up, every 1.5 s like the real sampler.
+const walk = (v, step, lo, hi) => clamp(v + (Math.random() * 2 - 1) * step, lo, hi);
+setInterval(() => {
+  if (!(I.pinned || I.open)) return;
+  const s = M.sys;
+  s.cpu = walk(s.cpu, 4, 3, 38); s.cpu_temp = walk(s.cpu_temp, 1, 38, 58);
+  s.gpu = walk(s.gpu, 5, 2, 45); s.gpu_temp = walk(s.gpu_temp, 1, 36, 60);
+  s.mem[0] = walk(s.mem[0], 0.05 * GB, 5.1 * GB, 5.9 * GB);
+  s.rx = walk(s.rx, 80e3, 2e3, 900e3); s.tx = walk(s.tx, 8e3, 1e3, 60e3);
+  invalidate(false, true);
+}, STATS_EVERY);
+(function minute() {
+  invalidate(true, true);
+  setTimeout(minute, 60050 - Date.now() % 60000);
+})();
+
+Promise.race([
+  Promise.all(["500", "600", "700"].map(w => document.fonts.load(`${w} 13px ${FONT}`)).concat(document.fonts.load(`700 18px ${GLYPH_FONT}`, GENERIC_GLYPH))),
+  new Promise(r => setTimeout(r, 2500)),
+]).then(resize);
+
 
 // Chart tooltips
 const tip = document.getElementById("tip");
