@@ -20,6 +20,7 @@ mod notify;
 mod palette;
 mod stats;
 mod status;
+mod timer;
 pub mod wallpaper;
 mod workspaces;
 
@@ -51,6 +52,7 @@ type PanelModule = fn(&mut Pen, &Ctx, f64) -> f64;
 const PILL: &[(&str, PillModule)] = &[
     ("media", media::pill),
     ("workspaces", workspaces::pill),
+    ("timer", timer::pill),
     ("network", status::offline_pill),
     ("clock", clock::pill),
 ];
@@ -59,6 +61,7 @@ const PANEL: &[(&str, PanelModule)] = &[
     ("header", header::panel),
     ("workspaces", workspaces::panel),
     ("media", media::panel),
+    ("timer", timer::panel),
     ("notifications", notify::panel),
     ("stats", stats::panel),
     ("audio", audio::panel),

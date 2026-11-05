@@ -198,6 +198,24 @@ impl Keys {
     }
 }
 
+/// Minutes for each pomodoro phase, and a long break after `rounds` focus rounds.
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct Pomodoro {
+    pub focus: u64,
+    pub short: u64,
+    pub long: u64,
+    pub rounds: u32,
+    /// Start the next phase on its own; off waits for a click.
+    pub auto: bool,
+}
+
+impl Default for Pomodoro {
+    fn default() -> Self {
+        Pomodoro { focus: 25, short: 5, long: 15, rounds: 4, auto: true }
+    }
+}
+
 /// Look and feel switches.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
@@ -237,9 +255,12 @@ pub struct Config {
     pub notify: NotifyTimes,
     pub wallpaper: Wallpaper,
     pub terminal: String,
+    /// The search's last row looks up what you typed here, `{}` being the query. Empty hides it.
+    pub web_search: String,
     pub screenshot_dir: String,
     pub keys: Keys,
     pub ui: Ui,
+    pub pomodoro: Pomodoro,
 }
 
 impl Default for Config {
@@ -253,20 +274,22 @@ impl Default for Config {
             icon_style: IconStyle::Glyph,
             clock: "%I:%M %p".into(),
             palette: "~/.config/theme/generated/colors.toml".into(),
-            pill: list(&["media", "workspaces", "network", "clock"]),
-            panel: list(&["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status"]),
+            pill: list(&["media", "workspaces", "timer", "network", "clock"]),
+            panel: list(&["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "status"]),
             icons: HashMap::new(),
             commands: Commands::default(),
             custom: Vec::new(),
-            tools: list(&["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power"]),
+            tools: list(&["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "wallpaper", "power"]),
             tool: Vec::new(),
             notifications: true,
             notify: NotifyTimes::default(),
             wallpaper: Wallpaper::default(),
             terminal: "kitty".into(),
+            web_search: "https://duckduckgo.com/?q={}".into(),
             screenshot_dir: "~/Pictures".into(),
             keys: Keys::default(),
             ui: Ui::default(),
+            pomodoro: Pomodoro::default(),
         }
     }
 }

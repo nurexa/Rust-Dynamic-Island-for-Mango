@@ -84,6 +84,7 @@ pub fn view(p: &mut Pen, c: &Ctx) -> f64 {
     let mut y = LIST_TOP;
     if v.shown.is_empty() {
         let text = match () {
+            _ if v.entries[v.current].live() && v.query.trim().chars().count() < 2 => "Type to search".to_owned(),
             _ if v.loading => "Loading…".to_owned(),
             _ if v.entries[v.current].typed().is_some() && !v.query.is_empty() => format!("Press Enter to run {}", v.query),
             _ if v.dmenu.is_some() && !v.query.is_empty() => format!("Press Enter to use {}", v.query),

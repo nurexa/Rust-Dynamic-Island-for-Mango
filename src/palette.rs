@@ -1,6 +1,6 @@
 //! The search palette: one text field over one ranked list, shared by every tool and
 //! by `island dmenu`. This is the logic only; `modules/palette.rs` draws it.
-use crate::tools::{Act, Entry, Item, Then};
+use crate::tools::{Act, Entry, Icon, Item, Then, quote};
 use smithay_client_toolkit::seat::keyboard::{Keysym, Modifiers};
 use crate::settings::{KeyAct, Keys};
 use std::sync::mpsc;
@@ -36,6 +36,10 @@ pub struct Palette {
     pub dmenu: Option<Dmenu>,
     /// Lists left behind by `Act::Open`, innermost last.
     pub back: Vec<Vec<Item>>,
+    /// Web search URL with `{}` for the query; empty hides the row.
+    pub web: String,
+    /// Rows worked out from the query (a sum, a web search), kept at the end of `items`.
+    instant: usize,
 }
 
 pub enum Outcome {
@@ -88,7 +92,8 @@ fn score_sub(query: &str, text: &str) -> Option<i32> {
 impl Palette {
     pub fn new(entries: Vec<Entry>, current: usize, generation: u64) -> Self {
         Palette { entries, current, query: String::new(), items: Vec::new(), shown: Vec::new(), selected: 0, top: 0,
-                  generation, loading: true, ask: None, confirming: None, dmenu: None, back: Vec::new() }
+                  generation, loading: true, ask: None, confirming: None, dmenu: None, back: Vec::new(),
+                  web: String::new(), instant: 0 }
     }
 
     pub fn dmenu(prompt: String, password: bool, items: Vec<Item>, dmenu: Dmenu) -> Self {
@@ -106,6 +111,7 @@ impl Palette {
     pub fn set_items(&mut self, generation: u64, items: Vec<Item>) {
         if generation == self.generation {
             self.items = items;
+            self.instant = 0;
             self.back.clear();
             self.loading = false;
             self.refilter();
@@ -113,6 +119,8 @@ impl Palette {
     }
 
     fn refilter(&mut self) {
+        self.items.truncate(self.items.len() - self.instant);
+        self.instant = 0;
         let mut hits: Vec<(i32, usize)> = self.items.iter().enumerate().filter_map(|(i, it)| {
             let title = score(&self.query, &it.title);
             // The subtitle counts for less, so "code" finds Code before a mention of it.
@@ -123,9 +131,36 @@ impl Palette {
             hits.sort_by_key(|h| -h.0);
         }
         self.shown = hits.into_iter().map(|h| h.1).collect();
+        if self.entries[self.current].live() {
+            // The tool already searched for exactly this; its order is the ranking.
+            self.shown = (0..self.items.len()).collect();
+        }
+        self.add_instant();
         self.selected = 0;
         self.top = 0;
         self.confirming = None;
+    }
+
+    /// A sum's answer goes first (Enter copies it), a web search last.
+    fn add_instant(&mut self) {
+        let q = self.query.trim();
+        if q.is_empty() || self.ask.is_some() || self.dmenu.is_some() || !self.back.is_empty() || !self.entries[self.current].instant() {
+            return;
+        }
+        #[cfg(feature = "calc")]
+        if let Some((shown, copy)) = crate::tools::calc::answer(q) {
+            let act = Act::Sh(format!("printf %s {} | wl-copy", quote(&copy)));
+            self.items.push(Item::new(shown, Icon::Glyph("\u{f00ec}".into()), act).sub(format!("{q} · Enter copies it")));
+            self.shown.insert(0, self.items.len() - 1);
+            self.instant += 1;
+        }
+        if !self.web.is_empty() {
+            let url = self.web.replace("{}", &url_encode(q));
+            let act = Act::Sh(format!("xdg-open {}", quote(&url)));
+            self.items.push(Item::new(format!("Search the web for “{q}”"), Icon::Glyph("\u{f059f}".into()), act));
+            self.shown.push(self.items.len() - 1);
+            self.instant += 1;
+        }
     }
 
     pub fn move_selection(&mut self, by: isize) {
@@ -228,6 +263,15 @@ impl Palette {
 
     pub fn key(&mut self, sym: Keysym, text: Option<&str>, mods: Modifiers, keys: &Keys) -> Outcome {
         let edited = |p: &mut Self| {
+            if p.entries[p.current].live() && p.back.is_empty() && p.ask.is_none() {
+                // Ask the tool again; a slower answer to an older query is dropped by generation.
+                p.items.clear();
+                p.instant = 0;
+                p.generation += 1;
+                p.loading = true;
+                p.refilter();
+                return Outcome::Reload;
+            }
             p.refilter();
             Outcome::Redraw
         };
@@ -272,6 +316,15 @@ impl Palette {
     }
 }
 
+/// Percent-encodes everything but the URL-safe characters, so a query can't break out of its parameter.
+fn url_encode(s: &str) -> String {
+    s.bytes().map(|b| match b {
+        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+        b' ' => "+".into(),
+        _ => format!("%{b:02X}"),
+    }).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,6 +335,23 @@ mod tests {
         let items = titles.iter().map(|t| Item::new(*t, Icon::None, Act::Sh(t.to_string()))).collect();
         p.set_items(7, items);
         p
+    }
+
+    #[test]
+    fn the_main_search_answers_sums_and_offers_the_web() {
+        let mut p = Palette::new(vec![Entry::Builtin(crate::tools::TOOLS.iter().position(|t| t.name == "apps").unwrap())], 0, 1);
+        p.web = "https://example.com/?q={}".into();
+        p.set_items(1, vec![Item::new("Firefox", Icon::None, Act::Sh("firefox".into()))]);
+        for c in "2*21".chars() {
+            p.key(Keysym::a, Some(&c.to_string()), Modifiers::default(), &Keys::default());
+        }
+        let titles: Vec<&str> = p.shown.iter().map(|&i| p.items[i].title.as_str()).collect();
+        assert_eq!(titles, ["= 42", "Search the web for “2*21”"]);
+        assert!(matches!(p.choose(), Outcome::Run(Act::Sh(s)) if s.contains("'42'") && s.contains("wl-copy")));
+        p.query = "a&b c".into();
+        p.refilter();
+        assert!(matches!(&p.items[p.shown[0]].act, Act::Sh(s) if s.ends_with("?q=a%26b+c'")));
+        assert_eq!(p.items.len(), 2, "old instant rows are replaced, not piled up");
     }
 
     #[test]

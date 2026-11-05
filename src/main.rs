@@ -12,6 +12,7 @@ mod pen;
 mod settings;
 mod sys;
 mod theme;
+mod timer;
 mod tools;
 mod wm;
 
@@ -104,6 +105,7 @@ pub struct Model {
     pub palette: Option<Palette>,
     pub notes: notify::Center,
     pub wall: Option<modules::wallpaper::Wall>,
+    pub timer: Option<timer::Timer>,
 }
 
 pub struct App {
@@ -141,6 +143,9 @@ pub struct App {
     net_poke: mpsc::Sender<()>,
     tx: Tx,
     next_stats: Option<Instant>,
+    /// When the timer's text next changes, and whether that's counting seconds.
+    timer_at: Option<Instant>,
+    timer_fine: bool,
     next_clock: Instant,
     scroll: f64,
     quit: bool,
@@ -208,7 +213,8 @@ impl App {
     }
 
     fn tool_ctx(&self) -> tools::Ctx {
-        tools::Ctx { cfg: self.cfg.clone(), clients: self.model.clients.clone() }
+        let query = self.model.palette.as_ref().map_or(String::new(), |p| p.query.clone());
+        tools::Ctx { cfg: self.cfg.clone(), clients: self.model.clients.clone(), query }
     }
 
     fn open_palette(&mut self, tool: Option<&str>) {
@@ -228,7 +234,8 @@ impl App {
         }
         let Some(island) = self.focused_island() else { return };
         self.generation += 1;
-        let palette = Palette::new(entries, wanted.unwrap_or(0), self.generation);
+        let mut palette = Palette::new(entries, wanted.unwrap_or(0), self.generation);
+        palette.web = self.cfg.web_search.clone();
         tools::load(&palette.entries[palette.current], self.generation, self.tool_ctx(), self.tx.clone());
         self.model.palette = Some(palette);
         self.palette_on = Some(self.islands[island].name.clone());
@@ -495,9 +502,11 @@ impl App {
                 }
             }
             "quit" => self.quit = true,
+            "timer" => self.timer("toggle"),
             "" => {} // a second instance checking whether we're alive
             _ => match c.split_once(' ') {
                 Some(("open", tool)) => self.open_palette(Some(tool)),
+                Some(("timer", what)) => self.timer(what),
                 Some(("shot", kind)) => {
                     if let Some(task) = tools::shot_task(kind) {
                         self.run(tools::Act::Task(task));
@@ -624,6 +633,7 @@ impl App {
                 self.model.notes.history.clear();
                 self.all(false, true);
             }
+            Action::Cmd(c) => self.command(&c),
             Action::Dnd => {
                 self.model.notes.dnd = !self.model.notes.dnd;
                 self.state.dnd = self.model.notes.dnd;
@@ -645,15 +655,68 @@ impl App {
         }
     }
 
+    /// `island timer [start|toggle|stop|skip|<minutes>]`.
+    fn timer(&mut self, what: &str) {
+        let now = Instant::now();
+        let cfg = &self.cfg.pomodoro;
+        match (what, &mut self.model.timer) {
+            ("start", _) | ("toggle", None) => self.model.timer = Some(timer::Timer::focus(cfg, now)),
+            ("toggle", Some(t)) => t.toggle_pause(now),
+            ("stop", _) => self.model.timer = None,
+            ("skip", Some(t)) => self.model.timer = t.next(cfg, now),
+            (m, _) => match m.trim_end_matches('m').parse::<f64>() {
+                Ok(m) if m > 0.0 => {
+                    let total = Duration::from_secs_f64(m * 60.0);
+                    self.model.timer = Some(timer::Timer::new(timer::Phase::Countdown, 1, total, now));
+                }
+                _ => eprintln!("island: timer takes start, toggle, stop, skip or minutes"),
+            },
+        }
+        self.all(true, true);
+        self.timer_reschedule(now);
+    }
+
+    fn timer_reschedule(&mut self, now: Instant) {
+        self.timer_fine = self.islands.iter().any(Island::wants_stats);
+        self.timer_at = self.model.timer.as_ref().and_then(|t| t.next_change(now, self.timer_fine));
+    }
+
+    /// A phase ran out: say so, and start the next one if that's the setting.
+    fn timer_tick(&mut self, now: Instant) {
+        let Some(t) = &self.model.timer else { return };
+        if t.done(now) {
+            let next = t.next(&self.cfg.pomodoro, now);
+            let (title, body) = match (t.phase, &next) {
+                (timer::Phase::Focus, Some(n)) => ("Focus done", format!("{} minute {}", n.total.as_secs() / 60, n.phase.label().to_lowercase())),
+                (_, Some(_)) => ("Break's over", "Back to focus".to_owned()),
+                (_, None) => ("Time's up", match t.total.as_secs() {
+                    s if s < 60 => format!("{s} second timer"),
+                    s => format!("{} minute timer", (s as f64 / 60.0).round()),
+                }),
+            };
+            let note = notify::Note::local("timer", title, &body, notify::NoteImage::Named("alarm-symbolic".into()));
+            self.model.timer = next.filter(|_| self.cfg.pomodoro.auto);
+            self.handle(Msg::Notify(note));
+        }
+        self.all(true, true);
+        self.timer_reschedule(now);
+    }
+
     fn next_deadline(&self) -> Instant {
         let islands = self.islands.iter().filter_map(Island::next_deadline);
-        islands.chain(self.next_stats).chain(self.model.notes.until).chain([self.next_clock]).min().unwrap_or(self.next_clock)
+        islands.chain(self.next_stats).chain(self.timer_at).chain(self.model.notes.until).chain([self.next_clock]).min().unwrap_or(self.next_clock)
     }
 
     fn tick(&mut self) {
         let now = Instant::now();
         for i in &mut self.islands {
             i.tick(now);
+        }
+        if self.timer_at.is_some_and(|t| now >= t) {
+            self.timer_tick(now);
+        } else if self.model.timer.is_some() && self.islands.iter().any(Island::wants_stats) != self.timer_fine {
+            // The panel opened or closed: seconds or minutes from here.
+            self.timer_reschedule(now);
         }
         if self.islands.iter_mut().fold(false, |due, i| i.take_pin(now) | due) {
             self.act(Action::Pin, 0.0, None);
@@ -1039,10 +1102,10 @@ fn main() {
         let args: Vec<String> = env::args().skip(1).collect();
         match cmd.as_str() {
             "dmenu" => run_dmenu(&args[1..]),
-            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" => run_client(&args.join(" ")),
+            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" => run_client(&args.join(" ")),
             _ => {}
         }
-        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|dmenu [-p prompt]]");
+        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|dmenu [-p prompt]]");
         std::process::exit(2);
     }
 
@@ -1096,7 +1159,7 @@ fn main() {
                        audio: None, brightness: brightness::read(&cfg.commands), media: None, art_small: None, art_large: None, net: net::State::Unknown,
                        tray: Vec::new(), pal: theme::load(&cfg.palette), palette: None,
                        notes: notify::Center::new(state.dnd),
-                       wall: modules::wallpaper::load() },
+                       wall: modules::wallpaper::load(), timer: None },
         icons: Icons::new(),
         tray_items: Vec::new(),
         cfg,
@@ -1108,6 +1171,8 @@ fn main() {
         tx: tx.clone(),
         next_stats: None,
         next_clock: next_minute(),
+        timer_at: None,
+        timer_fine: false,
         scroll: 0.0,
         quit: false,
     };

@@ -46,6 +46,8 @@ pub enum Action {
     NoteDismiss(u32),
     NoteClear,
     Dnd,
+    /// One of the island's own commands, as `island <cmd>` would send it.
+    Cmd(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

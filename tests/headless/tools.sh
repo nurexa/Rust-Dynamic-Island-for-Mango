@@ -30,7 +30,12 @@ list = "printf 'apple\\\\nbanana\\\\n'"
 run = "islandtest fruit {}"
 E
 sed -i 's/^tools = .*//' $XDG_CONFIG_HOME/island/config.toml
-sed -i '1i tools = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power", "fruit"]' $XDG_CONFIG_HOME/island/config.toml
+sed -i '1i tools = ["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "wallpaper", "power", "fruit"]' $XDG_CONFIG_HOME/island/config.toml
+sed -i '1i web_search = "https://search.test/?q={}"' $XDG_CONFIG_HOME/island/config.toml
+# Opening things and the file index are shims too: they log, they don't open.
+printf '#!/bin/sh\necho "islandtest open $*" >> %s\n' "$LOG" > $H/shim/xdg-open
+printf '#!/bin/sh\ncase "$*" in *needle*) echo "%s/files/a needle.txt"; echo "/usr/share/needle";; esac\n' "$R" > $H/shim/plocate
+chmod +x $H/shim/xdg-open $H/shim/plocate
 $H/isl; sleep .3; $V move 1500 900; sleep .4
 ok "starts on the top layer" "$(layer)" top
 
@@ -51,6 +56,18 @@ ok "apps: launch counted" "$(grep -c '1 zztest' $XDG_STATE_HOME/island/launches 
 # Run
 $BIN open run; sleep .9; $V type islandtest typed here; sleep .3; $V key Return; sleep .7
 ok "run: Enter runs what was typed" "$(logged 'islandtest typed here')" 1
+
+# Sums, conversions and the web, in the app search
+$BIN open apps; sleep .9; $V type '84/2'; sleep .3; $V key Return; sleep .6
+ok "calc: Enter copies the answer" "$(wl-paste -n 2>/dev/null)" 42
+$BIN open apps; sleep .9; $V type '10 km to mi'; sleep .3; $V key Return; sleep .6
+ok "calc: converts units" "$(wl-paste -n 2>/dev/null)" 6.2137119224
+$BIN open apps; sleep .9; $V type 'qq zz'; sleep .3; $V key Return; sleep .6
+ok "web: an unmatched search goes to the web, encoded" "$(logged 'islandtest open https://search.test/?q=qq+zz')" 1
+
+# Files: live, asks the index on every keystroke
+$BIN open files; sleep .9; $V type needle; sleep .6; $V key Return; sleep .6
+ok "files: your own files first, Enter opens" "$(logged "islandtest open $R/files/a needle.txt")" 1
 
 # Windows
 $BIN open windows; sleep .9; $V type pav; sleep .3; $V key Return; sleep .8
@@ -124,4 +141,4 @@ mmsg dispatch togglefullscreen >/dev/null; sleep .6
 
 kill -0 $(cat $R/island.pid) && echo "ok   alive after every tool"
 grep -vE 'no supported|another notification' $R/island.log | tail -3
-rm -f $H/shim/islandtest
+rm -f $H/shim/islandtest $H/shim/xdg-open $H/shim/plocate

@@ -9,10 +9,12 @@ repository = "https://github.com/nurexa/Rust-Dynamic-Island-for-Mango"
 [features]
 # Everything's on by default. To build less:
 #   cargo build --release --no-default-features --features "apps,clipboard"
-default = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power", "notifications"]
+default = ["apps", "run", "windows", "files", "calc", "clipboard", "screenshot", "wifi", "wallpaper", "power", "notifications"]
 apps = []
 run = []
 windows = []
+files = []
+calc = []
 clipboard = []
 screenshot = []
 wifi = []

@@ -13,6 +13,10 @@ use std::{
 
 #[cfg(feature = "apps")]
 pub mod apps;
+#[cfg(feature = "calc")]
+pub mod calc;
+#[cfg(feature = "files")]
+mod files;
 #[cfg(feature = "clipboard")]
 mod clipboard;
 #[cfg(feature = "power")]
@@ -106,6 +110,8 @@ impl Item {
 pub struct Ctx {
     pub cfg: Config,
     pub clients: Vec<wm::Client>,
+    /// What's typed, for live tools that search as you type.
+    pub query: String,
 }
 
 pub struct Tool {
@@ -115,25 +121,29 @@ pub struct Tool {
     pub list: fn(&Ctx) -> Vec<Item>,
     /// Lets Enter act on what was typed when nothing in the list matches.
     pub typed: Option<fn(&str) -> Act>,
+    /// Lists again on every keystroke instead of filtering one list.
+    pub live: bool,
 }
 
 pub const TOOLS: &[Tool] = &[
     #[cfg(feature = "apps")]
-    Tool { name: "apps", glyph: "\u{f003b}", hint: "Search apps", list: apps::list, typed: None },
+    Tool { name: "apps", glyph: "\u{f003b}", hint: "Search apps", list: apps::list, typed: None, live: false },
     #[cfg(feature = "run")]
-    Tool { name: "run", glyph: "\u{f018d}", hint: "Run a command", list: run::list, typed: Some(run::typed) },
+    Tool { name: "run", glyph: "\u{f018d}", hint: "Run a command", list: run::list, typed: Some(run::typed), live: false },
+    #[cfg(feature = "files")]
+    Tool { name: "files", glyph: "\u{f0214}", hint: "Search files", list: files::list, typed: None, live: true },
     #[cfg(feature = "windows")]
-    Tool { name: "windows", glyph: "\u{f05b2}", hint: "Switch to a window", list: windows::list, typed: None },
+    Tool { name: "windows", glyph: "\u{f05b2}", hint: "Switch to a window", list: windows::list, typed: None, live: false },
     #[cfg(feature = "clipboard")]
-    Tool { name: "clipboard", glyph: "\u{f0192}", hint: "Search clipboard history", list: clipboard::list, typed: None },
+    Tool { name: "clipboard", glyph: "\u{f0192}", hint: "Search clipboard history", list: clipboard::list, typed: None, live: false },
     #[cfg(feature = "screenshot")]
-    Tool { name: "screenshot", glyph: "\u{f0100}", hint: "Capture the screen", list: screenshot::list, typed: None },
+    Tool { name: "screenshot", glyph: "\u{f0100}", hint: "Capture the screen", list: screenshot::list, typed: None, live: false },
     #[cfg(feature = "wifi")]
-    Tool { name: "wifi", glyph: "\u{f0928}", hint: "Choose a network", list: wifi::list, typed: None },
+    Tool { name: "wifi", glyph: "\u{f0928}", hint: "Choose a network", list: wifi::list, typed: None, live: false },
     #[cfg(feature = "wallpaper")]
-    Tool { name: "wallpaper", glyph: "\u{f0e09}", hint: "Choose a wallpaper", list: wallpaper::list, typed: None },
+    Tool { name: "wallpaper", glyph: "\u{f0e09}", hint: "Choose a wallpaper", list: wallpaper::list, typed: None, live: false },
     #[cfg(feature = "power")]
-    Tool { name: "power", glyph: "\u{f0425}", hint: "Lock, log out or shut down", list: power::list, typed: None },
+    Tool { name: "power", glyph: "\u{f0425}", hint: "Lock, log out or shut down", list: power::list, typed: None, live: false },
 ];
 
 /// A tool in the palette: built in, or a pair of shell commands from `[[tool]]`.
@@ -170,6 +180,15 @@ impl Entry {
         }
     }
 
+    pub fn live(&self) -> bool {
+        matches!(self, Entry::Builtin(i) if TOOLS[*i].live)
+    }
+
+    /// The main search also answers sums, conversions and web searches.
+    pub fn instant(&self) -> bool {
+        matches!(self, Entry::Builtin(i) if TOOLS[*i].name == "apps")
+    }
+
     pub fn typed(&self) -> Option<fn(&str) -> Act> {
         match self {
             Entry::Builtin(i) => TOOLS[*i].typed,
@@ -193,6 +212,8 @@ fn usable(entry: &Entry, cfg: &Config) -> bool {
         "screenshot" => on_path("grim"),
         "wifi" => on_path("nmcli"),
         "wallpaper" => !cfg.wallpaper.dir.is_empty(),
+        #[cfg(feature = "files")]
+        "files" => files::usable(),
         _ => true,
     }
 }
