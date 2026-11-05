@@ -9,6 +9,7 @@ mod net;
 mod notify;
 mod palette;
 mod pen;
+mod privacy;
 mod settings;
 mod sys;
 mod theme;
@@ -80,6 +81,8 @@ pub enum Msg {
     Tray(Vec<bus::TrayItem>),
     Menu(usize, Vec<bus::MenuEntry>),
     Theme,
+    /// Processes with the camera open.
+    Camera(Vec<String>),
     Command(String),
     Items(u64, Vec<tools::Item>),
     Notify(Note),
@@ -106,6 +109,9 @@ pub struct Model {
     pub notes: notify::Center,
     pub wall: Option<modules::wallpaper::Wall>,
     pub timer: Option<timer::Timer>,
+    pub camera: Vec<String>,
+    /// The panel's list of outputs, apps and microphones is open.
+    pub audio_open: bool,
 }
 
 pub struct App {
@@ -428,13 +434,18 @@ impl App {
             Msg::Audio(a) => {
                 let changed = self.model.audio.as_ref()
                     .is_some_and(|o| o.volume != a.volume || o.muted != a.muted);
+                let dot = self.model.audio.as_ref().is_none_or(|o| o.recording.is_empty() != a.recording.is_empty());
                 self.model.audio = Some(a);
                 if changed {
                     for i in &mut self.islands {
                         i.flash();
                     }
                 }
-                self.all(false, true);
+                self.all(dot, true);
+            }
+            Msg::Camera(who) => {
+                self.model.camera = who;
+                self.all(true, false);
             }
             Msg::Sys(s) => {
                 if s != self.model.sys {
@@ -503,6 +514,12 @@ impl App {
             }
             "quit" => self.quit = true,
             "timer" => self.timer("toggle"),
+            "audio" => {
+                self.model.audio_open = !self.model.audio_open;
+                audio::DETAILED.store(self.model.audio_open, std::sync::atomic::Ordering::Relaxed);
+                audio::poke();
+                self.all(false, true);
+            }
             "" => {} // a second instance checking whether we're alive
             _ => match c.split_once(' ') {
                 Some(("open", tool)) => self.open_palette(Some(tool)),
@@ -634,6 +651,21 @@ impl App {
                 self.all(false, true);
             }
             Action::Cmd(c) => self.command(&c),
+            Action::StreamVolume(index) => {
+                let pct = (frac * 100.0).round() as u32;
+                let Some(s) = self.model.audio.as_mut().and_then(|a| a.apps.iter_mut().find(|s| s.index == index)) else { return };
+                // A drag fires per pixel; only act when the percentage moves.
+                if s.volume != pct {
+                    s.volume = pct;
+                    spawn_sh(&format!("pactl set-sink-input-volume {index} {pct}%"));
+                    self.all(false, true);
+                }
+            }
+            Action::StreamMute(index) => spawn_sh(&format!("pactl set-sink-input-mute {index} toggle")),
+            Action::AudioDevice { source, name } => {
+                let what = if source { "source" } else { "sink" };
+                spawn_sh(&format!("pactl set-default-{what} {}", tools::quote(&name)));
+            }
             Action::Dnd => {
                 self.model.notes.dnd = !self.model.notes.dnd;
                 self.state.dnd = self.model.notes.dnd;
@@ -1102,7 +1134,7 @@ fn main() {
         let args: Vec<String> = env::args().skip(1).collect();
         match cmd.as_str() {
             "dmenu" => run_dmenu(&args[1..]),
-            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" => run_client(&args.join(" ")),
+            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" => run_client(&args.join(" ")),
             _ => {}
         }
         eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|dmenu [-p prompt]]");
@@ -1159,7 +1191,8 @@ fn main() {
                        audio: None, brightness: brightness::read(&cfg.commands), media: None, art_small: None, art_large: None, net: net::State::Unknown,
                        tray: Vec::new(), pal: theme::load(&cfg.palette), palette: None,
                        notes: notify::Center::new(state.dnd),
-                       wall: modules::wallpaper::load(), timer: None },
+                       wall: modules::wallpaper::load(), timer: None,
+                       camera: Vec::new(), audio_open: false },
         icons: Icons::new(),
         tray_items: Vec::new(),
         cfg,
@@ -1176,6 +1209,7 @@ fn main() {
         scroll: 0.0,
         quit: false,
     };
+    privacy::spawn(tx.clone());
     audio::spawn(tx);
 
     while !app.quit {

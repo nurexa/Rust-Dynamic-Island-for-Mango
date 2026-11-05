@@ -48,6 +48,11 @@ pub enum Action {
     Dnd,
     /// One of the island's own commands, as `island <cmd>` would send it.
     Cmd(String),
+    /// An app's own volume, by its stream index.
+    StreamVolume(u32),
+    StreamMute(u32),
+    /// Make this output (or with `source`, this microphone) the default.
+    AudioDevice { source: bool, name: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

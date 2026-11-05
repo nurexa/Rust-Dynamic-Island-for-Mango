@@ -18,6 +18,7 @@ mod media;
 mod menu;
 mod notify;
 mod palette;
+mod privacy;
 mod stats;
 mod status;
 mod timer;
@@ -54,6 +55,7 @@ const PILL: &[(&str, PillModule)] = &[
     ("workspaces", workspaces::pill),
     ("timer", timer::pill),
     ("network", status::offline_pill),
+    ("privacy", privacy::pill),
     ("clock", clock::pill),
 ];
 

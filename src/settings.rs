@@ -274,7 +274,7 @@ impl Default for Config {
             icon_style: IconStyle::Glyph,
             clock: "%I:%M %p".into(),
             palette: "~/.config/theme/generated/colors.toml".into(),
-            pill: list(&["media", "workspaces", "timer", "network", "clock"]),
+            pill: list(&["media", "workspaces", "timer", "network", "privacy", "clock"]),
             panel: list(&["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "status"]),
             icons: HashMap::new(),
             commands: Commands::default(),

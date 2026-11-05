@@ -1,9 +1,17 @@
 #!/bin/bash
+# The audio server, faked: $R/sink holds the volume, $R/apps the playing apps and
+# $R/rec who records. Changes are logged, not made.
 H=$(dirname "$(readlink -f "$0")")/..
 R=$H/run
 case "$*" in
  subscribe) exec tail -n0 -f $R/events;;
  get-default-sink) echo fake;;
- *list*) python3 -c "
-import json;d=json.load(open('$R/sink'));print(json.dumps([{'name':'fake','description':'Speakers','mute':d['mute'],'volume':{'front-left':{'value_percent':str(d['vol'])+'%'}}}]))";;
+ get-default-source) echo mic;;
+ *"list sinks") python3 -c "
+import json;d=json.load(open('$R/sink'));print(json.dumps([{'name':'fake','description':'Speakers','mute':d['mute'],'volume':{'front-left':{'value_percent':str(d['vol'])+'%'}}},
+ {'name':'hdmi','description':'Monitor speakers','mute':False,'volume':{'mono':{'value_percent':'100%'}}}]))";;
+ *"list sink-inputs") cat $R/apps 2>/dev/null || echo '[]';;
+ *"list sources") echo '[{"index":1,"name":"mic","description":"Headset mic"},{"index":2,"name":"fake.monitor","description":"Monitor of Speakers"}]';;
+ *"list source-outputs") cat $R/rec 2>/dev/null || echo '[]';;
+ set-*) echo "pactl $*" >> $R/shim.log;;
 esac
