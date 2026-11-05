@@ -76,18 +76,30 @@ From a terminal inside your Mango session:
 git clone https://github.com/nurexa/Rust-Dynamic-Island-for-Mango
 cd Rust-Dynamic-Island-for-Mango
 ./install.sh             # everything
-./install.sh --bar-only  # only replace Waybar; rofi, dunst and your binds stay
+./install.sh --manual    # the same, but asks about each part and each key first
+./install.sh --bar-only  # only replace the bar; launchers, dunst and your binds stay
 ./install.sh --undo      # put it all back
 ```
 
-The installer keeps your key bindings on the same keys and only changes what they run,
-so a key that opened rofi now opens the island. Each original line stays in
-`config.conf` as a comment, and `--undo` restores the file exactly. It also stops dunst
-and masks its service, because D-Bus would otherwise restart it on the next
-notification.
+It prints each step as it goes and sends a notification when it's done.
 
-It checks the new config with Mango's parser and rolls back on its own if the island
-doesn't come up. Nothing is uninstalled, so your old tools stay available.
+The installer keeps your key bindings on the same keys and only changes what they run,
+so a key that opened rofi, wofi, fuzzel, tofi, anyrun or walker now opens the island.
+Each original line stays in your config as a comment, and `--undo` restores the file
+exactly. The island's own keys and window rule go in `mango/island.conf`, which your
+config sources from one marked block. Both `config.conf` and `config.toml` work, and so
+does a config that's a symlink into your dotfiles; `MANGO_CONFIG=/path` points it anywhere
+else.
+
+If you already use one of the island's keys (Mango's own default config takes `SUPER+i`),
+yours wins: the installer leaves that island key out and tells you which line has it.
+`--manual` asks for another key instead. Waybar, dunst, mako or swaync started from
+`exec_once` stop starting with the session, and `--undo` starts them again. It also masks
+dunst's service, because D-Bus would otherwise restart it on the next notification.
+
+It checks the result with Mango's own parser (`mango -p`). Warnings your config already
+had don't block it, and if anything new goes wrong, or the island doesn't come up, it
+rolls back on its own. Nothing is uninstalled, so your old tools stay available.
 
 Builds need Rust, `cairo`, `pango` and `libxkbcommon`. At runtime the island uses
 `pactl`, `wpctl`, `playerctl` (with `playerctld`), `curl`, `adwaita-icon-theme` and any
