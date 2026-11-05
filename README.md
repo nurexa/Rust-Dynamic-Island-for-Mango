@@ -42,22 +42,23 @@ Lower is better, and the best is bold.
 
 | | Waybar | mangobar | Island |
 |---|---|---|---|
-| Real memory (PSS) | 34.1 MB | 18.7 MB | **12.4 MB** |
-| Resident memory (RSS) | 70.7 MB | 40.9 MB | **39.6 MB** |
-| CPU per workspace switch | 42 ms | **0.75 ms** | 1.75 ms |
-| Bar startup | 103 ms | 52 ms | **39 ms** |
-| Idle wakeups per second | n/a | 11.9 | **4.0** |
-| Idle CPU | 0–0.3% | 0.03–0.07% | 0–0.03% |
+| Real memory (PSS) | 34.2 MB | 18.6 MB | **12.5 MB** |
+| Resident memory (RSS) | 70.8 MB | 40.6 MB | **39.7 MB** |
+| CPU per workspace switch | 29 ms | **0.5 ms** | **0.5 ms** |
+| Bar startup | 102 ms | 50 ms | **32 ms** |
+| Idle wakeups per second | **3.1** | 12.0 | 9.7 |
+| Idle CPU | 0–0.03% | 0–0.07% | 0% |
 | Binary size | 2.5 MB | **0.3 MB** | 3.4 MB |
 
-Two things to read carefully. mangobar is the faster of the two small bars at drawing a
-workspace change, because it's a 0.3 MB C program that only draws a bar, and it is
-dynamically linked to more libraries (65 against the island's 40). The island does that
-and the launcher, notifications, clipboard and screenshots, and still uses less memory.
-Waybar's wakeup count measured negative (threads exit between samples), so it's left out.
-Idle CPU is a tie between all three. Waybar's switch cost includes the helper commands its
-custom workspace modules run, not the separate script that feeds them. Opening the
-palette adds about 3 MB while it's open, and the first Waybar run was a cold start
+The island and mangobar tie on drawing a workspace change. That cost is counted in 10 ms
+clock ticks over 40 switches, so 0.25 ms is the resolution. mangobar is a 0.3 MB C program
+that only draws a bar, dynamically linked to more libraries (65 against the island's 40);
+the island is also the launcher, notifications, clipboard and screenshots, and still uses
+the least memory. Idle wakeups swing with audio-server events between sessions (the island
+read 4.0 in an earlier run), so treat that row as a range. Idle CPU is a tie between all
+three. Waybar's switch cost includes the helper commands its custom workspace modules run,
+not the separate script that feeds them. Opening the
+palette adds about 4 MB while it's open, and the first Waybar run was a cold start
 (201 ms), which is why the median matters. A busy desktop moves these numbers, so rerun it
 on yours.
 

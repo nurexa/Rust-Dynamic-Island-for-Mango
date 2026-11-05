@@ -9,6 +9,14 @@ use crate::{
 };
 use cairo::{Context, Format, ImageSurface};
 use pango::{AttrFontFeatures, AttrList, EllipsizeMode, FontDescription, Weight};
+use std::{cell::RefCell, collections::HashMap};
+
+/// Text, icon font, size bits, weight, max width, scale.
+type ShapeKey = (String, bool, u64, Weight, i64, i32);
+
+thread_local! {
+    static SHAPED: RefCell<HashMap<ShapeKey, pango::Layout>> = RefCell::new(HashMap::new());
+}
 
 pub type Rect = (f64, f64, f64, f64);
 
@@ -178,32 +186,39 @@ impl<'a> Pen<'a> {
     }
 
     fn prepare(&self, s: &str, family: &str, size: f64, weight: Weight, max_w: f64) {
-        let mut d = FontDescription::new();
-        d.set_family(family);
-        d.set_weight(weight);
-        d.set_absolute_size(size * pango::SCALE as f64);
-        self.layout.set_font_description(Some(&d));
-        // Tabular figures keep clocks and percentages from shimmering as they tick.
-        let attrs = AttrList::new();
-        attrs.insert(AttrFontFeatures::new("tnum"));
-        self.layout.set_attributes(Some(&attrs));
-        self.layout.set_width((max_w * pango::SCALE as f64) as i32);
-        self.layout.set_ellipsize(if max_w > 0.0 { EllipsizeMode::End } else { EllipsizeMode::None });
-        self.layout.set_text(s);
+        configure(&self.layout, s, family, size, weight, max_w);
+    }
+
+    /// One line shaped once and kept: a pill rebuild draws the same few strings
+    /// every time, and shaping them was most of what it cost.
+    fn shaped(&self, s: &str, icon: bool, size: f64, weight: Weight, max_w: f64) -> pango::Layout {
+        let key = (s.to_owned(), icon, size.to_bits(), weight, max_w as i64, self.scale);
+        SHAPED.with_borrow_mut(|cache| {
+            if let Some(l) = cache.get(&key) {
+                return l.clone();
+            }
+            // ponytail: dropped wholesale when full; an LRU if churn ever shows up
+            if cache.len() >= 96 {
+                cache.clear();
+            }
+            let l = pango::Layout::new(&self.layout.context());
+            configure(&l, s, if icon { &self.cfg.icon_font } else { &self.cfg.font }, size, weight, max_w);
+            cache.insert(key, l.clone());
+            l
+        })
     }
 
     pub fn width(&self, s: &str, size: f64, weight: Weight) -> f64 {
-        self.prepare(s, &self.cfg.font, size, weight, -1.0);
-        self.layout.pixel_size().0 as f64
+        self.shaped(s, false, size, weight, -1.0).pixel_size().0 as f64
     }
 
     /// Left-aligned at x, vertically centred on cy. Returns the width drawn.
     pub fn text(&self, s: &str, size: f64, weight: Weight, c: Rgb, x: f64, cy: f64, max_w: f64) -> f64 {
-        self.prepare(s, &self.cfg.font, size, weight, max_w);
-        let (w, h) = self.layout.pixel_size();
+        let layout = self.shaped(s, false, size, weight, max_w);
+        let (w, h) = layout.pixel_size();
         self.set(c, 1.0);
         self.cr.move_to(x, cy - h as f64 / 2.0);
-        pangocairo::functions::show_layout(&self.cr, &self.layout);
+        pangocairo::functions::show_layout(&self.cr, &layout);
         w as f64
     }
 
@@ -267,11 +282,11 @@ impl<'a> Pen<'a> {
 
     /// One-color glyph from the icon font, centred in a `size` box.
     pub fn glyph(&self, g: &str, size: f64, x: f64, y: f64, c: Rgb, a: f64) {
-        self.prepare(g, &self.cfg.icon_font, size, Weight::Bold, -1.0);
-        let (w, h) = self.layout.pixel_size();
+        let layout = self.shaped(g, true, size, Weight::Bold, -1.0);
+        let (w, h) = layout.pixel_size();
         self.set(c, a);
         self.cr.move_to(x + (size - w as f64) / 2.0, y + (size - h as f64) / 2.0);
-        pangocairo::functions::show_layout(&self.cr, &self.layout);
+        pangocairo::functions::show_layout(&self.cr, &layout);
     }
 
     /// A window's icon. `c` is the glyph's tone; `Color` style ignores it and
@@ -306,9 +321,39 @@ impl<'a> Pen<'a> {
     }
 }
 
+fn configure(l: &pango::Layout, s: &str, family: &str, size: f64, weight: Weight, max_w: f64) {
+    let mut d = FontDescription::new();
+    d.set_family(family);
+    d.set_weight(weight);
+    d.set_absolute_size(size * pango::SCALE as f64);
+    l.set_font_description(Some(&d));
+    // Tabular figures keep clocks and percentages from shimmering as they tick.
+    let attrs = AttrList::new();
+    attrs.insert(AttrFontFeatures::new("tnum"));
+    l.set_attributes(Some(&attrs));
+    l.set_width((max_w * pango::SCALE as f64) as i32);
+    l.set_ellipsize(if max_w > 0.0 { EllipsizeMode::End } else { EllipsizeMode::None });
+    l.set_text(s);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cached_shaping_matches_a_fresh_shape() {
+        let (cfg, pal, mut icons) = (Config::default(), crate::theme::load(""), Icons::new());
+        let (_s, p) = Pen::new(200.0, 40.0, &cfg, &pal, 1, &mut icons).unwrap();
+        let fresh = |s: &str| {
+            p.prepare(s, &cfg.font, 12.5, Weight::Bold, -1.0);
+            p.layout.pixel_size().0 as f64
+        };
+        for s in ["1", "12:34 PM", "1", "+3"] {
+            assert_eq!(p.width(s, 12.5, Weight::Bold), fresh(s), "{s}");
+        }
+        // Size is part of the key: a hit must not hand back another size's layout.
+        assert!(p.width("12:34 PM", 20.0, Weight::Bold) > p.width("12:34 PM", 12.5, Weight::Bold));
+    }
 
     #[test]
     fn glyph_lookup_prefers_config_then_exact_then_tail_then_generic() {

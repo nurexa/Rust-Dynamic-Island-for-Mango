@@ -131,7 +131,9 @@ pub struct Island {
     pub layer: LayerSurface,
     configured: bool,
     pool: SlotPool,
-    buffers: Vec<Buffer>,
+    /// Each buffer with the bounds it last held: outside them it's already clear.
+    buffers: Vec<(Buffer, Bounds)>,
+    chrome: Option<Chrome>,
     size: (f64, f64),
 
     /// Pill centre x and top y. None is docked at top centre.
@@ -178,6 +180,17 @@ pub struct Island {
     prev_bounds: (f64, f64, f64, f64),
 }
 
+type Bounds = (f64, f64, f64, f64);
+
+/// The resting pill's shadow and background. The shadow strokes are the costliest
+/// part of a frame, and content-only redraws like a workspace switch keep them.
+/// ponytail: pill only; a pinned panel's chrome would hold megabytes for less gain.
+struct Chrome {
+    key: [f64; 8],
+    surf: ImageSurface,
+    at: (f64, f64),
+}
+
 #[derive(Clone, Copy)]
 struct Shape {
     x: f64,
@@ -198,7 +211,7 @@ impl Island {
         let pos = state_pos.map(|p| clamp_pos(p, out, 200.0));
         let at = pos.unwrap_or(home);
         Some(Island {
-            output, name, out, scale, layer, configured: false, pool, buffers: Vec::new(), size, pos,
+            output, name, out, scale, layer, configured: false, pool, buffers: Vec::new(), chrome: None, size, pos,
             place: (Spring::new(at.0, 0.34, 0.82, 0.3), Spring::new(at.1, 0.34, 0.82, 0.3)),
             placed: None, input: None,
             t: Spring::new(if pinned { 1.0 } else { 0.0 }, 0.42, 0.78, 0.002),
@@ -334,6 +347,7 @@ impl Island {
         if scale != self.scale {
             self.scale = scale;
             self.buffers.clear();
+            self.chrome = None;
             self.compact_dirty = true;
             self.panel_dirty = true;
         }
@@ -514,18 +528,27 @@ impl Island {
         let s = self.scale as f64;
         let (bw, bh) = ((self.size.0 * s) as i32, (self.size.1 * s) as i32);
         let stride = bw * 4;
-        let free = self.buffers.iter().position(|b| b.canvas(&mut self.pool).is_some());
+        let free = self.buffers.iter().position(|(b, _)| b.canvas(&mut self.pool).is_some());
         let index = match free {
             Some(i) => i,
             None => {
                 let format = smithay_client_toolkit::reexports::client::protocol::wl_shm::Format::Argb8888;
                 let Ok((buffer, _)) = self.pool.create_buffer(bw, bh, stride, format) else { return };
-                self.buffers.push(buffer);
+                // A recycled slot can hold anything.
+                self.buffers.push((buffer, (0.0, 0.0, self.size.0, self.size.1)));
                 self.buffers.len() - 1
             }
         };
         let shape = self.shape();
-        let Some(canvas) = self.buffers[index].canvas(&mut self.pool) else { return };
+        let b = (shape.x - SHADOW, shape.y - SHADOW, shape.w + 2.0 * SHADOW, shape.h + 2.0 * SHADOW);
+        let stale = std::mem::replace(&mut self.buffers[index].1, b);
+        let resting = !animating && self.t.x == 0.0;
+        if resting {
+            self.cache_chrome(shape, &m.pal);
+        } else {
+            self.chrome = None;
+        }
+        let Some(canvas) = self.buffers[index].0.canvas(&mut self.pool) else { return };
         let (ptr, len) = (canvas.as_mut_ptr(), canvas.len());
         debug_assert!(len >= (stride * bh) as usize);
         // Safety: `canvas` is an exclusive view of the shm slot, valid until the
@@ -534,11 +557,16 @@ impl Island {
         let Ok(target) = target else { return };
         target.set_device_scale(s, s);
         if let Ok(cr) = Context::new(&target) {
+            let (x0, y0) = (b.0.min(stale.0), b.1.min(stale.1));
+            cr.rectangle(x0.floor(), y0.floor(), (b.0 + b.2).max(stale.0 + stale.2).ceil() - x0.floor(),
+                         (b.1 + b.3).max(stale.1 + stale.3).ceil() - y0.floor());
+            cr.set_operator(cairo::Operator::Clear);
+            let _ = cr.fill();
+            cr.set_operator(cairo::Operator::Over);
             self.paint(&cr, shape, &m.pal, animating, cfg);
         }
         target.finish();
 
-        let b = (shape.x - SHADOW, shape.y - SHADOW, shape.w + 2.0 * SHADOW, shape.h + 2.0 * SHADOW);
         let (x0, y0) = (b.0.min(self.prev_bounds.0), b.1.min(self.prev_bounds.1));
         let x1 = (b.0 + b.2).max(self.prev_bounds.0 + self.prev_bounds.2);
         let y1 = (b.1 + b.3).max(self.prev_bounds.1 + self.prev_bounds.3);
@@ -546,7 +574,7 @@ impl Island {
 
         let surface = self.layer.wl_surface();
         surface.set_buffer_scale(self.scale);
-        let _ = self.buffers[index].attach_to(surface);
+        let _ = self.buffers[index].0.attach_to(surface);
         let surface = self.layer.wl_surface();
         surface.damage_buffer((x0 * s).floor() as i32 - 2, (y0 * s).floor() as i32 - 2,
                               ((x1 - x0) * s).ceil() as i32 + 4, ((y1 - y0) * s).ceil() as i32 + 4);
@@ -559,28 +587,14 @@ impl Island {
     fn paint(&self, cr: &Context, sh: Shape, pal: &crate::theme::Palette, animating: bool, cfg: &Config) {
         let t = self.t.x.clamp(0.0, 1.0);
         let k = self.k.x.clamp(0.0, 1.0);
-        cr.set_operator(cairo::Operator::Clear);
-        let _ = cr.paint();
-        cr.set_operator(cairo::Operator::Over);
-
-        // Soft shadow as nested strokes: only the rim is touched, so a big panel
-        // costs what a small one does, and no blur pass is needed.
-        let lift = 1.0 - k;
-        if lift > 0.0 {
-            let depth = lerp(12.0, 24.0, t);
-            for i in (1..=6).rev() {
-                let f = i as f64 / 6.0;
-                squircle(cr, sh.x, sh.y + 2.0, sh.w, sh.h, sh.r, t);
-                cr.set_line_width(2.0 * depth * f);
-                cr.set_source_rgba(0.0, 0.0, 0.0, 0.055 * lift * (1.0 - f * 0.7));
-                let _ = cr.stroke();
+        match &self.chrome {
+            Some(c) => {
+                if cr.set_source_surface(&c.surf, c.at.0, c.at.1).is_ok() {
+                    let _ = cr.paint();
+                }
             }
+            None => self.paint_chrome(cr, sh, pal),
         }
-
-        squircle(cr, sh.x, sh.y, sh.w, sh.h, sh.r, t);
-        let (r, g, b) = pal.bg;
-        cr.set_source_rgba(r, g, b, lerp(0.97, 0.72, k));
-        let _ = cr.fill();
 
         let a_compact = (1.0 - smooth(t / 0.45)) * (1.0 - k);
         let a_panel = smooth((t - 0.32) / 0.68);
@@ -627,6 +641,48 @@ impl Island {
                 }
             }
         }
+    }
+
+    fn cache_chrome(&mut self, sh: Shape, pal: &crate::theme::Palette) {
+        let key = [sh.x, sh.y, sh.w, sh.h, self.k.x, pal.bg.0, pal.bg.1, pal.bg.2];
+        if self.chrome.as_ref().is_some_and(|c| c.key == key) {
+            return;
+        }
+        self.chrome = None;
+        // Pixel-aligned, so the cached copy lands exactly where a direct draw would.
+        let s = self.scale as f64;
+        let (x, y) = (((sh.x - SHADOW) * s).floor() / s, ((sh.y - SHADOW) * s).floor() / s);
+        let w = ((sh.x + sh.w + SHADOW - x) * s).ceil() as i32;
+        let h = ((sh.y + sh.h + SHADOW - y) * s).ceil() as i32;
+        let Ok(surf) = ImageSurface::create(Format::ARgb32, w, h) else { return };
+        surf.set_device_scale(s, s);
+        let Ok(cr) = Context::new(&surf) else { return };
+        cr.translate(-x, -y);
+        self.paint_chrome(&cr, sh, pal);
+        drop(cr);
+        self.chrome = Some(Chrome { key, surf, at: (x, y) });
+    }
+
+    fn paint_chrome(&self, cr: &Context, sh: Shape, pal: &crate::theme::Palette) {
+        let t = self.t.x.clamp(0.0, 1.0);
+        let k = self.k.x.clamp(0.0, 1.0);
+        // Soft shadow as nested strokes: only the rim is touched, so a big panel
+        // costs what a small one does, and no blur pass is needed.
+        let lift = 1.0 - k;
+        if lift > 0.0 {
+            let depth = lerp(12.0, 24.0, t);
+            for i in (1..=6).rev() {
+                let f = i as f64 / 6.0;
+                squircle(cr, sh.x, sh.y + 2.0, sh.w, sh.h, sh.r, t);
+                cr.set_line_width(2.0 * depth * f);
+                cr.set_source_rgba(0.0, 0.0, 0.0, 0.055 * lift * (1.0 - f * 0.7));
+                let _ = cr.stroke();
+            }
+        }
+        squircle(cr, sh.x, sh.y, sh.w, sh.h, sh.r, t);
+        let (r, g, b) = pal.bg;
+        cr.set_source_rgba(r, g, b, lerp(0.97, 0.72, k));
+        let _ = cr.fill();
     }
 
     /// Window titles used to live in Waybar's tooltips. Here the panel's top

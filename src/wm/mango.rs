@@ -54,11 +54,17 @@ fn stream(what: &str, tx: crate::Tx, parse: fn(&str) -> serde_json::Result<Msg>)
         });
         match lines {
             Ok(lines) => {
+                // Mango repeats itself several times per change; skip the parse.
+                let mut last = String::new();
                 for line in lines.map_while(Result::ok) {
+                    if line == last {
+                        continue;
+                    }
                     match parse(&line) {
                         Ok(msg) => drop(tx.send(msg)),
                         Err(e) => eprintln!("island: bad {what} update: {e}"),
                     }
+                    last = line;
                 }
             }
             Err(e) => eprintln!("island: can't watch {what}: {e}"),
