@@ -19,6 +19,9 @@ def png(path):
         out+=line; prev=bytes(line)
     return w,h,bpp,out
 w,h,bpp,o=png(sys.argv[1]); x,y=int(sys.argv[2]),int(sys.argv[3])
+dark=lambda y: sum(o[(y*w+x)*bpp:(y*w+x)*bpp+3])<40
 r,g,b=o[(y*w+x)*bpp:(y*w+x)*bpp+3]
-if len(sys.argv)>4: print('yes' if r+g+b<40 else 'no')
+# "height": how far the opaque panel runs straight down from (x, y).
+if len(sys.argv)>4 and sys.argv[4]=='height': print(next((i for i in range(h-y) if not dark(y+i)), h-y))
+elif len(sys.argv)>4: print('yes' if r+g+b<40 else 'no')
 else: print(r,g,b)

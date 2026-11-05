@@ -47,6 +47,12 @@ pub enum Action {
     NoteAction(u32, String),
     NoteDismiss(u32),
     NoteClear,
+    /// Open the inline reply field.
+    NoteReply(u32),
+    /// Expand or collapse one app's history.
+    NoteGroup(String),
+    /// Dismiss everything from one app.
+    NoteClearApp(String),
     Dnd,
     /// One of the island's own commands, as `island <cmd>` would send it.
     Cmd(String),

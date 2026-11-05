@@ -134,6 +134,10 @@ history without showing them.
 The night light warms and dims the screen itself, with no wlsunset or gammastep: click
 its icon in the panel, drag its slider for warmth, run `island nightlight`, or give it a
 `schedule` under `[nightlight]`.
+Several from one app within a few seconds share one card that shows the newest and a
+`+N` count. The history groups them by app: click an app's header to see all of them,
+or its `×` to clear them. Apps that take inline replies (chat apps on KDE and GNOME do)
+get a Reply button: type into the card and press `Enter` to send, or `Esc` to cancel.
 
 Panel controls:
 
