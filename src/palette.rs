@@ -1,6 +1,6 @@
 //! The search palette: one text field over one ranked list, shared by every tool and
 //! by `island dmenu`. This is the logic only; `modules/palette.rs` draws it.
-use crate::tools::{Act, Entry, Icon, Item, Then, quote};
+use crate::tools::{Act, Ctx, Entry, Icon, Item, Then, quote};
 use smithay_client_toolkit::seat::keyboard::{Keysym, Modifiers};
 use crate::settings::{KeyAct, Keys};
 use std::sync::mpsc;
@@ -51,6 +51,8 @@ pub enum Outcome {
     /// Close and hand this to the text field's continuation.
     Answer(Then, String),
     Reload,
+    /// Build this list on a worker; it replaces the current one when it arrives.
+    Load(fn(&Ctx) -> Vec<Item>),
 }
 
 /// Higher is better; None is no match. Whole-prefix beats word-prefix beats
@@ -112,7 +114,6 @@ impl Palette {
         if generation == self.generation {
             self.items = items;
             self.instant = 0;
-            self.back.clear();
             self.loading = false;
             self.refilter();
         }
@@ -221,6 +222,14 @@ impl Palette {
                 Outcome::Redraw
             }
             Act::Back => self.pop(),
+            Act::Load(list) => {
+                self.back.push(std::mem::take(&mut self.items));
+                self.query.clear();
+                self.refilter();
+                self.loading = true;
+                self.generation += 1;
+                Outcome::Load(list)
+            }
             act => Outcome::Run(act),
         }
     }
@@ -229,6 +238,9 @@ impl Palette {
     fn pop(&mut self) -> Outcome {
         let Some(items) = self.back.pop() else { return Outcome::Nothing };
         self.items = items;
+        // A list still loading must not land on the one we went back to.
+        self.generation += 1;
+        self.loading = false;
         self.query.clear();
         self.refilter();
         Outcome::Redraw
@@ -457,5 +469,25 @@ mod tests {
         p.choose();
         p.selected = 0;
         assert!(matches!(p.choose(), Outcome::Redraw) && p.items[0].title == "Settings");
+    }
+
+    #[test]
+    fn a_slow_list_loads_in_place_and_escape_beats_it_back() {
+        fn slow(_: &Ctx) -> Vec<Item> {
+            Vec::new()
+        }
+        let mut p = palette(&[]);
+        p.items = vec![Item::new("Scan", Icon::None, Act::Load(slow))];
+        p.refilter();
+        assert!(matches!(p.choose(), Outcome::Load(_)) && p.loading);
+        p.set_items(p.generation, vec![Item::new("found", Icon::None, Act::Quit)]);
+        assert_eq!((p.items[0].title.as_str(), p.loading), ("found", false));
+        assert!(matches!(p.key(Keysym::Escape, None, Modifiers::default(), &Keys::default()), Outcome::Redraw));
+        assert_eq!(p.items[0].title, "Scan", "Escape goes back to where the scan started");
+        let late = p.generation;
+        p.choose();
+        p.key(Keysym::Escape, None, Modifiers::default(), &Keys::default());
+        p.set_items(late + 1, vec![]);
+        assert_eq!(p.items[0].title, "Scan", "a scan that finishes after Escape is dropped");
     }
 }

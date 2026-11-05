@@ -2,8 +2,8 @@
 
 A minimal, modular, all-in-one desktop tool for [MangoWC](https://mangowm.github.io),
 written in Rust. One pill replaces your bar, app launcher, notification daemon and
-power menu, and adds clipboard search, screenshots and Wi-Fi. Use all of it, or only
-the parts you want.
+power menu, and adds clipboard search, screenshots, Wi-Fi and Bluetooth. Use all of it,
+or only the parts you want.
 
 **[Project page](https://nurexa.github.io/Rust-Dynamic-Island-for-Mango/)** ·
 [Modding guide](MODDING.md)
@@ -22,6 +22,7 @@ the parts you want.
 | Clipboard | rofi and cliphist scripts | `island open clipboard` |
 | Screenshots | grim and slurp scripts | `island open screenshot`, `island shot region` |
 | Wi-Fi | rofi-wifi scripts | `island open wifi` |
+| Bluetooth | blueman, rofi-bluetooth | `island open bluetooth` |
 | Wallpaper picker | rofi thumbnail scripts | `island open wallpaper` |
 | Power menu | wlogout | `island open power` |
 | Script menus | `rofi -dmenu` | `island dmenu` |
@@ -148,6 +149,8 @@ Panel controls:
 | Volume slider | Set volume, or drag | Open the mixer | | ±5% |
 | Speaker icon | Mute | Open the mixer | | |
 | Network | Open the Wi-Fi tool | Run `wifi_alt` | | |
+| Bluetooth | Open the Bluetooth tool | | | |
+| Bluetooth switch | Turn the adapter on or off | | | |
 | Wallpaper button | Open the picker | Run `wallpaper_next` | Run `wallpaper_toggle` | |
 | Tray icon | Activate | App's menu | Secondary activate | |
 | Album art on the pill | Play or pause | Next | Previous | |
@@ -243,8 +246,8 @@ tests/headless/all.sh      # end-to-end
 
 The end-to-end suite runs a private headless Mango and a private session bus, drives a
 virtual pointer and keyboard, and checks results through Mango's IPC and screenshots.
-Audio, `systemctl` and `nmcli` are shimmed, so it can't change your volume or network or
-reboot your machine.
+Audio, `systemctl` and `nmcli` are shimmed and the system bus is a private one with a fake
+BlueZ, so it can't change your volume, network or Bluetooth, or reboot your machine.
 
 Never start a test Mango with `DBUS_SESSION_BUS_ADDRESS` set: on exit it stops
 `graphical-session.target`, which takes the live desktop down. `start.sh` unsets it.
@@ -263,6 +266,8 @@ Never start a test Mango with `DBUS_SESSION_BUS_ADDRESS` set: on exit it stops
 - GPU stats are NVIDIA only. Other GPUs simply have no GPU tile.
 - Each pill stays on its own monitor; it can't be dragged across to another.
 - Long tray menus are cut off at the panel's maximum height. They don't scroll.
+- Bluetooth pairing has no agent, so a device that asks for a PIN or a passkey confirmation
+  won't pair from the island; pair it once with `bluetoothctl`, then connect from here.
 
 ## Star history
 

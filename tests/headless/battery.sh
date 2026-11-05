@@ -8,7 +8,7 @@ rm -f $R/sysbus; dbus-daemon --session --nofork --address=unix:path=$R/sysbus >/
 echo '{"state":2,"pct":55,"empty":7800}' > $R/battery
 python3 -I -W ignore $H/fakeupower.py $R/battery unix:path=$R/sysbus & echo $! > $R/upower.pid; sleep .5
 notes(){ busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications org.freedesktop.Notifications GetCapabilities >/dev/null 2>&1; grep -c "$1" $R/island.log; }
-DBUS_SYSTEM_BUS_ADDRESS=unix:path=$R/sysbus $H/isl; sleep 1
+ISLAND_SYSTEM_BUS=unix:path=$R/sysbus $H/isl; sleep 1
 grim -g "560,0 800x60" $H/run/b1.png
 # Something drawn there: the mean brightness of a small box around x,y.
 light(){ magick "$1" -crop 40x16+$(($2-20))+$(($3-8)) -format "%[fx:mean>0.12?1:0]" info: | sed 's/1/light/;s/0/dark/'; }

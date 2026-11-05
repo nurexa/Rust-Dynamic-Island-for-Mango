@@ -61,6 +61,8 @@ pub enum Action {
     StreamMute(u32),
     /// Make this output (or with `source`, this microphone) the default.
     AudioDevice { source: bool, name: String },
+    /// Turns the Bluetooth adapter on or off.
+    Bluetooth,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

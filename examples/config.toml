@@ -10,9 +10,9 @@ terminal = "kitty"                # for apps that need one
 screenshot_dir = "~/Pictures"
 
 # Every part is optional: leave a name out and it's gone.
-pill = ["media", "workspaces", "network", "clock"]
-panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "nightlight", "status"]
-tools = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power"]
+pill = ["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]
+panel = ["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "nightlight", "status", "bluetooth"]
+tools = ["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "bluetooth", "wallpaper", "power"]
 notifications = true              # false keeps your own notification daemon
 
 [ui]

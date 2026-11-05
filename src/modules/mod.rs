@@ -11,6 +11,7 @@ use crate::{
 
 mod audio;
 mod battery;
+mod bluetooth;
 mod brightness;
 mod claude;
 mod clock;
@@ -75,6 +76,7 @@ const PANEL: &[(&str, PanelModule)] = &[
     ("brightness", brightness::panel),
     ("nightlight", nightlight::panel),
     ("status", status::panel),
+    ("bluetooth", bluetooth::panel),
     ("wallpaper", wallpaper::panel),
 ];
 

@@ -6,6 +6,8 @@ P=$XDG_RUNTIME_DIR/island.pid
 [ -f $P ] && kill $(cat $P) 2>/dev/null; rm -f $P; sleep 0.15
 [ "$1" = stop ] && exit 0
 BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}
-XDG_STATE_HOME=$XDG_RUNTIME_DIR nohup setsid $BIN > $XDG_RUNTIME_DIR/island.log 2>&1 &
+# Never the real system bus: BlueZ there has someone's headphones on it. bluetooth.sh
+# points ISLAND_SYSTEM_BUS at a fake; everywhere else there's simply none.
+XDG_STATE_HOME=$XDG_RUNTIME_DIR DBUS_SYSTEM_BUS_ADDRESS=${ISLAND_SYSTEM_BUS:-unix:path=/nonexistent} nohup setsid $BIN > $XDG_RUNTIME_DIR/island.log 2>&1 &
 echo $! > $P
 sleep 1
