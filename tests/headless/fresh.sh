@@ -10,3 +10,7 @@ mkdir -p $XDG_RUNTIME_DIR/kc; printf 'background #0f1417\nconfirm_os_window_clos
 (nohup setsid kitty -c $XDG_RUNTIME_DIR/kc/k.conf -e sleep 9999 >/dev/null 2>&1 &)
 sleep 1
 mmsg dispatch "view,3,0" >/dev/null; sleep .2; (nohup setsid pavucontrol >/dev/null 2>&1 &); sleep 1.2; mmsg dispatch "view,1,0" >/dev/null; sleep .4
+# The island's config for the session: never yours, and the panel the click tests
+# were measured on. Tests of newer rows (bluetooth.sh, audio.sh...) set their own.
+mkdir -p $XDG_RUNTIME_DIR/xdg/island
+echo 'panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status"]' > $XDG_RUNTIME_DIR/xdg/island/config.toml

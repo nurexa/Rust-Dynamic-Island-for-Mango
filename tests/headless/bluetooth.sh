@@ -17,7 +17,7 @@ woke(){ awk '/^voluntary_ctxt_switches/{print $2}' /proc/$1/task/$1/status; }
 ticks(){ awk '{print $14+$15}' /proc/$1/stat; }
 
 printf '#!/bin/sh\necho "note $*" >> %s\n' "$LOG" > $H/shim/notify-send; chmod +x $H/shim/notify-send
-echo 'notifications = false' > $XDG_CONFIG_HOME/island/config.toml
+printf 'notifications = false\npanel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status", "bluetooth"]\n' > $XDG_CONFIG_HOME/island/config.toml
 for f in sysbus fakebt; do [ -f $R/$f.pid ] && kill $(cat $R/$f.pid) 2>/dev/null; done
 dbus-daemon --session --nofork --address=$ISLAND_SYSTEM_BUS >/dev/null 2>&1 & echo $! > $R/sysbus.pid; sleep .3
 DBUS_SYSTEM_BUS_ADDRESS=$ISLAND_SYSTEM_BUS nohup setsid python3 -I $H/fakebt.py $LOG > $R/fakebt.log 2>&1 &

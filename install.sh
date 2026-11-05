@@ -2,7 +2,7 @@
 # Switch this Mango session to the island. Safe to re-run.
 #
 #   ./install.sh             everything: bar, launcher, notifications, clipboard, screenshots
-#   ./install.sh --manual    the same, but asks about each part and each key first
+#   ./install.sh --manual    the same, but asks about each part, each key and each extra first
 #   ./install.sh --bar-only  only replace the bar; launchers, notifications and binds stay as they are
 #   ./install.sh --undo      put it all back
 #
@@ -16,6 +16,7 @@ cd "$(dirname "$(readlink -f "$0")")"
 
 MANGO=${MANGO_CONFIG_DIR:-$HOME/.config/mango}
 BIN_DIR=${ISLAND_BIN_DIR:-$HOME/.local/bin}
+ICFG=${XDG_CONFIG_HOME:-$HOME/.config}/island/config.toml
 BACKUP=${ISLAND_BACKUP:-$HOME/.local/share/island-backup}
 BEGIN='# >>> island'
 END='# <<< island'
@@ -126,6 +127,15 @@ undo() {
     "${SED[@]}" -E "/^$WAS/{s/^$WAS//;n;d}" "$CONF"
     "${SED[@]}" "s/^$OFF//" "$CONF"
     rm -f "$ISL"
+    if [ -f "$ICFG" ]; then
+        "${SED[@]}" "/^$BEGIN\$/,/^$END\$/d" "$ICFG"
+        "${SED[@]}" "s/^$OFF//" "$ICFG"
+        [ -s "$ICFG" ] || rm -f "$ICFG"
+    fi
+    if [ -f "$BACKUP/claude" ]; then
+        "$BIN_DIR/island" claude-setup --undo >/dev/null 2>&1 && info "took the island's hooks out of Claude Code"
+        rm -f "$BACKUP/claude"
+    fi
     systemctl --user unmask dunst.service >/dev/null 2>&1 || true
     if [ -f "$BACKUP/bar" ]; then
         cp "$BACKUP/bar" "$BAR"
@@ -172,6 +182,26 @@ OWN=(  # island command | what it does | default key
     "open|open search|SUPER,space"
 )
 NOTIFIERS='dunst|mako|swaync'
+# Extras: name in config.toml | what it is | how to tell this machine can (empty: any can).
+EXTRAS=(
+    "claude|Claude Code on the pill: live status, permission cards, done notes|command -v claude"
+    "timer|a pomodoro timer|"
+    "privacy|dots on the pill while an app uses the mic or camera|"
+    "battery|the battery on the pill|grep -qs Battery /sys/class/power_supply/*/type"
+    "nightlight|a night light that warms and dims the screen|"
+    "bluetooth|Bluetooth in the panel and search|ls /sys/class/bluetooth/* >/dev/null 2>&1"
+    "files|file search|command -v plocate || command -v fd"
+    "calc|sums and unit conversion in the search|"
+    "web|a web search row in the search|"
+)
+declare -A extra_on=()
+declined=() night='' engine=''
+for e in "${EXTRAS[@]}"; do
+    IFS='|' read -r n _ test <<< "$e"
+    # ISLAND_EXTRAS="a b" says which are available, so the tests don't depend on this machine.
+    if [ -n "${ISLAND_EXTRAS+set}" ]; then [[ " $ISLAND_EXTRAS " == *" $n "* ]] && extra_on[$n]=1 || extra_on[$n]=0
+    elif [ -z "$test" ] || eval "$test" >/dev/null 2>&1; then extra_on[$n]=1; else extra_on[$n]=0; fi
+done
 declare -A take=() keys=()
 extra=()   # new binds asked for in manual mode: "KEY|command"
 for t in "${TOOLS[@]}"; do take[${t%%|*}]=$([ $mode = bar ] && echo 0 || echo 1); done
@@ -226,6 +256,34 @@ if [ $manual = 1 ]; then
         while [ "$k" != none ] && ! valid_key "$k"; do k=$(ask "Write it as MODS,key, like $def" "$def"); done
         keys[$c]=$k
     done
+    echo; info "Extras. Each is on when this machine can run it; say n to leave one out:"
+    for e in "${EXTRAS[@]}"; do
+        IFS='|' read -r n what _ <<< "$e"
+        if [ "${extra_on[$n]}" = 1 ]; then
+            agree "Use $what?" y || { extra_on[$n]=0; declined+=("$n"); }
+        else
+            info "($what: not available on this machine)"
+        fi
+    done
+    if [ "${extra_on[nightlight]}" = 1 ]; then
+        night=$(ask "Turn the night light on by schedule? Like 20:00-07:00, or 'none' for a button only" none)
+        while [ "$night" != none ] && ! [[ $night =~ ^[0-9]{1,2}:[0-9]{2}-[0-9]{1,2}:[0-9]{2}$ ]]; do
+            night=$(ask "Write it as HH:MM-HH:MM, or 'none'" none)
+        done
+        [ "$night" = none ] && night=''
+    fi
+    if [ "${extra_on[web]}" = 1 ]; then
+        e=$(ask "Web search with duckduckgo, google, brave, kagi, startpage, or a URL with {} for the words" duckduckgo)
+        case $e in
+            duckduckgo) ;;
+            google) engine='https://www.google.com/search?q={}' ;;
+            brave) engine='https://search.brave.com/search?q={}' ;;
+            kagi) engine='https://kagi.com/search?q={}' ;;
+            startpage) engine='https://www.startpage.com/do/search?q={}' ;;
+            *{}*) engine=$e ;;
+            *) info "Didn't recognise that; keeping DuckDuckGo." ;;
+        esac
+    fi
     echo; step "About to:"
     info "replace your bar with the island, started with the session"
     for t in "${TOOLS[@]}"; do tool "$t"; [ "${take[${t%%|*}]}" = 1 ] && info "point your $label keys at the island"; done
@@ -233,6 +291,10 @@ if [ $manual = 1 ]; then
     [ "${take[notes]}" = 1 ] && info "show notifications in the island and stop your notification daemon autostarting"
     for e in ${extra[@]+"${extra[@]}"}; do info "bind ${e%%|*} to island ${e#*|}"; done
     for o in "${OWN[@]}"; do c=${o%%|*}; [ "${keys[$c]}" = none ] || info "bind ${keys[$c]} to island $c"; done
+    [ ${#declined[@]} -eq 0 ] || info "leave out: ${declined[*]}"
+    [ -z "$night" ] || info "turn the night light on $night"
+    [ -z "$engine" ] || info "search the web with $engine"
+    [ "${extra_on[claude]}" = 0 ] || info "add the island's hooks to Claude Code (~/.claude/settings.json)"
     agree "Go ahead?" y || { echo "Nothing changed."; exit 0; }
 fi
 
@@ -360,6 +422,46 @@ fi
 mmsg dispatch reload_config >/dev/null 2>&1 || true
 sleep 0.5
 
+# The extras: config.toml only changes when you left something out or chose something.
+lines=()
+if [ ${#declined[@]} -gt 0 ]; then
+    list=$(printf '"%s", ' "${declined[@]}"); lines+=("disable = [${list%, }]")
+fi
+[ -z "$engine" ] || lines+=("web_search = \"$engine\"")
+if [ ${#lines[@]} -gt 0 ] || [ -n "$night" ]; then
+    step "Writing your choices to ${ICFG/#$HOME/\~}"
+    mkdir -p "$(dirname "$ICFG")"; touch "$ICFG"
+    "${SED[@]}" "/^$BEGIN\$/,/^$END\$/d" "$ICFG"
+    # A key you'd set yourself is set aside, not lost: --undo puts it back.
+    for key in disable web_search; do
+        if printf '%s\n' "${lines[@]}" | grep -q "^$key ="; then
+            "${SED[@]}" -E "s/^($key[[:space:]]*=.*)\$/$OFF\1/" "$ICFG"
+        fi
+    done
+    if [ ${#lines[@]} -gt 0 ]; then
+        # Top-level keys have to come before any [table], so these go first.
+        { printf '%s\n' "$BEGIN" "${lines[@]}" "$END"; cat "$ICFG"; } > "$ICFG.new" && cat "$ICFG.new" > "$ICFG" && rm -f "$ICFG.new"
+        for l in "${lines[@]}"; do info "$l"; done
+    fi
+    if [ -n "$night" ]; then
+        if grep -q '^\[nightlight\]' "$ICFG"; then
+            warn "Your config already has a [nightlight] section: set schedule = \"$night\" there yourself."
+        else
+            printf '%s\n[nightlight]\nschedule = "%s"\n%s\n' "$BEGIN" "$night" "$END" >> "$ICFG"
+            info "night light on $night"
+        fi
+    fi
+fi
+if [ "${extra_on[claude]}" = 1 ] && [ $mode != bar ]; then
+    step "Adding the island's hooks to Claude Code"
+    if out=$("$BIN_DIR/island" claude-setup 2>&1); then
+        touch "$BACKUP/claude"
+        info "$out (in ${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json; --undo takes them out)"
+    else
+        warn "Couldn't add Claude Code hooks: $out"
+    fi
+fi
+
 step "Starting the island"
 stop_bars
 start_bar
@@ -370,7 +472,7 @@ if ! has_layer island; then
 fi
 
 search=$(sed -nE 's#^bind=([^,]*),([^,]*),spawn,.*/island open$#\1+\2#p' "$ISL" | head -1)
-printf '\n%s✓ Island is running.%s Hover the pill for the panel%s. Undo with: ./install.sh --undo\n' \
+printf '\n%s✓ Island is running.%s Hover the pill for the panel%s. Check this machine with: island doctor. Undo with: ./install.sh --undo\n' \
     "$G" "$N" "${search:+, $search opens search}"
 if [ ${#NOTES[@]} -gt 0 ]; then
     printf '%s  Worth a look:%s\n' "$Y" "$N"

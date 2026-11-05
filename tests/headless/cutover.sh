@@ -31,6 +31,9 @@ nohup setsid $C/scripts/bar >/dev/null 2>&1 &
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ "$(layers)" = "['waybar']" ] && break; sleep .25; done
 ok "before: waybar is up" "$(layers)" "['waybar']"
 export MANGO_CONFIG_DIR=$C ISLAND_BIN_DIR=$R/bin ISLAND_BACKUP=$R/backup
+# Never your island config or Claude Code settings; and no extras unless a case asks.
+export XDG_CONFIG_HOME=$R/xdg-inst CLAUDE_CONFIG_DIR=$R/claude-inst ISLAND_EXTRAS=""
+rm -rf $XDG_CONFIG_HOME $CLAUDE_CONFIG_DIR
 $H/../../install.sh --no-build
 sleep 1
 ok "after install: island replaced waybar" "$(layers)" "['island']"
@@ -138,11 +141,26 @@ ok "toml undo: waybar back" "$(layers)" "['waybar']"
 # search key off the taken SUPER+space, and drop the tuck and reset keys.
 fresh
 printf 'tag_num=9\nbind=SUPER,d,spawn,rofi -show drun\nbind=SUPER,space,togglefloating\n' > $C/config.conf
-printf 'none\nnone\nnone\ny\nSUPER,r\n\nnone\nnone\n\ny\nSUPER+ALT,space\n' | ISLAND_BUILD=0 $H/../../install.sh --manual > $R/install.out 2>&1
+# Extras on offer: timer (yes), night light (no), sums (yes), web (yes, with Kagi).
+printf 'none\nnone\nnone\ny\nSUPER,r\n\nnone\nnone\n\ny\nn\ny\ny\nkagi\ny\nSUPER+ALT,space\n' | ISLAND_EXTRAS="timer nightlight calc web" ISLAND_BUILD=0 $H/../../install.sh --manual > $R/install.out 2>&1
 sleep .5
 ok "manual: island comes up" "$(layers)" "['island']"
 ok "manual: answers land in island.conf" "$(grep -cE 'bind=SUPER,r,spawn,.*island open run$|bind=SUPER\+ALT,space,spawn,.*island open$|bind=SUPER,i,spawn,.*island pin$' $C/island.conf) $(grep -cE 'island (tuck|reset)$' $C/island.conf)" "3 0"
 ok "manual: launcher swapped" "$(grep -c '^bind=SUPER,d,spawn,.*/island open apps$' $C/config.conf)" 1
 ok "manual: the final message names the new search key" "$(grep -c 'SUPER+ALT+space opens search' $R/install.out)" 1
+ok "manual: a declined extra is left out in config.toml" "$(grep -c '^disable = \["nightlight"\]$' $XDG_CONFIG_HOME/island/config.toml)" 1
+ok "manual: the chosen search engine is written" "$(grep -c '^web_search = "https://kagi.com/search?q={}"$' $XDG_CONFIG_HOME/island/config.toml)" 1
 ISLAND_BUILD=0 $H/../../install.sh --undo > /dev/null
+ok "manual undo: the island config it wrote is gone" "$(ls $XDG_CONFIG_HOME/island/config.toml 2>/dev/null | wc -l)" 0
+
+# Claude Code on this machine: a plain install adds its hooks, undo takes them out.
+fresh
+printf 'tag_num=9\n' > $C/config.conf
+mkdir -p $CLAUDE_CONFIG_DIR; echo '{"theme":"dark"}' > $CLAUDE_CONFIG_DIR/settings.json
+ISLAND_EXTRAS="claude" ISLAND_BUILD=0 $H/../../install.sh > $R/install.out 2>&1; sleep .5
+hooks(){ grep -c 'claude-hook' $CLAUDE_CONFIG_DIR/settings.json; }
+ok "claude: hooks added on a machine with Claude Code" "$(hooks)" 7
+ok "claude: and nothing written to the island config" "$(ls $XDG_CONFIG_HOME/island/config.toml 2>/dev/null | wc -l)" 0
+ISLAND_BUILD=0 $H/../../install.sh --undo > /dev/null
+ok "claude: undo takes the hooks out and keeps the rest" "$(hooks) $(grep -c dark $CLAUDE_CONFIG_DIR/settings.json)" "0 1"
 kill_all
