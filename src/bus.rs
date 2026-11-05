@@ -496,7 +496,7 @@ fn note_image(icon: &str, hints: &Props) -> NoteImage {
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Notifier {
     fn get_capabilities(&self) -> Vec<String> {
-        ["body", "actions", "icon-static", "persistence"].map(String::from).to_vec()
+        ["body", "actions", "icon-static", "persistence", "inline-reply"].map(String::from).to_vec()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -519,6 +519,7 @@ impl Notifier {
             sticky: urgency == 2 || expire_timeout == 0,
             timeout: u64::try_from(expire_timeout).ok().filter(|ms| *ms > 0).map(Duration::from_millis),
             actions: actions.chunks_exact(2).map(|a| (a[0].clone(), notify::plain(&a[1]))).collect(),
+            placeholder: string(&hints, "x-kde-reply-placeholder-text").map(|t| notify::plain(&t)).unwrap_or_default(),
         };
         let _ = self.tx.send(Msg::Notify(note));
         id
@@ -536,6 +537,9 @@ impl Notifier {
     async fn notification_closed(e: &SignalEmitter<'_>, id: u32, reason: u32) -> zbus::Result<()>;
     #[zbus(signal)]
     async fn action_invoked(e: &SignalEmitter<'_>, id: u32, action: &str) -> zbus::Result<()>;
+    /// Not in the spec, but KDE, GNOME and swaync all send it for an "inline-reply" action.
+    #[zbus(signal)]
+    async fn notification_replied(e: &SignalEmitter<'_>, id: u32, text: &str) -> zbus::Result<()>;
 }
 
 /// Clones of the connection are cheap and thread-safe, and every call here runs
@@ -543,6 +547,15 @@ impl Notifier {
 #[derive(Clone)]
 pub struct Bus {
     conn: Connection,
+    #[cfg(feature = "notifications")]
+    outbox: Arc<Mutex<std::collections::VecDeque<NoteSignal>>>,
+}
+
+#[cfg(feature = "notifications")]
+enum NoteSignal {
+    Closed(u32, u32),
+    Action(u32, String),
+    Replied(u32, String),
 }
 
 impl Bus {
@@ -575,24 +588,44 @@ impl Bus {
         });
     }
 
+    /// An app reading ActionInvoked or NotificationReplied stops listening at
+    /// NotificationClosed, so these must leave in the order they were raised. Each
+    /// thread sends whatever is first in the outbox, holding it while it does.
+    #[cfg(feature = "notifications")]
+    fn emit(&self, s: NoteSignal) {
+        self.outbox.lock().unwrap().push_back(s);
+        let (conn, outbox) = (self.conn.clone(), self.outbox.clone());
+        thread::spawn(move || {
+            let mut outbox = outbox.lock().unwrap();
+            let (Some(s), Ok(iface)) = (outbox.pop_front(), conn.object_server().interface::<_, Notifier>(NOTIFY_PATH))
+            else { return };
+            let e = iface.signal_emitter();
+            let _ = match s {
+                NoteSignal::Closed(id, reason) => zbus::block_on(Notifier::notification_closed(e, id, reason)),
+                NoteSignal::Action(id, key) => zbus::block_on(Notifier::action_invoked(e, id, &key)),
+                NoteSignal::Replied(id, text) => zbus::block_on(Notifier::notification_replied(e, id, &text)),
+            };
+        });
+    }
+
     /// 1 expired, 2 dismissed, 3 closed by the app.
     #[cfg(feature = "notifications")]
     pub fn note_closed(&self, id: u32, reason: u32) {
-        let conn = self.conn.clone();
-        thread::spawn(move || {
-            let Ok(iface) = conn.object_server().interface::<_, Notifier>(NOTIFY_PATH) else { return };
-            let _ = zbus::block_on(Notifier::notification_closed(iface.signal_emitter(), id, reason));
-        });
+        self.emit(NoteSignal::Closed(id, reason));
     }
 
     #[cfg(feature = "notifications")]
     pub fn note_action(&self, id: u32, key: String) {
-        let conn = self.conn.clone();
-        thread::spawn(move || {
-            let Ok(iface) = conn.object_server().interface::<_, Notifier>(NOTIFY_PATH) else { return };
-            let _ = zbus::block_on(Notifier::action_invoked(iface.signal_emitter(), id, &key));
-        });
+        self.emit(NoteSignal::Action(id, key));
     }
+
+    #[cfg(feature = "notifications")]
+    pub fn note_replied(&self, id: u32, text: String) {
+        self.emit(NoteSignal::Replied(id, text));
+    }
+
+    #[cfg(not(feature = "notifications"))]
+    pub fn note_replied(&self, _: u32, _: String) {}
 
     #[cfg(not(feature = "notifications"))]
     pub fn note_closed(&self, _: u32, _: u32) {}
@@ -639,7 +672,11 @@ pub fn spawn(tx: crate::Tx, notifications: bool) -> Option<Bus> {
     }
     #[cfg(not(feature = "notifications"))]
     let _ = notifications;
-    let bus = Bus { conn: conn.clone() };
+    let bus = Bus {
+        conn: conn.clone(),
+        #[cfg(feature = "notifications")]
+        outbox: Arc::default(),
+    };
     thread::spawn(move || {
         // Subscribe before claiming so nothing registered in between is lost.
         let signals = MessageIterator::from(&conn);

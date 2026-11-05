@@ -212,6 +212,9 @@ impl App {
     }
 
     fn open_palette(&mut self, tool: Option<&str>) {
+        // The palette's field takes the keyboard from a notification's.
+        self.model.notes.cancel_reply(Instant::now());
+        self.islands.iter_mut().for_each(|i| i.set_typing(false));
         let entries = tools::enabled(&self.cfg);
         let wanted = tool.and_then(|t| entries.iter().position(|e| e.name() == t));
         if let Some(open) = &mut self.model.palette {
@@ -295,9 +298,23 @@ impl App {
 
     fn key(&mut self, e: KeyEvent) {
         let mods = self.mods;
-        let Some(p) = &mut self.model.palette else { return };
+        let Some(p) = &mut self.model.palette else { return self.reply_key(e) };
         let outcome = p.key(e.keysym, e.utf8.as_deref(), mods, &self.cfg.keys);
         self.palette_outcome(outcome);
+    }
+
+    /// Typing into a notification's inline reply. tick() lets the keyboard go once it closes.
+    fn reply_key(&mut self, e: KeyEvent) {
+        match self.model.notes.reply_key(e.keysym, e.utf8.as_deref(), self.mods, &self.cfg.keys) {
+            notify::Typed::Nothing => {}
+            notify::Typed::Redraw => self.all(false, true),
+            notify::Typed::Send(id, text) => {
+                if let Some(bus) = &self.bus {
+                    bus.note_replied(id, text);
+                }
+                self.act(Action::NoteDismiss(id), 0.0, None);
+            }
+        }
     }
 
     fn end_toasts(&mut self) {
@@ -393,7 +410,10 @@ impl App {
             }
             Msg::Notify(note) => {
                 if self.cfg.notifications {
-                    self.model.notes.add(note);
+                    // A burst from one app shares a toast; the ones it covers have expired.
+                    if let Some(gone) = self.model.notes.add(note) {
+                        self.note_gone(gone, 1);
+                    }
                     self.all(false, true);
                 } else {
                     // Someone else is the daemon, so our own messages go through it.
@@ -621,8 +641,25 @@ impl App {
                 self.all(false, true);
             }
             Action::NoteClear => {
-                self.model.notes.history.clear();
+                self.model.notes.clear_history();
                 self.all(false, true);
+            }
+            Action::NoteReply(id) => {
+                self.model.notes.start_reply(id);
+                let on = self.model.notes.replying.is_some();
+                for (i, isl) in self.islands.iter_mut().enumerate() {
+                    isl.set_typing(on && from == Some(i));
+                }
+                self.all(false, true);
+            }
+            Action::NoteGroup(app) => {
+                self.model.notes.toggle(&app);
+                self.all(false, true);
+            }
+            Action::NoteClearApp(app) => {
+                for id in self.model.notes.ids_from(&app) {
+                    self.act(Action::NoteDismiss(id), 0.0, None);
+                }
             }
             Action::Dnd => {
                 self.model.notes.dnd = !self.model.notes.dnd;
@@ -663,6 +700,10 @@ impl App {
             self.all(true, true);
         }
         self.pump_notes(now);
+        // However the reply field closed (sent, Esc, the note went), the keyboard goes back.
+        if self.model.notes.replying.is_none() {
+            self.islands.iter_mut().for_each(|i| i.set_typing(false));
+        }
         let visible = self.islands.iter().any(Island::wants_stats);
         match (visible, self.next_stats) {
             (false, None) => {}

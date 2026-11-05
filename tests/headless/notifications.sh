@@ -67,5 +67,52 @@ $BIN dnd; sleep .3; notify-send "Silent" "Goes to history only"; sleep 1; grim $
 ok "dnd: no toast" "$(px $H/run/n12.png 757 40)" "$WIN"
 $BIN dnd; sleep .3
 $V move 960 22; sleep 1.2; grim $H/run/n13.png; $V move 1500 900; sleep .9
+
+# Every signal the daemon sends, from here on
+: > $R/sigs; nohup setsid python3 -I $H/sigs.py $R/sigs >/dev/null 2>&1 & echo $! > $R/sigs.pid; sleep .5
+about(){ [ $(($1 - $2)) -ge -3 ] && [ $(($1 - $2)) -le 3 ] && echo $2 || echo $1; }
+
+# A burst from one app shares one toast with a count, instead of queueing
+for i in 1 2 3; do notify-send -a burst -t 1500 "Build $i" "Step $i"; done; sleep .5; grim $H/run/n14.png
+ok "burst: one toast counts the rest" "$(magick $H/run/n14.png -crop 30x16+1100+23 -format '%[fx:maxima>0.5?1:0]' info:)" 1
+sleep 2.2; grim $H/run/n15.png
+ok "burst: gone on the newest one's timeout" "$(px $H/run/n15.png 757 40)" "$WIN"
+ok "burst: the covered ones report expired" "$(grep -c 'NotificationClosed [0-9]* 1' $R/sigs)" 3
+
+# Inline replies, the way KDE and GNOME apps ask for them
+call(){ gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.$1 "${@:2}"; }
+ask(){ call Notify chat 0 '' Ana "$1" "['inline-reply', 'Reply']" "{'x-kde-reply-placeholder-text': <'Answer Ana'>}" $2 | sed 's/.* \([0-9]*\),)/\1/'; }
+ok "inline reply: advertised" "$(call GetCapabilities | grep -o inline-reply)" inline-reply
+id=$(ask "Lunch at noon?" 8000); sleep .9
+$V click 790 86; sleep .4; $V type hi there; $V key Return; sleep .6
+ok "inline reply: Enter sends the text" "$(grep "NotificationReplied $id " $R/sigs)" "NotificationReplied $id hi there"
+ok "inline reply: and closes it as dismissed" "$(grep "NotificationClosed $id " $R/sigs)" "NotificationClosed $id 2"
+$V move 1500 900; sleep .9
+id=$(ask "Still on?" 1500); sleep .9
+$V click 790 86; sleep .3; $V type nope; $V key Escape; $V move 1500 900; sleep 2.4; grim $H/run/n16.png
+ok "inline reply: Esc sends nothing" "$(grep -c "NotificationReplied $id " $R/sigs)" 0
+ok "inline reply: and the toast times out again" "$(px $H/run/n16.png 757 40)" "$WIN"
+
+# History groups by app, newest app first. Fresh history, and a panel of only that.
+C=$R/cfg; mkdir -p $C/island; export XDG_CONFIG_HOME=$C
+echo 'panel = ["notifications"]' > $C/island/config.toml
+$H/isl; $BIN dnd; sleep .3; : > $R/sigs
+notify-send -a mail Mail Inbox; for i in 1 2 3; do notify-send -a chat "Chat $i" "Message $i"; done
+height(){ px $H/run/$1.png 686 60 height; }
+$BIN pin; sleep 1.2; grim $H/run/n17.png
+$V click 720 56; $V move 1500 900; sleep 1.2; grim $H/run/n18.png
+ok "groups: the header shows the whole app" "$(about $(($(height n18) - $(height n17))) 80)" 80
+$V click 720 56; $V move 1500 900; sleep 1.2; grim $H/run/n19.png
+ok "groups: and collapses it to the newest" "$(about $(height n19) $(height n17))" "$(height n17)"
+$V click 1213 56; $V move 1500 900; sleep 1.2; grim $H/run/n20.png
+ok "groups: clearing one app leaves the others" "$(about $(($(height n17) - $(height n20))) 68)" 68
+ok "groups: each cleared note reports dismissed" "$(grep -cE '^NotificationClosed [234] 2$' $R/sigs)" 3
+id=$(ask "Dinner?" 0); sleep .6
+$V click 1196 87; sleep .5; grim $H/run/n21.png
+ok "history reply: the entry turns into a field" "$(px $H/run/n21.png 1100 124 opaque)" no
+$V type on my way; $V key Return; $V move 1500 900; sleep .6
+ok "history reply: Enter sends it" "$(grep "NotificationReplied $id " $R/sigs)" "NotificationReplied $id on my way"
+$BIN pin; $BIN dnd; kill $(cat $R/sigs.pid)
+rm $C/island/config.toml; unset XDG_CONFIG_HOME; $BIN reload; sleep .9
 tail -3 $R/island.log | grep -v 'another notification'
 kill -0 $(cat $R/island.pid) && echo "ok   alive after every notification"

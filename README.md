@@ -131,6 +131,11 @@ to open or dismiss, and right-click to dismiss. Critical ones stay until you dea
 them. `island dnd` turns on do not disturb, which keeps notifications in the panel's
 history without showing them.
 
+Several from one app within a few seconds share one card that shows the newest and a
+`+N` count. The history groups them by app: click an app's header to see all of them,
+or its `×` to clear them. Apps that take inline replies (chat apps on KDE and GNOME do)
+get a Reply button: type into the card and press `Enter` to send, or `Esc` to cancel.
+
 Panel controls:
 
 | Control | Left | Right | Middle | Scroll |

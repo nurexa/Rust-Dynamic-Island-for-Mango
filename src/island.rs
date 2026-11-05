@@ -154,6 +154,8 @@ pub struct Island {
     pub pinned: bool,
     pub tucked: bool,
     toast: bool,
+    /// An inline reply is open here: it holds the keyboard, and the card with it.
+    typing: bool,
     raised: bool,
     hovered: bool,
     open: bool,
@@ -220,7 +222,7 @@ impl Island {
             pw: Spring::new(PANEL_W, 0.36, 0.86, 0.3),
             k: Spring::new(if tucked { 1.0 } else { 0.0 }, 0.34, 0.86, 0.002),
             last: None, time_scale: std::env::var("ISLAND_TIME_SCALE").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0),
-            pinned, tucked, toast: false, raised: false, hovered: false, open: false, suppress: false, press: None,
+            pinned, tucked, toast: false, typing: false, raised: false, hovered: false, open: false, suppress: false, press: None,
             dragging: false, sliding: false, pointer: (0.0, 0.0), hover: None, pin_at: None,
             open_at: None, close_at: None, flash_until: None, view: View::Main,
             compact: None, panel: None, compact_dirty: true, panel_dirty: true,
@@ -242,7 +244,7 @@ impl Island {
     }
 
     pub fn wants_panel(&self) -> bool {
-        (self.pinned || self.open || self.toast || self.view == View::Palette) && !self.dragging
+        (self.pinned || self.open || self.toast || self.typing || self.view == View::Palette) && !self.dragging
     }
 
     /// Stats only matter while the panel proper is up, not a toast or the palette.
@@ -290,6 +292,17 @@ impl Island {
         }
         self.panel_dirty = true;
         self.dirty = true;
+    }
+
+    /// Keyboard focus for an inline reply, the same way the palette takes it. Letting
+    /// go keeps a critical toast above fullscreen; end_toast lowers it after.
+    pub fn set_typing(&mut self, on: bool) {
+        if self.typing != on {
+            self.typing = on;
+            self.raise(on || (self.raised && self.toast), on);
+            self.panel_dirty = true;
+            self.dirty = true;
+        }
     }
 
     pub fn end_toast(&mut self) {
