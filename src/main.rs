@@ -2,6 +2,7 @@
 mod audio;
 mod brightness;
 mod bus;
+mod doctor;
 mod icons;
 mod island;
 mod modules;
@@ -1032,7 +1033,7 @@ impl ProvidesRegistryState for App {
 delegate_registry!(App);
 delegate_dispatch2!(App);
 
-fn socket_path() -> PathBuf {
+pub fn socket_path() -> PathBuf {
     env::var_os("XDG_RUNTIME_DIR").map_or("/tmp".into(), PathBuf::from).join(format!(
         "island-{}.sock", env::var("WAYLAND_DISPLAY").unwrap_or_default()))
 }
@@ -1163,10 +1164,11 @@ fn main() {
         let args: Vec<String> = env::args().skip(1).collect();
         match cmd.as_str() {
             "dmenu" => run_dmenu(&args[1..]),
+            "doctor" => doctor::run(),
             "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" => run_client(&args.join(" ")),
             _ => {}
         }
-        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|dmenu [-p prompt]]");
+        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|audio|doctor|dmenu [-p prompt]]");
         std::process::exit(2);
     }
 

@@ -74,6 +74,11 @@ const PANEL: &[(&str, PanelModule)] = &[
     ("wallpaper", wallpaper::panel),
 ];
 
+/// Every built-in module name, pill then panel, for `island doctor`.
+pub fn names() -> (Vec<&'static str>, Vec<&'static str>) {
+    (PILL.iter().map(|m| m.0).collect(), PANEL.iter().map(|m| m.0).collect())
+}
+
 fn draw_pill(name: &str, p: &mut Pen, c: &Ctx, x: f64) -> f64 {
     if let Some(custom) = name.strip_prefix("custom:") {
         return custom::pill(p, c, custom, x);
