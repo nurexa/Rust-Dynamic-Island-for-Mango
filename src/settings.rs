@@ -278,6 +278,7 @@ pub struct Config {
     pub ui: Ui,
     pub pomodoro: Pomodoro,
     pub claude: Claude,
+    pub nightlight: crate::nightlight::Settings,
 }
 
 impl Default for Config {
@@ -292,7 +293,7 @@ impl Default for Config {
             clock: "%I:%M %p".into(),
             palette: "~/.config/theme/generated/colors.toml".into(),
             pill: list(&["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]),
-            panel: list(&["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "status"]),
+            panel: list(&["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "nightlight", "status"]),
             icons: HashMap::new(),
             commands: Commands::default(),
             custom: Vec::new(),
@@ -308,6 +309,7 @@ impl Default for Config {
             ui: Ui::default(),
             pomodoro: Pomodoro::default(),
             claude: Claude::default(),
+            nightlight: Default::default(),
         }
     }
 }
@@ -344,6 +346,9 @@ pub struct State {
     pub pinned: bool,
     pub tucked: bool,
     pub dnd: bool,
+    /// Night light on, and the warmth the slider last chose.
+    pub night: bool,
+    pub warmth: Option<u32>,
 }
 
 impl State {
@@ -360,6 +365,8 @@ impl State {
                 ["pinned"] => s.pinned = true,
                 ["tucked"] => s.tucked = true,
                 ["dnd"] => s.dnd = true,
+                ["night"] => s.night = true,
+                ["warmth", k] => s.warmth = k.parse().ok(),
                 _ => {}
             }
         }
@@ -379,6 +386,12 @@ impl State {
         }
         if self.dnd {
             out += "dnd\n";
+        }
+        if self.night {
+            out += "night\n";
+        }
+        if let Some(k) = self.warmth {
+            out += &format!("warmth {k}\n");
         }
         out
     }
@@ -432,7 +445,7 @@ mod tests {
 
     #[test]
     fn state_round_trips_and_ignores_garbage() {
-        let mut s = State { pinned: true, ..Default::default() };
+        let mut s = State { pinned: true, night: true, warmth: Some(3200), ..Default::default() };
         s.pos.insert("DP-2".into(), (640.5, 900.0));
         assert_eq!(State::parse(&s.render()), s);
         assert_eq!(State::parse("pos DP-2 x y\nnonsense\n\n"), State::default());

@@ -30,6 +30,8 @@ pub enum Action {
     Mute,
     Volume,
     Brightness,
+    Night,
+    Warmth,
     Pin,
     Reset,
     Tuck,

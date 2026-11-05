@@ -11,7 +11,7 @@ screenshot_dir = "~/Pictures"
 
 # Every part is optional: leave a name out and it's gone.
 pill = ["media", "workspaces", "network", "clock"]
-panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status"]
+panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "nightlight", "status"]
 tools = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power"]
 notifications = true              # false keeps your own notification daemon
 
@@ -35,6 +35,11 @@ next_tool = ["tab"]
 prev_tool = ["shift+tab"]
 clear = ["ctrl+u"]
 delete_word = ["ctrl+w", "ctrl+backspace"]
+
+[nightlight]                      # warms and dims the screen through wlr-gamma-control; no wlsunset needed
+schedule = ""                     # "20:00-07:00" turns it on and off; a manual toggle holds until the next edge
+warmth = 3400                     # Kelvin, 2500-6500; the panel slider's choice is remembered after that
+dim = 0.85                        # brightness while on, 0.2-1
 
 [notify]                          # seconds on screen; critical stays until dismissed
 low = 3

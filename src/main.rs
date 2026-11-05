@@ -8,6 +8,7 @@ mod icons;
 mod island;
 mod modules;
 mod net;
+mod nightlight;
 mod notify;
 mod palette;
 mod pen;
@@ -124,6 +125,7 @@ pub struct Model {
     pub battery_warned: u8,
     /// The panel's list of outputs, apps and microphones is open.
     pub audio_open: bool,
+    pub night: nightlight::Night,
 }
 
 pub struct App {
@@ -544,6 +546,8 @@ impl App {
                 self.cfg = Config::load();
                 self.model.pal = theme::load(&self.cfg.palette);
                 self.model.brightness = brightness::read(&self.cfg.commands);
+                self.model.night.configure(&self.cfg.nightlight);
+                self.night_apply();
                 self.all(true, true);
             }
             "wall" => {
@@ -555,6 +559,7 @@ impl App {
             }
             "quit" => self.quit = true,
             "timer" => self.timer("toggle"),
+            "nightlight" => self.night_command(""),
             "claude focus" => {
                 let worst = self.model.claude.iter().filter(|s| claude::shown(s, Instant::now()))
                     .max_by_key(|s| (s.state == claude::State::Waiting, s.since)).map(|s| s.pids.clone());
@@ -572,6 +577,7 @@ impl App {
             _ => match c.split_once(' ') {
                 Some(("open", tool)) => self.open_palette(Some(tool)),
                 Some(("timer", what)) => self.timer(what),
+                Some(("nightlight", arg)) => self.night_command(arg),
                 Some(("shot", kind)) => {
                     if let Some(task) = tools::shot_task(kind) {
                         self.run(tools::Act::Task(task));
@@ -607,6 +613,8 @@ impl App {
                     }
                 }
             }
+            Action::Night => self.night_set(!self.model.night.on),
+            Action::Warmth => self.night_warmth(frac),
             Action::Pin => {
                 self.state.pinned = !self.state.pinned;
                 let p = self.state.pinned;
@@ -914,6 +922,7 @@ impl App {
         if now >= self.next_clock {
             self.next_clock = next_minute();
             self.all(true, true);
+            self.night_minute();
         }
         self.pump_notes(now);
         let visible = self.islands.iter().any(Island::wants_stats);
@@ -1009,11 +1018,13 @@ impl OutputHandler for App {
     }
     fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
         self.sync_outputs();
+        self.night_apply();
     }
     fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
         self.sync_outputs();
     }
     fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, output: wl_output::WlOutput) {
+        self.model.night.drop_output(&output);
         self.islands.retain(|i| i.output != output);
     }
 }
@@ -1315,10 +1326,10 @@ fn main() {
                 }
             }
             "doctor" => doctor::run(),
-            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" => run_client(&args.join(" ")),
+            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" | "nightlight" => run_client(&args.join(" ")),
             _ => {}
         }
-        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|audio|doctor|claude-setup [--undo]|dmenu [-p prompt]]");
+        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|nightlight [on|off|toggle]|audio|doctor|claude-setup [--undo]|dmenu [-p prompt]]");
         std::process::exit(2);
     }
 
@@ -1350,6 +1361,7 @@ fn main() {
     modules::custom::spawn(&cfg.custom, tx.clone());
     let cfg_notifications = cfg.notifications;
     watch_theme(&cfg.palette, tx.clone());
+    let night = nightlight::Night::new(&globals, &qh, &cfg.nightlight, state.night, state.warmth);
     let mut app = App {
         registry: RegistryState::new(&globals),
         seat: SeatState::new(&globals, &qh),
@@ -1374,7 +1386,7 @@ fn main() {
                        notes: notify::Center::new(state.dnd),
                        wall: modules::wallpaper::load(), timer: None,
                        camera: Vec::new(), audio_open: false, battery: None, flash_power: false, battery_warned: 100,
-                       claude: Vec::new() },
+                       claude: Vec::new(), night },
         icons: Icons::new(),
         tray_items: Vec::new(),
         cfg,
