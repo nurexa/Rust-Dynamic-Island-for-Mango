@@ -11,7 +11,7 @@ Leave a name out of a list and that part is gone.
 
 ```toml
 pill = ["media", "workspaces", "network", "clock"]
-panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status"]
+panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "nightlight", "status"]
 tools = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power"]
 notifications = true          # false keeps your own notification daemon
 ```
@@ -32,6 +32,7 @@ notifications = true          # false keeps your own notification daemon
 | `stats` | CPU, GPU, RAM, network tiles |
 | `audio` | Output device and volume slider |
 | `brightness` | Brightness slider; hidden without a backlight or `brightness_get` |
+| `nightlight` | Night light toggle and warmth slider; hidden when the compositor has no gamma control |
 | `wallpaper` | Wallpaper engine chips (fit, speed, fps, quality); off by default, the picker has them |
 | `status` | Network, battery, tray |
 | `wallpaper` | Wallpaper fit, speed, fps, quality (needs `wallpaper_opt`) |
@@ -64,6 +65,7 @@ island open                # the palette, on the first tool
 island open clipboard      # on a given tool; the same key again closes it
 island shot region         # or output, window, annotate, color
 island dnd                 # do not disturb
+island nightlight          # toggle the night light; or on, off
 ```
 
 ## 2. Change how it looks and behaves
@@ -80,6 +82,11 @@ screenshot_dir = "~/Pictures"
 [notify]                      # seconds on screen
 low = 3
 normal = 5
+
+[nightlight]                  # warms and dims the screen itself; no wlsunset needed
+schedule = "20:00-07:00"      # empty: manual only. A manual toggle holds until the next edge
+warmth = 3400                 # Kelvin, 2500-6500; the panel slider's choice is remembered
+dim = 0.85                    # brightness while on
 
 [commands]
 lock = "hyprlock"

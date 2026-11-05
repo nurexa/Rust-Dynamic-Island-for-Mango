@@ -16,6 +16,7 @@ pub mod custom;
 mod header;
 mod media;
 mod menu;
+mod nightlight;
 mod notify;
 mod palette;
 mod stats;
@@ -63,6 +64,7 @@ const PANEL: &[(&str, PanelModule)] = &[
     ("stats", stats::panel),
     ("audio", audio::panel),
     ("brightness", brightness::panel),
+    ("nightlight", nightlight::panel),
     ("status", status::panel),
     ("wallpaper", wallpaper::panel),
 ];

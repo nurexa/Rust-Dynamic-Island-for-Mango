@@ -6,6 +6,7 @@ mod icons;
 mod island;
 mod modules;
 mod net;
+mod nightlight;
 mod notify;
 mod palette;
 mod pen;
@@ -104,6 +105,7 @@ pub struct Model {
     pub palette: Option<Palette>,
     pub notes: notify::Center,
     pub wall: Option<modules::wallpaper::Wall>,
+    pub night: nightlight::Night,
 }
 
 pub struct App {
@@ -485,6 +487,8 @@ impl App {
                 self.cfg = Config::load();
                 self.model.pal = theme::load(&self.cfg.palette);
                 self.model.brightness = brightness::read(&self.cfg.commands);
+                self.model.night.configure(&self.cfg.nightlight);
+                self.night_apply();
                 self.all(true, true);
             }
             "wall" => {
@@ -495,9 +499,11 @@ impl App {
                 }
             }
             "quit" => self.quit = true,
+            "nightlight" => self.night_command(""),
             "" => {} // a second instance checking whether we're alive
             _ => match c.split_once(' ') {
                 Some(("open", tool)) => self.open_palette(Some(tool)),
+                Some(("nightlight", arg)) => self.night_command(arg),
                 Some(("shot", kind)) => {
                     if let Some(task) = tools::shot_task(kind) {
                         self.run(tools::Act::Task(task));
@@ -533,6 +539,8 @@ impl App {
                     }
                 }
             }
+            Action::Night => self.night_set(!self.model.night.on),
+            Action::Warmth => self.night_warmth(frac),
             Action::Pin => {
                 self.state.pinned = !self.state.pinned;
                 let p = self.state.pinned;
@@ -661,6 +669,7 @@ impl App {
         if now >= self.next_clock {
             self.next_clock = next_minute();
             self.all(true, true);
+            self.night_minute();
         }
         self.pump_notes(now);
         let visible = self.islands.iter().any(Island::wants_stats);
@@ -756,11 +765,13 @@ impl OutputHandler for App {
     }
     fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
         self.sync_outputs();
+        self.night_apply();
     }
     fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
         self.sync_outputs();
     }
     fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, output: wl_output::WlOutput) {
+        self.model.night.drop_output(&output);
         self.islands.retain(|i| i.output != output);
     }
 }
@@ -1039,10 +1050,10 @@ fn main() {
         let args: Vec<String> = env::args().skip(1).collect();
         match cmd.as_str() {
             "dmenu" => run_dmenu(&args[1..]),
-            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" => run_client(&args.join(" ")),
+            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "nightlight" => run_client(&args.join(" ")),
             _ => {}
         }
-        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|dmenu [-p prompt]]");
+        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|nightlight [on|off|toggle]|dmenu [-p prompt]]");
         std::process::exit(2);
     }
 
@@ -1074,6 +1085,7 @@ fn main() {
     modules::custom::spawn(&cfg.custom, tx.clone());
     let cfg_notifications = cfg.notifications;
     watch_theme(&cfg.palette, tx.clone());
+    let night = nightlight::Night::new(&globals, &qh, &cfg.nightlight, state.night, state.warmth);
     let mut app = App {
         registry: RegistryState::new(&globals),
         seat: SeatState::new(&globals, &qh),
@@ -1096,7 +1108,8 @@ fn main() {
                        audio: None, brightness: brightness::read(&cfg.commands), media: None, art_small: None, art_large: None, net: net::State::Unknown,
                        tray: Vec::new(), pal: theme::load(&cfg.palette), palette: None,
                        notes: notify::Center::new(state.dnd),
-                       wall: modules::wallpaper::load() },
+                       wall: modules::wallpaper::load(),
+                       night },
         icons: Icons::new(),
         tray_items: Vec::new(),
         cfg,

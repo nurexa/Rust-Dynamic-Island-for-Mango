@@ -131,6 +131,10 @@ to open or dismiss, and right-click to dismiss. Critical ones stay until you dea
 them. `island dnd` turns on do not disturb, which keeps notifications in the panel's
 history without showing them.
 
+The night light warms and dims the screen itself, with no wlsunset or gammastep: click
+its icon in the panel, drag its slider for warmth, run `island nightlight`, or give it a
+`schedule` under `[nightlight]`.
+
 Panel controls:
 
 | Control | Left | Right | Middle | Scroll |

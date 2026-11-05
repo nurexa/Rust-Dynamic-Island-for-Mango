@@ -846,7 +846,7 @@ impl Island {
         if button == BTN_LEFT {
             if let Some(i) = region {
                 let slider = self.active().map(|(c, ..)| c.regions[i].left.clone())
-                    .filter(|a| matches!(a, Action::Volume | Action::Brightness));
+                    .filter(|a| matches!(a, Action::Volume | Action::Brightness | Action::Warmth));
                 if let Some(action) = slider {
                     self.sliding = true;
                     return Outcome::Act(action, self.slider_frac(i));
