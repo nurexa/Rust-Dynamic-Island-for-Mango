@@ -1,5 +1,6 @@
 //! A Dynamic Island for MangoWC. See README.md.
 mod audio;
+mod bluetooth;
 mod brightness;
 mod bus;
 mod icons;
@@ -76,6 +77,7 @@ pub enum Msg {
     Sys(sys::Snapshot),
     Media(Option<bus::Track>),
     Net(net::State),
+    Bluetooth(Option<bluetooth::State>),
     Tray(Vec<bus::TrayItem>),
     Menu(usize, Vec<bus::MenuEntry>),
     Theme,
@@ -99,6 +101,7 @@ pub struct Model {
     pub art_small: Option<ImageSurface>,
     pub art_large: Option<ImageSurface>,
     pub net: net::State,
+    pub bluetooth: Option<bluetooth::State>,
     pub tray: Vec<(bus::TrayItem, Option<(ImageSurface, bool)>)>,
     pub pal: theme::Palette,
     pub palette: Option<Palette>,
@@ -266,6 +269,12 @@ impl App {
                 self.close_palette();
                 tools::run_then(then, text, self.tx.clone());
             }
+            O::Load(list) => {
+                if let Some(p) = &self.model.palette {
+                    tools::load_with(list, p.generation, self.tool_ctx(), self.tx.clone());
+                }
+                self.palette_redraw();
+            }
             O::Reload => {
                 if let Some(p) = &self.model.palette {
                     tools::load(&p.entries[p.current], p.generation, self.tool_ctx(), self.tx.clone());
@@ -289,7 +298,7 @@ impl App {
             A::Focus(window) => self.wm.focus(window),
             A::Quit => self.wm.quit(),
             A::Task(task) => tools::run_task(task, self.tool_ctx(), self.tx.clone()),
-            A::Confirm(..) | A::Ask { .. } | A::Reply(_) | A::Open(_) | A::Back => {}
+            A::Confirm(..) | A::Ask { .. } | A::Reply(_) | A::Open(_) | A::Back | A::Load(_) => {}
         }
     }
 
@@ -449,6 +458,10 @@ impl App {
                 let compact = (n == net::State::Offline) != (self.model.net == net::State::Offline);
                 self.model.net = n;
                 self.all(compact, true);
+            }
+            Msg::Bluetooth(b) => {
+                self.model.bluetooth = b;
+                self.all(false, true);
             }
             Msg::Tray(items) => {
                 self.tray_items = items;
@@ -629,6 +642,11 @@ impl App {
                 self.state.dnd = self.model.notes.dnd;
                 self.save();
                 self.all(false, true);
+            }
+            Action::Bluetooth => {
+                if let Some(b) = &self.model.bluetooth {
+                    bluetooth::set_power(b.adapter.clone(), !b.powered);
+                }
             }
             Action::MenuBack => {
                 if let Some(f) = from {
@@ -1069,6 +1087,7 @@ fn main() {
     let cfg = Config::load();
     let state = State::load();
     let net_poke = net::spawn(tx.clone());
+    bluetooth::spawn(tx.clone());
     let wm = wm::detect();
     wm.watch(tx.clone());
     modules::custom::spawn(&cfg.custom, tx.clone());
@@ -1093,7 +1112,7 @@ fn main() {
         islands: Vec::new(),
         under_pointer: None,
         model: Model { monitors: Vec::new(), clients: Vec::new(), custom: HashMap::new(), sys: sys::Snapshot::default(),
-                       audio: None, brightness: brightness::read(&cfg.commands), media: None, art_small: None, art_large: None, net: net::State::Unknown,
+                       audio: None, brightness: brightness::read(&cfg.commands), media: None, art_small: None, art_large: None, net: net::State::Unknown, bluetooth: None,
                        tray: Vec::new(), pal: theme::load(&cfg.palette), palette: None,
                        notes: notify::Center::new(state.dnd),
                        wall: modules::wallpaper::load() },

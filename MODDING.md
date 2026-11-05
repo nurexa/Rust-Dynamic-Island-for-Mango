@@ -11,8 +11,8 @@ Leave a name out of a list and that part is gone.
 
 ```toml
 pill = ["media", "workspaces", "network", "clock"]
-panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status"]
-tools = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "wallpaper", "power"]
+panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status", "bluetooth"]
+tools = ["apps", "run", "windows", "clipboard", "screenshot", "wifi", "bluetooth", "wallpaper", "power"]
 notifications = true          # false keeps your own notification daemon
 ```
 
@@ -34,6 +34,7 @@ notifications = true          # false keeps your own notification daemon
 | `brightness` | Brightness slider; hidden without a backlight or `brightness_get` |
 | `wallpaper` | Wallpaper engine chips (fit, speed, fps, quality); off by default, the picker has them |
 | `status` | Network, battery, tray |
+| `bluetooth` | On/off switch, connected devices and their battery; hidden without an adapter |
 | `wallpaper` | Wallpaper fit, speed, fps, quality (needs `wallpaper_opt`) |
 
 | Tools | Does | Needs |
@@ -44,6 +45,7 @@ notifications = true          # false keeps your own notification daemon
 | `clipboard` | Searches history and restores an entry | `cliphist`, `wl-clipboard` |
 | `screenshot` | Region, window, screen, annotate, color picker | `grim`, `slurp`; `satty` to annotate |
 | `wifi` | Lists networks and connects, asking for a password | `nmcli` |
+| `bluetooth` | Connects paired devices, scans for and pairs new ones, turns it on and off | BlueZ and an adapter |
 | `wallpaper` | Picks from a folder, with thumbnails; **Settings ›** nests the engine's options when `wallpaper_opt` is set | `[wallpaper]` in config |
 | `power` | Lock, suspend, log out, reboot, shut down | |
 
@@ -55,7 +57,7 @@ cargo build --release --no-default-features --features "apps,clipboard,notificat
 ```
 
 The features are `apps`, `run`, `windows`, `clipboard`, `screenshot`, `wifi`,
-`wallpaper`, `power` and `notifications`.
+`bluetooth`, `wallpaper`, `power` and `notifications`.
 
 Commands to bind to keys:
 

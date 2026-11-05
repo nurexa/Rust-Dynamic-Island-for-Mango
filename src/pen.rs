@@ -46,6 +46,8 @@ pub enum Action {
     NoteDismiss(u32),
     NoteClear,
     Dnd,
+    /// Turns the Bluetooth adapter on or off.
+    Bluetooth,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

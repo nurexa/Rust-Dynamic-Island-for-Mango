@@ -13,6 +13,8 @@ use std::{
 
 #[cfg(feature = "apps")]
 pub mod apps;
+#[cfg(feature = "bluetooth")]
+mod bluetooth;
 #[cfg(feature = "clipboard")]
 mod clipboard;
 #[cfg(feature = "power")]
@@ -40,6 +42,8 @@ pub enum Icon {
 }
 
 /// What happens when an item is chosen.
+// Equality is only for tests, and `Load` compares by address, which is fine there.
+#[allow(unpredictable_function_pointer_comparisons)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Act {
     Sh(String),
@@ -58,6 +62,9 @@ pub enum Act {
     /// Expands into a nested list; Esc or `Back` returns to the one it came from.
     Open(Vec<Item>),
     Back,
+    /// Like `Open`, for a list that takes a while to build (a Bluetooth scan): it's
+    /// built on a worker the way a tool's own list is, and shows loading meanwhile.
+    Load(fn(&Ctx) -> Vec<Item>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -76,6 +83,8 @@ pub enum Task {
     Shot(screenshot::Kind),
     #[cfg(feature = "wifi")]
     Wifi(wifi::Pick),
+    #[cfg(feature = "bluetooth")]
+    Bluetooth(bluetooth::Pick),
     /// Exists so this enum isn't empty when every tool is compiled out.
     Nothing,
 }
@@ -130,6 +139,8 @@ pub const TOOLS: &[Tool] = &[
     Tool { name: "screenshot", glyph: "\u{f0100}", hint: "Capture the screen", list: screenshot::list, typed: None },
     #[cfg(feature = "wifi")]
     Tool { name: "wifi", glyph: "\u{f0928}", hint: "Choose a network", list: wifi::list, typed: None },
+    #[cfg(feature = "bluetooth")]
+    Tool { name: "bluetooth", glyph: "\u{f00af}", hint: "Connect a Bluetooth device", list: bluetooth::list, typed: None },
     #[cfg(feature = "wallpaper")]
     Tool { name: "wallpaper", glyph: "\u{f0e09}", hint: "Choose a wallpaper", list: wallpaper::list, typed: None },
     #[cfg(feature = "power")]
@@ -192,6 +203,7 @@ fn usable(entry: &Entry, cfg: &Config) -> bool {
         "clipboard" => on_path("cliphist") && on_path("wl-copy"),
         "screenshot" => on_path("grim"),
         "wifi" => on_path("nmcli"),
+        "bluetooth" => std::fs::read_dir("/sys/class/bluetooth").is_ok_and(|mut d| d.next().is_some()),
         "wallpaper" => !cfg.wallpaper.dir.is_empty(),
         _ => true,
     }
@@ -228,6 +240,11 @@ pub fn load(entry: &Entry, generation: u64, ctx: Ctx, tx: Tx) {
     });
 }
 
+/// The list behind an `Act::Load`, posted back the same way.
+pub fn load_with(list: fn(&Ctx) -> Vec<Item>, generation: u64, ctx: Ctx, tx: Tx) {
+    thread::spawn(move || drop(tx.send(Msg::Items(generation, list(&ctx)))));
+}
+
 /// In its own session, so apps outlive the island and ignore its signals.
 pub fn spawn_detached(cmd: &str) {
     let child = Command::new("sh").arg("-c").arg(cmd).stdin(Stdio::null())
@@ -255,10 +272,14 @@ pub fn run_task(task: Task, ctx: Ctx, tx: Tx) {
         Task::Shot(kind) => screenshot::take(kind, &ctx, &tx),
         #[cfg(feature = "wifi")]
         Task::Wifi(pick) => wifi::connect(pick, &tx),
+        #[cfg(feature = "bluetooth")]
+        Task::Bluetooth(pick) => bluetooth::run(pick, &tx),
         Task::Nothing => {}
     });
-    #[cfg(not(any(feature = "screenshot", feature = "wifi")))]
-    let _ = (ctx, tx);
+    #[cfg(not(feature = "screenshot"))]
+    let _ = ctx;
+    #[cfg(not(any(feature = "screenshot", feature = "wifi", feature = "bluetooth")))]
+    let _ = tx;
 }
 
 pub fn run_then(then: Then, text: String, tx: Tx) {
