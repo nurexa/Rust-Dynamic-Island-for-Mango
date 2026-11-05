@@ -12,6 +12,7 @@ use crate::{
 mod audio;
 mod battery;
 mod brightness;
+mod claude;
 mod clock;
 pub mod custom;
 mod header;
@@ -54,6 +55,7 @@ type PanelModule = fn(&mut Pen, &Ctx, f64) -> f64;
 const PILL: &[(&str, PillModule)] = &[
     ("media", media::pill),
     ("workspaces", workspaces::pill),
+    ("claude", claude::pill),
     ("timer", timer::pill),
     ("network", status::offline_pill),
     ("privacy", privacy::pill),

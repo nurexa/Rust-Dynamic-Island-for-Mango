@@ -216,6 +216,22 @@ impl Default for Pomodoro {
     }
 }
 
+/// Claude Code on the island (needs its hooks: ./install.sh --manual, or `island claude-setup`).
+#[derive(Deserialize, Debug, Clone)]
+#[serde(default)]
+pub struct Claude {
+    /// Permission prompts become Allow/Deny cards when you're not looking at that terminal.
+    pub approve: bool,
+    /// A note when a session finishes or needs you and its terminal isn't focused.
+    pub notify: bool,
+}
+
+impl Default for Claude {
+    fn default() -> Self {
+        Claude { approve: true, notify: true }
+    }
+}
+
 /// Look and feel switches.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
@@ -261,6 +277,7 @@ pub struct Config {
     pub keys: Keys,
     pub ui: Ui,
     pub pomodoro: Pomodoro,
+    pub claude: Claude,
 }
 
 impl Default for Config {
@@ -274,7 +291,7 @@ impl Default for Config {
             icon_style: IconStyle::Glyph,
             clock: "%I:%M %p".into(),
             palette: "~/.config/theme/generated/colors.toml".into(),
-            pill: list(&["media", "workspaces", "timer", "network", "privacy", "battery", "clock"]),
+            pill: list(&["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]),
             panel: list(&["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "status"]),
             icons: HashMap::new(),
             commands: Commands::default(),
@@ -290,6 +307,7 @@ impl Default for Config {
             keys: Keys::default(),
             ui: Ui::default(),
             pomodoro: Pomodoro::default(),
+            claude: Claude::default(),
         }
     }
 }

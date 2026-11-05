@@ -25,6 +25,9 @@ pub struct Monitor {
 #[derive(Deserialize, Clone, PartialEq, Debug)]
 pub struct Client {
     pub id: u64,
+    /// The process behind the window, when the compositor says.
+    #[serde(default)]
+    pub pid: u32,
     pub title: Option<String>,
     pub appid: Option<String>,
     pub monitor: String,

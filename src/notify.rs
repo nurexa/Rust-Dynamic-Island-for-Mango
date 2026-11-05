@@ -102,6 +102,12 @@ impl Center {
         Center { dnd, ..Default::default() }
     }
 
+    /// An id for a note of our own, known before it's added, so its buttons can be matched.
+    pub fn next_id(&mut self) -> u32 {
+        self.next_local = self.next_local.wrapping_add(1) & 0xf_ffff;
+        LOCAL_IDS + self.next_local
+    }
+
     pub fn add(&mut self, mut note: Note) {
         if note.id == 0 {
             self.next_local = self.next_local.wrapping_add(1) & 0xf_ffff;

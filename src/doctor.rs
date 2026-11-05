@@ -64,6 +64,8 @@ fn owner(name: &str) -> Option<String> {
 }
 
 pub fn run() -> ! {
+    // Piped into head or grep: stop quietly when the reader goes away.
+    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
     let mut r = Report::default();
     let cfg_path = Config::path();
     section("Session");

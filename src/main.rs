@@ -2,6 +2,7 @@
 mod audio;
 mod brightness;
 mod bus;
+mod claude;
 mod doctor;
 mod icons;
 mod island;
@@ -86,6 +87,8 @@ pub enum Msg {
     /// Processes with the camera open.
     Camera(Vec<String>),
     Battery(power::Battery),
+    /// A Claude Code hook event; a permission request carries where to send the answer.
+    Claude(claude::Event, Option<mpsc::Sender<String>>),
     Command(String),
     Items(u64, Vec<tools::Item>),
     Notify(Note),
@@ -114,6 +117,7 @@ pub struct Model {
     pub timer: Option<timer::Timer>,
     pub camera: Vec<String>,
     pub battery: Option<power::Battery>,
+    pub claude: Vec<claude::Session>,
     /// The pill's brief flash is about power, not volume.
     pub flash_power: bool,
     /// The lowest battery warning given since the last charge, so each shows once.
@@ -157,6 +161,12 @@ pub struct App {
     net_poke: mpsc::Sender<()>,
     tx: Tx,
     next_stats: Option<Instant>,
+    /// Permission cards waiting on a click: note id, the request, where the hook waits.
+    claude_asks: Vec<(u32, claude::Event, mpsc::Sender<String>)>,
+    /// Notes that focus a session's terminal when clicked.
+    claude_notes: Vec<(u32, Vec<u32>)>,
+    /// When a finished session next drops off the pill.
+    claude_until: Option<Instant>,
     /// When the timer's text next changes, and whether that's counting seconds.
     timer_at: Option<Instant>,
     timer_fine: bool,
@@ -473,6 +483,7 @@ impl App {
                 }
                 self.all(true, true);
             }
+            Msg::Claude(e, reply) => self.claude(e, reply),
             Msg::Camera(who) => {
                 self.model.camera = who;
                 self.all(true, false);
@@ -544,6 +555,13 @@ impl App {
             }
             "quit" => self.quit = true,
             "timer" => self.timer("toggle"),
+            "claude focus" => {
+                let worst = self.model.claude.iter().filter(|s| claude::shown(s, Instant::now()))
+                    .max_by_key(|s| (s.state == claude::State::Waiting, s.since)).map(|s| s.pids.clone());
+                if let Some(w) = worst.and_then(|p| self.window_of(&p)) {
+                    self.wm.focus(w);
+                }
+            }
             "audio" => {
                 self.model.audio_open = !self.model.audio_open;
                 audio::DETAILED.store(self.model.audio_open, std::sync::atomic::Ordering::Relaxed);
@@ -663,6 +681,7 @@ impl App {
                 let outcome = p.switch(i);
                 self.palette_outcome(outcome);
             }
+            Action::NoteAction(id, key) if self.claude_note(id, &key) => self.act(Action::NoteDismiss(id), 0.0, None),
             Action::NoteAction(id, key) => {
                 if let Some(bus) = self.bus.as_ref().filter(|_| id < 0xfff0_0000) {
                     bus.note_action(id, key);
@@ -670,6 +689,8 @@ impl App {
                 self.act(Action::NoteDismiss(id), 0.0, None);
             }
             Action::NoteDismiss(id) => {
+                // A card closed unanswered: the terminal's prompt decides.
+                self.claude_asks.retain(|a| a.0 != id);
                 if self.model.notes.remove(id) {
                     self.end_toasts();
                 }
@@ -715,6 +736,108 @@ impl App {
                 }
             }
         }
+    }
+
+    /// The window a process tree runs in: its terminal. Several windows of one
+    /// terminal process share a pid, so a title naming Claude breaks the tie.
+    fn window_of(&self, pids: &[u32]) -> Option<u64> {
+        let mut hits: Vec<&wm::Client> = self.model.clients.iter().filter(|c| c.pid != 0 && pids.contains(&c.pid)).collect();
+        hits.sort_by_key(|c| !c.title.as_deref().unwrap_or("").contains("Claude"));
+        hits.first().map(|c| c.id)
+    }
+
+    fn looking_at(&self, pids: &[u32]) -> bool {
+        self.window_of(pids).is_some_and(|w| self.model.clients.iter().any(|c| c.id == w && c.is_focused))
+    }
+
+    fn claude(&mut self, e: claude::Event, reply: Option<mpsc::Sender<String>>) {
+        let now = Instant::now();
+        // Anything else from a session means a card for it was answered in the terminal.
+        if e.kind != "PermissionRequest" {
+            let gone: Vec<u32> = self.claude_asks.iter().filter(|a| a.1.session == e.session).map(|a| a.0).collect();
+            for id in gone {
+                self.act(Action::NoteDismiss(id), 0.0, None);
+            }
+        }
+        match e.state() {
+            None => self.model.claude.retain(|s| s.id != e.session),
+            Some(state) => match self.model.claude.iter_mut().find(|s| s.id == e.session) {
+                Some(s) => {
+                    if s.state != state {
+                        s.state = state;
+                        s.since = now;
+                    }
+                    s.pids = e.pids.clone();
+                }
+                None => self.model.claude.push(claude::Session { id: e.session.clone(), project: e.project.clone(), state, since: now, pids: e.pids.clone() }),
+            },
+        }
+        let away = !self.looking_at(&e.pids);
+        let cfg = self.cfg.claude.clone();
+        match e.kind.as_str() {
+            "PermissionRequest" if cfg.approve && away => {
+                let (title, body) = e.ask_text();
+                let mut note = Note::local("Claude Code", &title, &body, notify::NoteImage::None);
+                note.sticky = true;
+                note.urgency = 2;
+                note.actions = vec![("allow".into(), "Allow".into())];
+                if e.can_remember() {
+                    note.actions.push(("always".into(), "Always allow".into()));
+                }
+                note.actions.push(("deny".into(), "Deny".into()));
+                let id = self.model.notes.next_id();
+                note.id = id;
+                if let Some(reply) = reply {
+                    self.claude_asks.push((id, e, reply));
+                }
+                self.handle(Msg::Notify(note));
+            }
+            "Stop" if cfg.notify && away => {
+                let mut note = Note::local("Claude Code", &format!("Claude finished · {}", e.project), &e.last_message(), notify::NoteImage::None);
+                note.actions = vec![("default".into(), "Show".into())];
+                note.id = self.model.notes.next_id();
+                self.claude_notes.push((note.id, e.pids.clone()));
+                self.handle(Msg::Notify(note));
+            }
+            "Notification" if cfg.notify && away && e.state() == Some(claude::State::Waiting)
+                && !self.claude_asks.iter().any(|a| a.1.session == e.session) => {
+                let msg = e.raw.get("message").and_then(serde_json::Value::as_str).unwrap_or("Claude needs your input").to_owned();
+                let mut note = Note::local("Claude Code", &format!("Claude needs you · {}", e.project), &msg, notify::NoteImage::None);
+                note.actions = vec![("default".into(), "Show".into())];
+                note.id = self.model.notes.next_id();
+                self.claude_notes.push((note.id, e.pids.clone()));
+                self.handle(Msg::Notify(note));
+            }
+            _ => {}
+        }
+        self.claude_until = self.model.claude.iter().filter(|s| s.state == claude::State::Done)
+            .map(|s| s.since + claude::DONE_FOR).filter(|t| *t > now).min();
+        self.all(true, true);
+    }
+
+    /// A button on a Claude card or note. True when it was one of ours.
+    fn claude_note(&mut self, id: u32, key: &str) -> bool {
+        if let Some(i) = self.claude_asks.iter().position(|a| a.0 == id) {
+            let (_, e, reply) = self.claude_asks.remove(i);
+            if let Some(answer) = e.decision(key) {
+                let _ = reply.send(answer);
+                // Answered: back to work (or, denied, Claude says so and carries on).
+                if let Some(s) = self.model.claude.iter_mut().find(|s| s.id == e.session) {
+                    s.state = claude::State::Working;
+                    s.since = Instant::now();
+                }
+                self.all(true, true);
+            }
+            return true;
+        }
+        if let Some(i) = self.claude_notes.iter().position(|n| n.0 == id) {
+            let (_, pids) = self.claude_notes.remove(i);
+            if let Some(w) = self.window_of(&pids) {
+                self.wm.focus(w);
+            }
+            return true;
+        }
+        false
     }
 
     /// `island timer [start|toggle|stop|skip|<minutes>]`.
@@ -766,13 +889,18 @@ impl App {
 
     fn next_deadline(&self) -> Instant {
         let islands = self.islands.iter().filter_map(Island::next_deadline);
-        islands.chain(self.next_stats).chain(self.timer_at).chain(self.model.notes.until).chain([self.next_clock]).min().unwrap_or(self.next_clock)
+        islands.chain(self.next_stats).chain(self.timer_at).chain(self.claude_until).chain(self.model.notes.until).chain([self.next_clock]).min().unwrap_or(self.next_clock)
     }
 
     fn tick(&mut self) {
         let now = Instant::now();
         for i in &mut self.islands {
             i.tick(now);
+        }
+        if self.claude_until.is_some_and(|t| now >= t) {
+            // A finished session drops off the pill a little while after.
+            self.claude_until = None;
+            self.all(true, true);
         }
         if self.timer_at.is_some_and(|t| now >= t) {
             self.timer_tick(now);
@@ -1117,6 +1245,20 @@ fn control_socket(tx: Tx) -> Result<(), String> {
                     return;
                 }
                 let line = line.trim_end_matches('\n');
+                if let Some(json) = line.strip_prefix("claude\t") {
+                    let Some(event) = claude::Event::parse(json) else { return };
+                    if event.kind != "PermissionRequest" {
+                        let _ = tx.send(Msg::Claude(event, None));
+                        return;
+                    }
+                    // The hook waits on this connection for the card's answer.
+                    let (reply, answer) = mpsc::channel();
+                    let _ = tx.send(Msg::Claude(event, Some(reply)));
+                    if let Ok(text) = answer.recv() {
+                        let _ = writeln!(out, "{text}");
+                    }
+                    return;
+                }
                 let Some(header) = line.strip_prefix("dmenu\t") else {
                     let _ = tx.send(Msg::Command(line.trim().to_owned()));
                     return;
@@ -1164,11 +1306,19 @@ fn main() {
         let args: Vec<String> = env::args().skip(1).collect();
         match cmd.as_str() {
             "dmenu" => run_dmenu(&args[1..]),
+            "claude-hook" => claude::hook(),
+            "claude-setup" => {
+                let bin = env::current_exe().map_or("island".into(), |p| p.to_string_lossy().into_owned());
+                match claude::setup(&bin, args.get(1).is_some_and(|a| a == "--undo")) {
+                    Ok(m) => { println!("{m}"); std::process::exit(0) }
+                    Err(e) => { eprintln!("island: {e}"); std::process::exit(1) }
+                }
+            }
             "doctor" => doctor::run(),
             "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" => run_client(&args.join(" ")),
             _ => {}
         }
-        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|audio|doctor|dmenu [-p prompt]]");
+        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|audio|doctor|claude-setup [--undo]|dmenu [-p prompt]]");
         std::process::exit(2);
     }
 
@@ -1223,7 +1373,8 @@ fn main() {
                        tray: Vec::new(), pal: theme::load(&cfg.palette), palette: None,
                        notes: notify::Center::new(state.dnd),
                        wall: modules::wallpaper::load(), timer: None,
-                       camera: Vec::new(), audio_open: false, battery: None, flash_power: false, battery_warned: 100 },
+                       camera: Vec::new(), audio_open: false, battery: None, flash_power: false, battery_warned: 100,
+                       claude: Vec::new() },
         icons: Icons::new(),
         tray_items: Vec::new(),
         cfg,
@@ -1237,6 +1388,9 @@ fn main() {
         next_clock: next_minute(),
         timer_at: None,
         timer_fine: false,
+        claude_asks: Vec::new(),
+        claude_notes: Vec::new(),
+        claude_until: None,
         scroll: 0.0,
         quit: false,
     };
