@@ -56,6 +56,8 @@ pub enum Action {
     Dnd,
     /// One of the island's own commands, as `island <cmd>` would send it.
     Cmd(String),
+    /// A monitor's brightness over DDC, by I2C bus.
+    Ddc(u32),
     /// An app's own volume, by its stream index.
     StreamVolume(u32),
     StreamMute(u32),

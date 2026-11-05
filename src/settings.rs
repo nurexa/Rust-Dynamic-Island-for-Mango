@@ -278,6 +278,9 @@ pub struct Config {
     pub ui: Ui,
     pub pomodoro: Pomodoro,
     pub claude: Claude,
+    /// Parts to leave out wherever they appear: module and tool names, plus "calc"
+    /// and "web" for the search's sums and web row. What `install.sh --manual` writes.
+    pub disable: Vec<String>,
     pub nightlight: crate::nightlight::Settings,
 }
 
@@ -310,6 +313,7 @@ impl Default for Config {
             pomodoro: Pomodoro::default(),
             claude: Claude::default(),
             nightlight: Default::default(),
+            disable: Vec::new(),
         }
     }
 }
@@ -320,7 +324,19 @@ impl Config {
     }
 
     pub fn parse(src: &str) -> Result<Self, toml::de::Error> {
-        toml::from_str(src)
+        let mut c: Config = toml::from_str(src)?;
+        let off = c.disable.clone();
+        for list in [&mut c.pill, &mut c.panel, &mut c.tools] {
+            list.retain(|n| !off.contains(n));
+        }
+        if off.iter().any(|d| d == "web") {
+            c.web_search.clear();
+        }
+        Ok(c)
+    }
+
+    pub fn calc(&self) -> bool {
+        !self.disable.iter().any(|d| d == "calc")
     }
 
     /// A broken config must not take the bar down with it: complain, use defaults.
@@ -422,6 +438,9 @@ mod tests {
         let c = Config::parse("clock = \"%H:%M\"\npill = [\"clock\"]\n[icons]\nfoot = \"x\"\n[[custom]]\nname = \"w\"\nexec = \"date\"\n").unwrap();
         assert_eq!(c.clock, "%H:%M");
         assert_eq!(c.pill, ["clock"]);
+        let off = Config::parse("disable = [\"timer\", \"bluetooth\", \"web\", \"calc\"]").unwrap();
+        assert!(!off.pill.contains(&"timer".into()) && !off.panel.contains(&"timer".into()) && !off.tools.contains(&"bluetooth".into()));
+        assert!(off.web_search.is_empty() && !off.calc() && Config::default().calc());
         assert_eq!(c.panel.len(), Config::default().panel.len());
         assert_eq!(c.custom[0].interval, 0);
         assert!(Config::parse("icon_style = \"sparkly\"").is_err());

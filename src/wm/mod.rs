@@ -4,6 +4,7 @@
 use crate::Tx;
 use serde::Deserialize;
 
+mod hyprland;
 mod mango;
 
 #[derive(Deserialize, Clone, PartialEq, Debug)]
@@ -77,6 +78,9 @@ impl Backend for Bare {
 pub fn detect() -> Box<dyn Backend> {
     if std::env::var_os("MANGO_INSTANCE_SIGNATURE").is_some() {
         return Box::new(mango::Mango);
+    }
+    if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some() {
+        return Box::new(hyprland::Hyprland);
     }
     eprintln!("island: no supported compositor found, so workspaces stay empty (see MODDING.md)");
     Box::new(Bare)

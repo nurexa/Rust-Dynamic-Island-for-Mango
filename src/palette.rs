@@ -38,6 +38,8 @@ pub struct Palette {
     pub back: Vec<Vec<Item>>,
     /// Web search URL with `{}` for the query; empty hides the row.
     pub web: String,
+    /// Answer sums and conversions in the main search.
+    pub calc: bool,
     /// Rows worked out from the query (a sum, a web search), kept at the end of `items`.
     instant: usize,
 }
@@ -95,7 +97,7 @@ impl Palette {
     pub fn new(entries: Vec<Entry>, current: usize, generation: u64) -> Self {
         Palette { entries, current, query: String::new(), items: Vec::new(), shown: Vec::new(), selected: 0, top: 0,
                   generation, loading: true, ask: None, confirming: None, dmenu: None, back: Vec::new(),
-                  web: String::new(), instant: 0 }
+                  web: String::new(), calc: true, instant: 0 }
     }
 
     pub fn dmenu(prompt: String, password: bool, items: Vec<Item>, dmenu: Dmenu) -> Self {
@@ -149,7 +151,7 @@ impl Palette {
             return;
         }
         #[cfg(feature = "calc")]
-        if let Some((shown, copy)) = crate::tools::calc::answer(q) {
+        if let Some((shown, copy)) = crate::tools::calc::answer(q).filter(|_| self.calc) {
             let act = Act::Sh(format!("printf %s {} | wl-copy", quote(&copy)));
             self.items.push(Item::new(shown, Icon::Glyph("\u{f00ec}".into()), act).sub(format!("{q} · Enter copies it")));
             self.shown.insert(0, self.items.len() - 1);

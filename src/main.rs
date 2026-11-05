@@ -4,6 +4,7 @@ mod bluetooth;
 mod brightness;
 mod bus;
 mod claude;
+mod ddc;
 mod doctor;
 mod icons;
 mod island;
@@ -90,6 +91,8 @@ pub enum Msg {
     /// Processes with the camera open.
     Camera(Vec<String>),
     Battery(power::Battery),
+    /// Monitors whose brightness ddcutil can set.
+    Ddc(Vec<ddc::Screen>),
     /// A Claude Code hook event; a permission request carries where to send the answer.
     Claude(claude::Event, Option<mpsc::Sender<String>>),
     Command(String),
@@ -122,6 +125,7 @@ pub struct Model {
     pub camera: Vec<String>,
     pub battery: Option<power::Battery>,
     pub claude: Vec<claude::Session>,
+    pub ddc: Vec<ddc::Screen>,
     /// The pill's brief flash is about power, not volume.
     pub flash_power: bool,
     /// The lowest battery warning given since the last charge, so each shows once.
@@ -268,6 +272,7 @@ impl App {
         self.generation += 1;
         let mut palette = Palette::new(entries, wanted.unwrap_or(0), self.generation);
         palette.web = self.cfg.web_search.clone();
+        palette.calc = self.cfg.calc();
         tools::load(&palette.entries[palette.current], self.generation, self.tool_ctx(), self.tx.clone());
         self.model.palette = Some(palette);
         self.palette_on = Some(self.islands[island].name.clone());
@@ -515,6 +520,10 @@ impl App {
                 self.all(true, true);
             }
             Msg::Claude(e, reply) => self.claude(e, reply),
+            Msg::Ddc(screens) => {
+                self.model.ddc = screens;
+                self.all(false, true);
+            }
             Msg::Camera(who) => {
                 self.model.camera = who;
                 self.all(true, false);
@@ -743,6 +752,14 @@ impl App {
                 self.all(false, true);
             }
             Action::Cmd(c) => self.command(&c),
+            Action::Ddc(bus) => {
+                let pct = (frac * 100.0).round() as u32;
+                if let Some(s) = self.model.ddc.iter_mut().find(|s| s.bus == bus && s.pct != pct) {
+                    s.pct = pct;
+                    ddc::set(bus, pct);
+                    self.all(false, true);
+                }
+            }
             Action::StreamVolume(index) => {
                 let pct = (frac * 100.0).round() as u32;
                 let Some(s) = self.model.audio.as_mut().and_then(|a| a.apps.iter_mut().find(|s| s.index == index)) else { return };
@@ -1446,7 +1463,7 @@ fn main() {
                        notes: notify::Center::new(state.dnd),
                        wall: modules::wallpaper::load(), timer: None,
                        camera: Vec::new(), audio_open: false, battery: None, flash_power: false, battery_warned: 100,
-                       claude: Vec::new(), night },
+                       claude: Vec::new(), ddc: Vec::new(), night },
         icons: Icons::new(),
         tray_items: Vec::new(),
         cfg,
@@ -1468,6 +1485,7 @@ fn main() {
     };
     privacy::spawn(tx.clone());
     power::spawn(tx.clone());
+    ddc::spawn(tx.clone());
     audio::spawn(tx);
 
     while !app.quit {
