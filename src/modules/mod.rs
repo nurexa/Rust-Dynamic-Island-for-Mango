@@ -10,6 +10,7 @@ use crate::{
 };
 
 mod audio;
+mod battery;
 mod brightness;
 mod clock;
 pub mod custom;
@@ -56,6 +57,7 @@ const PILL: &[(&str, PillModule)] = &[
     ("timer", timer::pill),
     ("network", status::offline_pill),
     ("privacy", privacy::pill),
+    ("battery", battery::pill),
     ("clock", clock::pill),
 ];
 
@@ -90,7 +92,8 @@ pub fn pill(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: i32, f
     let (surf, mut p) = Pen::new(MAX_COMPACT_W, PILL_H, cfg, &m.pal, scale, icons)?;
     let c = Ctx { m, cfg, mon, pinned: false, tucked: false };
     if flash {
-        if let Some(w) = audio::flash(&mut p, &c) {
+        let w = if m.flash_power { battery::flash(&mut p, &c) } else { audio::flash(&mut p, &c) };
+        if let Some(w) = w {
             return Some(Content { surf, w, h: PILL_H, regions: Vec::new() });
         }
     }

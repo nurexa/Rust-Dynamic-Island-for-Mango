@@ -9,6 +9,7 @@ mod net;
 mod notify;
 mod palette;
 mod pen;
+mod power;
 mod privacy;
 mod settings;
 mod sys;
@@ -83,6 +84,7 @@ pub enum Msg {
     Theme,
     /// Processes with the camera open.
     Camera(Vec<String>),
+    Battery(power::Battery),
     Command(String),
     Items(u64, Vec<tools::Item>),
     Notify(Note),
@@ -110,6 +112,11 @@ pub struct Model {
     pub wall: Option<modules::wallpaper::Wall>,
     pub timer: Option<timer::Timer>,
     pub camera: Vec<String>,
+    pub battery: Option<power::Battery>,
+    /// The pill's brief flash is about power, not volume.
+    pub flash_power: bool,
+    /// The lowest battery warning given since the last charge, so each shows once.
+    pub battery_warned: u8,
     /// The panel's list of outputs, apps and microphones is open.
     pub audio_open: bool,
 }
@@ -437,11 +444,33 @@ impl App {
                 let dot = self.model.audio.as_ref().is_none_or(|o| o.recording.is_empty() != a.recording.is_empty());
                 self.model.audio = Some(a);
                 if changed {
+                    self.model.flash_power = false;
                     for i in &mut self.islands {
                         i.flash();
                     }
                 }
                 self.all(dot, true);
+            }
+            Msg::Battery(b) => {
+                let replug = self.model.battery.as_ref().is_some_and(|o| o.plugged != b.plugged);
+                // The lowest threshold crossed, so starting up at 8% warns once, about 8%.
+                let warn = [10u8, 20].into_iter().find(|&at| !b.plugged && b.pct <= at as f64 && self.model.battery_warned > at);
+                let title = format!("Battery at {:.0}%", b.pct);
+                if b.plugged {
+                    self.model.battery_warned = 100;
+                }
+                self.model.battery = Some(b);
+                if replug {
+                    self.model.flash_power = true;
+                    self.islands.iter_mut().for_each(Island::flash);
+                }
+                if let Some(at) = warn {
+                    self.model.battery_warned = at;
+                    let mut note = Note::local("battery", &title, "Plug in soon", notify::NoteImage::Named("battery-caution-symbolic".into()));
+                    note.urgency = if at <= 10 { 2 } else { 1 };
+                    self.handle(Msg::Notify(note));
+                }
+                self.all(true, true);
             }
             Msg::Camera(who) => {
                 self.model.camera = who;
@@ -1192,7 +1221,7 @@ fn main() {
                        tray: Vec::new(), pal: theme::load(&cfg.palette), palette: None,
                        notes: notify::Center::new(state.dnd),
                        wall: modules::wallpaper::load(), timer: None,
-                       camera: Vec::new(), audio_open: false },
+                       camera: Vec::new(), audio_open: false, battery: None, flash_power: false, battery_warned: 100 },
         icons: Icons::new(),
         tray_items: Vec::new(),
         cfg,
@@ -1210,6 +1239,7 @@ fn main() {
         quit: false,
     };
     privacy::spawn(tx.clone());
+    power::spawn(tx.clone());
     audio::spawn(tx);
 
     while !app.quit {

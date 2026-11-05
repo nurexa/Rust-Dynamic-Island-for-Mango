@@ -45,7 +45,9 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let wifi = if c.cfg.tools.iter().any(|t| t == "wifi") { Action::Open("wifi") } else { Action::Sh(cmd.wifi.clone()) };
     p.regions.push(Region::new((PAD - 6.0, y, 40.0 + w, h), 10.0, wifi)
         .right(Action::Sh(cmd.wifi_alt.clone())));
-    if let Some((pct, charging)) = m.sys.battery {
+    // UPower's view when there is one: it adds the time left.
+    let upower = m.battery.as_ref();
+    if let Some((pct, charging)) = upower.map(|b| (b.pct, b.charging)).or(m.sys.battery) {
         let x = PAD + 30.0 + w + 16.0;
         let symbol = match (pct as u32 / 10 * 10, charging) {
             (0..=19, false) => "battery-level-10",
@@ -56,7 +58,10 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
             (_, true) => "battery-level-50-charging",
         };
         p.symbol(symbol, 16.0, x, cy - 8.0, pal.fg);
-        p.text(&format!("{pct:.0}%"), 12.5, Weight::Medium, pal.fg, x + 22.0, cy, -1.0);
+        let w = p.text(&format!("{pct:.0}%"), 12.5, Weight::Medium, pal.fg, x + 22.0, cy, -1.0);
+        if let Some(t) = upower.and_then(|b| b.time()) {
+            p.text(&t, 12.0, Weight::Medium, pal.muted, x + 22.0 + w + 8.0, cy, -1.0);
+        }
     }
     let mut x = PANEL_W - PAD - 30.0;
     for (i, (item, icon)) in m.tray.iter().enumerate().rev() {
