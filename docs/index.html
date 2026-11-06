@@ -169,7 +169,7 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
   </section>
 
   <section id="parts">
-    <h2>Eleven tools you can leave out</h2>
+    <h2>Twenty-one parts you can leave out</h2>
     <p class="lede">Every part is optional. Turn it off in the config, or leave it out of the build. A tool costs nothing until you open it.</p>
     <div class="parts">
       <div class="part"><b>Bar</b><span>Workspaces, media, stats, audio, tray. Replaces Waybar.</span></div>
@@ -183,6 +183,16 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
       <div class="part"><b>Wallpapers</b><span>Pick from a folder, with thumbnails.</span></div>
       <div class="part"><b>Power menu</b><span>Reboot and shut down ask twice. Replaces wlogout.</span></div>
       <div class="part"><b>Script menus</b><span>Swap <code>rofi -dmenu</code> for <code>island dmenu</code>.</span></div>
+      <div class="part"><b>Calculator</b><span>Sums and unit conversions, right in app search.</span></div>
+      <div class="part"><b>File search</b><span>As you type, from plocate's index or fd.</span></div>
+      <div class="part"><b>Web search</b><span>The last row of every search.</span></div>
+      <div class="part"><b>Bluetooth</b><span>Connect, scan and pair, with each device's battery.</span></div>
+      <div class="part"><b>Per-app volume</b><span>A slider for every app, and every output and mic.</span></div>
+      <div class="part"><b>Night light</b><span>Warms and dims the screen itself, on a schedule.</span></div>
+      <div class="part"><b>Pomodoro</b><span>Focus and breaks, counting down on the pill.</span></div>
+      <div class="part"><b>Privacy dots</b><span>Orange while a mic records, green while the camera's on.</span></div>
+      <div class="part"><b>Battery</b><span>On the pill on laptops, with warnings.</span></div>
+      <div class="part"><b>Claude Code</b><span>Live status, and Allow or Deny from the pill.</span></div>
     </div>
   </section>
 
@@ -295,6 +305,7 @@ run = "kitty -d ~/Projects/{}"</pre>
 <pre>git clone https://github.com/nurexa/Rust-Dynamic-Island-for-Mango
 cd Rust-Dynamic-Island-for-Mango
 ./install.sh</pre>
+    <p class="fine">Or <code>paru -S rust-dynamic-island-git</code> on Arch, or <code>nix profile install github:nurexa/Rust-Dynamic-Island</code>, then run <code>/usr/share/island/install.sh</code> (on Nix, <code>~/.nix-profile/share/island/install.sh</code>). Afterwards, <code>island doctor</code> says what works on your machine.</p>
     <p class="fine">You'll need Rust, cairo, pango, libxkbcommon, a Nerd Font, adwaita-icon-theme, and playerctl for media. Want to pick each part and key yourself? Use <code>./install.sh --manual</code>. Only the bar? <code>./install.sh --bar-only</code>. Works with <code>config.conf</code> and <code>config.toml</code>, and keys you already use stay yours.</p>
   </section>
 

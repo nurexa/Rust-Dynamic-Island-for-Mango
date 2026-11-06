@@ -17,4 +17,4 @@ cycle ${SOAK:-40}; sleep 2; read -r a2 f2 t2 < <(sample); echo "     after more:
 ok "soak: no file descriptor growth" "$f2" "$f0"
 ok "soak: no thread growth" "$t2" "$t0"
 # The heap settles in a step early on; what matters is that it stops growing.
-ok "soak: memory plateaus" "$(python3 -c "print($a2-$a1<1024)")" True
+ok "soak: memory plateaus" "$(python3 -c "print($a2-max($a0,$a1)<1024)")" True

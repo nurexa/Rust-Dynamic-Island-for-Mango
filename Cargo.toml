@@ -1,6 +1,6 @@
 [package]
 name = "island"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A minimal, modular all-in-one desktop tool for Wayland: bar, launcher, notifications, clipboard and screenshots in one Dynamic Island"
 license = "GPL-3.0-only"

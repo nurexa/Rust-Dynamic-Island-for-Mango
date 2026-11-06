@@ -17,6 +17,10 @@ cd "$(dirname "$(readlink -f "$0")")"
 MANGO=${MANGO_CONFIG_DIR:-$HOME/.config/mango}
 BIN_DIR=${ISLAND_BIN_DIR:-$HOME/.local/bin}
 ICFG=${XDG_CONFIG_HOME:-$HOME/.config}/island/config.toml
+# From a source checkout the island is built and copied to $BIN_DIR; from a package
+# (this script in /usr/share/island) it's already installed and used where it is.
+if [ -f Cargo.toml ]; then source_tree=1 EXE=$BIN_DIR/island
+else source_tree=0 EXE=$(command -v island || echo /usr/bin/island); fi
 BACKUP=${ISLAND_BACKUP:-$HOME/.local/share/island-backup}
 BEGIN='# >>> island'
 END='# <<< island'
@@ -93,9 +97,9 @@ swap_bind() {
         [ -n "$line" ] && info "${line#"${line%%[![:space:]]*}"}  ->  island $command"
     done < <(binds | grep -E -- "$pattern")
     if [ $toml = 1 ]; then
-        "${SED[@]}" -E "/^[[:space:]]*\"[^\"]+\"[[:space:]]*=[[:space:]]*\"spawn(_shell)?,/{\\#/island #b;/$pattern/{h;s/^/$WAS/;p;g;s#=[[:space:]]*\"spawn(_shell)?,.*\$#= \"spawn,$BIN_DIR/island $command\"#}}" "$CONF"
+        "${SED[@]}" -E "/^[[:space:]]*\"[^\"]+\"[[:space:]]*=[[:space:]]*\"spawn(_shell)?,/{\\#/island #b;/$pattern/{h;s/^/$WAS/;p;g;s#=[[:space:]]*\"spawn(_shell)?,.*\$#= \"spawn,$EXE $command\"#}}" "$CONF"
     else
-        "${SED[@]}" -E "/^bind[^=]*=/{\\#/island #b;/$pattern/{h;s/^/$WAS/;p;g;s#,spawn(_shell)?,.*\$#,spawn,$BIN_DIR/island $command#}}" "$CONF"
+        "${SED[@]}" -E "/^bind[^=]*=/{\\#/island #b;/$pattern/{h;s/^/$WAS/;p;g;s#,spawn(_shell)?,.*\$#,spawn,$EXE $command#}}" "$CONF"
     fi
 }
 
@@ -133,7 +137,7 @@ undo() {
         [ -s "$ICFG" ] || rm -f "$ICFG"
     fi
     if [ -f "$BACKUP/claude" ]; then
-        "$BIN_DIR/island" claude-setup --undo >/dev/null 2>&1 && info "took the island's hooks out of Claude Code"
+        "$EXE" claude-setup --undo >/dev/null 2>&1 && info "took the island's hooks out of Claude Code"
         rm -f "$BACKUP/claude"
     fi
     systemctl --user unmask dunst.service >/dev/null 2>&1 || true
@@ -299,18 +303,23 @@ if [ $manual = 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------- files
-if [ $build = 1 ]; then
-    step "Building the island (cargo build --release)"
-    cargo build --release --bins
+if [ $source_tree = 1 ]; then
+    if [ $build = 1 ]; then
+        step "Building the island (cargo build --release)"
+        cargo build --release --bins
+    fi
+    step "Installing to $BIN_DIR"
+    # Replace rather than overwrite, so a running island can't block the update.
+    install -Dm755 target/release/island "$BIN_DIR/island.new"
+    mv -f "$BIN_DIR/island.new" "$BIN_DIR/island"
+    # The wallpaper engine the panel's wallpaper settings drive (see wall/wall).
+    install -Dm755 wall/wall "$BIN_DIR/wall.new"
+    mv -f "$BIN_DIR/wall.new" "$BIN_DIR/wall"
+    info "island, wall"
+else
+    [ -x "$EXE" ] || fail "No island installed and no source here: install the package first."
+    step "Using the installed island at $EXE"
 fi
-step "Installing to $BIN_DIR"
-# Replace rather than overwrite, so a running island can't block the update.
-install -Dm755 target/release/island "$BIN_DIR/island.new"
-mv -f "$BIN_DIR/island.new" "$BIN_DIR/island"
-# The wallpaper engine the panel's wallpaper settings drive (see wall/wall).
-install -Dm755 wall/wall "$BIN_DIR/wall.new"
-mv -f "$BIN_DIR/wall.new" "$BIN_DIR/wall"
-info "island, wall"
 
 mkdir -p "$BACKUP"
 if [ -z "$CONF" ]; then
@@ -330,7 +339,7 @@ step "Backing up to $BACKUP"
 grep -qE "^($BEGIN|$WAS)" "$CONF" || { cp "$CONF" "$BACKUP/${CONF##*/}"; info "${CONF##*/}"; }
 
 mkdir -p "$(dirname "$BAR")"
-printf '#!/bin/sh\n# Bring the island back if it dies. A second copy exits 0, ending the loop.\nuntil %s/island; do sleep 1; done\n' "$BIN_DIR" > "$BAR"
+printf '#!/bin/sh\n# Bring the island back if it dies. A second copy exits 0, ending the loop.\nuntil %s; do sleep 1; done\n' "$EXE" > "$BAR"
 chmod +x "$BAR"
 
 # ---------------------------------------------------------------------------- config
@@ -345,8 +354,8 @@ baseline=$(check)
     echo "# Put island binds of your own in your main config instead."
     grep -qE "^[[:space:]]*exec(_once)?[[:space:]]*=.*scripts/bar" "$CONF" || echo "exec_once=$BAR"
     echo "layer_rule=no_animation:1,no_shadow:1,layer_name:island"
-    for o in "${OWN[@]}"; do c=${o%%|*}; [ "${keys[$c]}" = none ] || echo "bind=${keys[$c]},spawn,$BIN_DIR/island $c"; done
-    for e in ${extra[@]+"${extra[@]}"}; do echo "bind=${e%%|*},spawn,$BIN_DIR/island ${e#*|}"; done
+    for o in "${OWN[@]}"; do c=${o%%|*}; [ "${keys[$c]}" = none ] || echo "bind=${keys[$c]},spawn,$EXE $c"; done
+    for e in ${extra[@]+"${extra[@]}"}; do echo "bind=${e%%|*},spawn,$EXE ${e#*|}"; done
 } > "$ISL"
 
 if [ $toml = 0 ]; then
@@ -454,7 +463,7 @@ if [ ${#lines[@]} -gt 0 ] || [ -n "$night" ]; then
 fi
 if [ "${extra_on[claude]}" = 1 ] && [ $mode != bar ]; then
     step "Adding the island's hooks to Claude Code"
-    if out=$("$BIN_DIR/island" claude-setup 2>&1); then
+    if out=$("$EXE" claude-setup 2>&1); then
         touch "$BACKUP/claude"
         info "$out (in ${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json; --undo takes them out)"
     else
@@ -468,7 +477,7 @@ start_bar
 for _ in $(seq 30); do has_layer island && break; sleep 0.1; done
 if ! has_layer island; then
     undo >/dev/null
-    fail "The island didn't come up, so everything was rolled back. Run $BIN_DIR/island by hand to see why."
+    fail "The island didn't come up, so everything was rolled back. Run $EXE by hand to see why."
 fi
 
 search=$(sed -nE 's#^bind=([^,]*),([^,]*),spawn,.*/island open$#\1+\2#p' "$ISL" | head -1)

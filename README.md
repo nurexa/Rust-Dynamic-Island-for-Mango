@@ -26,6 +26,16 @@ or only the parts you want.
 | Wallpaper picker | rofi thumbnail scripts | `island open wallpaper` |
 | Power menu | wlogout | `island open power` |
 | Script menus | `rofi -dmenu` | `island dmenu` |
+| Calculator and units | qalculate, rofi-calc | Type `84/2` or `10 km to mi` in app search |
+| File search | fsearch, rofi file scripts | `island open files` |
+| Web search | browser start pages | The last row of app search |
+| Pomodoro | timer apps | The panel, or `island timer` |
+| Night light | wlsunset, gammastep | The panel, or `island nightlight` |
+| Per-app volume | pavucontrol | Click the output's name in the panel |
+| Monitor brightness | ddcutil scripts | A slider per monitor in the panel |
+| Battery | Waybar's battery module | The pill, on laptops |
+| Mic and camera dots | | The pill, while an app uses them |
+| Claude Code status | | The pill, with permission cards |
 
 **Every part is optional.** Leave it out of a list in the config, or leave it out of the
 binary with a Cargo feature. A tool costs nothing until you open it: its list is built
@@ -82,6 +92,16 @@ cd Rust-Dynamic-Island-for-Mango
 ./install.sh --undo      # put it all back
 ```
 
+Or from a package, then run its installer the same way:
+
+```sh
+paru -S rust-dynamic-island-git            # Arch (AUR); rust-dynamic-island for releases
+/usr/share/island/install.sh
+
+nix profile install github:nurexa/Rust-Dynamic-Island   # Nix
+~/.nix-profile/share/island/install.sh
+```
+
 It prints each step as it goes and sends a notification when it's done.
 
 The installer keeps your key bindings on the same keys and only changes what they run,
@@ -97,6 +117,11 @@ yours wins: the installer leaves that island key out and tells you which line ha
 `--manual` asks for another key instead. Waybar, dunst, mako or swaync started from
 `exec_once` stop starting with the session, and `--undo` starts them again. It also masks
 dunst's service, because D-Bus would otherwise restart it on the next notification.
+
+A plain install keeps every extra this machine can run (the table above) and adds Claude
+Code's hooks if it's installed. `--manual` asks about each extra, a night light schedule
+and the web search engine, and writes only what you chose to `~/.config/island/config.toml`.
+Run `island doctor` afterwards to see what works here.
 
 It checks the result with Mango's own parser (`mango -p`). Warnings your config already
 had don't block it, and if anything new goes wrong, or the island doesn't come up, it
@@ -132,13 +157,37 @@ to open or dismiss, and right-click to dismiss. Critical ones stay until you dea
 them. `island dnd` turns on do not disturb, which keeps notifications in the panel's
 history without showing them.
 
-The night light warms and dims the screen itself, with no wlsunset or gammastep: click
-its icon in the panel, drag its slider for warmth, run `island nightlight`, or give it a
-`schedule` under `[nightlight]`.
 Several from one app within a few seconds share one card that shows the newest and a
 `+N` count. The history groups them by app: click an app's header to see all of them,
 or its `×` to clear them. Apps that take inline replies (chat apps on KDE and GNOME do)
 get a Reply button: type into the card and press `Enter` to send, or `Esc` to cancel.
+
+App search answers sums and conversions (`2^10/3`, `sqrt(2)*pi`, `72 f in c`,
+`3.5 GiB to MB`) in its top row, where `Enter` copies the answer, and ends with a web
+search for what you typed (`web_search` picks the engine). `island open files` searches
+files as you type, with plocate's index or fd.
+
+The pomodoro runs from its panel row or `island timer` (`start`, `toggle`, `stop`,
+`skip`, or minutes for a plain countdown). While it runs the pill shows the minutes left,
+and a note says when each phase ends; lengths are under `[pomodoro]`.
+
+The night light warms and dims the screen itself, with no wlsunset or gammastep: click
+its icon in the panel, drag its slider for warmth, run `island nightlight`, or give it a
+`schedule` under `[nightlight]`.
+
+Click the output's name in the panel for every output and microphone to switch to, and a
+slider and mute for each app that's playing. The pill shows an orange dot while an app
+records a microphone and a green one while an app has the camera; hover to see which.
+On a laptop the pill shows the battery, plugging in flashes "Charging", and notes warn at
+20% and 10%. With ddcutil, each desktop monitor gets its own brightness slider.
+
+With Claude Code installed, the pill shows what each session is doing: working, needs
+you, or done. A permission prompt in a terminal you're not looking at becomes a card
+with Allow, Always allow and Deny, and a session that finishes while you're elsewhere
+leaves a note that jumps back to its terminal. `island claude-setup` adds the hooks
+(the installer does this for you) and `island claude-setup --undo` takes them out.
+
+`island doctor` checks what works on this machine and says how to fix what doesn't.
 
 Panel controls:
 
@@ -216,7 +265,10 @@ trait. [MODDING.md](MODDING.md) covers all of it, with worked examples.
 | `src/island.rs` | One island per output: states, springs, frames, input |
 | `src/pen.rs` | The drawing kit modules share, and the glyph table |
 | `src/bus.rs` | D-Bus: media, tray and the notification service |
-| `src/net.rs` `src/audio.rs` `src/sys.rs` | Network, volume, hardware stats |
+| `src/net.rs` `src/audio.rs` `src/sys.rs` | Network, audio devices and apps, hardware stats |
+| `src/bluetooth.rs` `src/power.rs` `src/ddc.rs` | BlueZ, UPower and ddcutil, each by event or on demand |
+| `src/nightlight.rs` `src/privacy.rs` `src/timer.rs` | Gamma ramps, camera watch, pomodoro |
+| `src/claude.rs` `src/doctor.rs` | Claude Code hooks; `island doctor` |
 | `src/theme.rs` `src/icons.rs` `src/settings.rs` | Palette, icons, config, saved state |
 
 Why it doesn't use the obvious approach in a few places:
@@ -254,9 +306,11 @@ Never start a test Mango with `DBUS_SESSION_BUS_ADDRESS` set: on exit it stops
 
 ## Limits
 
-- Workspaces and the window switcher need a compositor backend, and Mango's is the only
-  one so far. On other layer-shell compositors everything else should work, but that
-  isn't tested yet; see [MODDING.md](MODDING.md). The installer is Mango-only too.
+- Workspaces and the window switcher need a compositor backend: Mango and Hyprland have
+  one. On other layer-shell compositors everything else should work, but that isn't
+  tested; see [MODDING.md](MODDING.md). The installer only edits Mango's config so far.
+- Claude Code permission cards only appear for a terminal you're not looking at. Answering
+  in the terminal instead works too, and the card goes away.
 - A palette opened with a click outside it stays open: close it with `Esc`.
 - Normal notifications stay under fullscreen windows, so one that times out during a game
   goes straight to history.

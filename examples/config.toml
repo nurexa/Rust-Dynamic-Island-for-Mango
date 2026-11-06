@@ -8,12 +8,14 @@ clock = "%I:%M %p"                # strftime
 palette = "~/.config/theme/generated/colors.toml"
 terminal = "kitty"                # for apps that need one
 screenshot_dir = "~/Pictures"
+web_search = "https://duckduckgo.com/?q={}"   # the search's last row; empty hides it
 
 # Every part is optional: leave a name out and it's gone.
 pill = ["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]
 panel = ["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "nightlight", "status", "bluetooth"]
 tools = ["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "bluetooth", "wallpaper", "power"]
 notifications = true              # false keeps your own notification daemon
+disable = []                      # parts to leave out wherever they appear, plus "calc" and "web"
 
 [ui]
 hover_open = true                 # false: the panel opens only on click or the pin key
@@ -40,6 +42,17 @@ delete_word = ["ctrl+w", "ctrl+backspace"]
 schedule = ""                     # "20:00-07:00" turns it on and off; a manual toggle holds until the next edge
 warmth = 3400                     # Kelvin, 2500-6500; the panel slider's choice is remembered after that
 dim = 0.85                        # brightness while on, 0.2-1
+
+[pomodoro]                        # minutes
+focus = 25
+short = 5
+long = 15
+rounds = 4                        # focus rounds before the long break
+auto = true                       # start the next phase on its own
+
+[claude]                          # needs its hooks: island claude-setup
+approve = true                    # permission prompts become cards when you're not at that terminal
+notify = true                     # a note when a session finishes or needs you
 
 [notify]                          # seconds on screen; critical stays until dismissed
 low = 3

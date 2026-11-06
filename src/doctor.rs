@@ -6,7 +6,7 @@ use smithay_client_toolkit::reexports::client::{
     globals::{GlobalListContents, registry_queue_init},
     protocol::wl_registry,
 };
-use std::{path::Path, process::Command};
+use std::process::Command;
 
 /// Color only on a terminal, so piping the report into an issue stays readable.
 fn paint(code: &str, text: &str) -> String {
@@ -118,7 +118,7 @@ pub fn run() -> ! {
         let found = output("fc-list", &[font.as_str(), "family"]).is_some_and(|o| !o.trim().is_empty());
         r.check(found, &format!("{what}: {font}"), "Not installed, so another font stands in. Any Nerd Font works for icons (set icon_font).");
     }
-    r.check(Path::new("/usr/share/icons/Adwaita/symbolic").exists(), "Adwaita symbolic icons", "Install adwaita-icon-theme, or the panel's buttons draw blank.");
+    r.check(crate::icons::adwaita_symbolic().is_some(), "Adwaita symbolic icons", "Install adwaita-icon-theme, or the panel's buttons draw blank.");
 
     println!();
     section("Features (each one only needs its own programs)");

@@ -25,6 +25,13 @@ pub fn data_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// Adwaita's symbolic icons, wherever this system keeps them: /usr/share on most
+/// distros, somewhere under XDG_DATA_DIRS on NixOS.
+pub fn adwaita_symbolic() -> Option<PathBuf> {
+    static ROOT: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    ROOT.get_or_init(|| data_dirs().into_iter().map(|d| d.join("icons/Adwaita/symbolic")).find(|p| p.is_dir())).clone()
+}
+
 /// Map every name a window might use (file stem, its last dotted part,
 /// StartupWMClass) to the entry's Icon=. First data dir wins, as in the spec.
 fn scan_desktop_files(dirs: &[PathBuf]) -> HashMap<String, String> {
@@ -251,7 +258,7 @@ impl Icons {
     /// Adwaita symbolic icon as a mask, for painting in any palette color.
     pub fn symbol(&mut self, name: &'static str, px: i32) -> Option<ImageSurface> {
         self.symbols.entry((name, px)).or_insert_with(|| {
-            let root = Path::new("/usr/share/icons/Adwaita/symbolic");
+            let root = adwaita_symbolic()?;
             let file = format!("{name}-symbolic.svg");
             let hit = fs::read_dir(root).ok()?.flatten().map(|d| d.path().join(&file)).find(|p| p.exists())?;
             load_svg(&hit, px)
@@ -275,7 +282,7 @@ impl Icons {
                 }
                 let file = format!("{}.svg", name.strip_suffix("-symbolic").unwrap_or(name));
                 let file = format!("{}-symbolic.svg", file.trim_end_matches(".svg"));
-                let root = Path::new("/usr/share/icons/Adwaita/symbolic");
+                let root = adwaita_symbolic()?;
                 let hit = fs::read_dir(root).ok()?.flatten().map(|d| d.path().join(&file)).find(|p| p.exists())?;
                 Some((load_svg(&hit, px)?, true))
             }

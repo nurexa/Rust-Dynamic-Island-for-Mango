@@ -14,13 +14,18 @@ pill = ["media", "workspaces", "claude", "timer", "network", "privacy", "battery
 panel = ["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "nightlight", "status", "bluetooth"]
 tools = ["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "bluetooth", "wallpaper", "power"]
 notifications = true          # false keeps your own notification daemon
+disable = ["timer", "web"]    # or leave parts out wherever they appear ("calc" and "web" are the search's extras)
 ```
 
 | Pill modules | Shows |
 |---|---|
 | `media` | Album art while something plays |
 | `workspaces` | Occupied workspaces and their windows |
+| `claude` | Claude Code sessions: working, needs you, done |
+| `timer` | The pomodoro's minutes left, while it runs |
 | `network` | A warning, only when offline |
+| `privacy` | Orange dot while a mic records, green while the camera's open |
+| `battery` | Charge, on laptops |
 | `clock` | The time |
 
 | Panel modules | Shows |
@@ -28,10 +33,11 @@ notifications = true          # false keeps your own notification daemon
 | `header` | Time, date, and the home, tuck and pin buttons |
 | `workspaces` | Every monitor and its workspaces |
 | `media` | Art, track, progress, playback buttons |
+| `timer` | Pomodoro: start, pause, skip, stop |
 | `notifications` | Recent notifications, do not disturb |
 | `stats` | CPU, GPU, RAM, network tiles |
-| `audio` | Output device and volume slider |
-| `brightness` | Brightness slider; hidden without a backlight or `brightness_get` |
+| `audio` | Volume slider; click the device for outputs, mics and per-app volume |
+| `brightness` | Brightness sliders: the backlight, and each monitor with ddcutil |
 | `nightlight` | Night light toggle and warmth slider; hidden when the compositor has no gamma control |
 | `wallpaper` | Wallpaper engine chips (fit, speed, fps, quality); off by default, the picker has them |
 | `status` | Network, battery, tray |
@@ -43,6 +49,7 @@ notifications = true          # false keeps your own notification daemon
 | `apps` | Searches and launches apps, favourites first | |
 | `run` | Runs anything on your PATH, or what you typed | |
 | `windows` | Switches to any window on any workspace | |
+| `files` | Searches files as you type, opens the one you pick | `plocate` (with `updatedb`) or `fd` |
 | `clipboard` | Searches history and restores an entry | `cliphist`, `wl-clipboard` |
 | `screenshot` | Region, window, screen, annotate, color picker | `grim`, `slurp`; `satty` to annotate |
 | `wifi` | Lists networks and connects, asking for a password | `nmcli` |
@@ -57,8 +64,8 @@ altogether, build only what you want:
 cargo build --release --no-default-features --features "apps,clipboard,notifications"
 ```
 
-The features are `apps`, `run`, `windows`, `clipboard`, `screenshot`, `wifi`,
-`bluetooth`, `wallpaper`, `power` and `notifications`.
+The features are `apps`, `run`, `windows`, `files`, `calc`, `clipboard`, `screenshot`,
+`wifi`, `bluetooth`, `wallpaper`, `power` and `notifications`.
 
 Commands to bind to keys:
 
@@ -68,6 +75,10 @@ island open clipboard      # on a given tool; the same key again closes it
 island shot region         # or output, window, annotate, color
 island dnd                 # do not disturb
 island nightlight          # toggle the night light; or on, off
+island timer               # start or pause the pomodoro; stop, skip, or minutes: island timer 10
+island audio               # open the panel's list of outputs, mics and apps
+island doctor              # what works on this machine, and how to fix what doesn't
+island claude-setup        # add Claude Code's hooks (--undo takes them out)
 ```
 
 ## 2. Change how it looks and behaves
@@ -77,6 +88,7 @@ icon_style = "glyph"          # or "color" for the apps' own icons
 icon_font = "JetBrainsMono Nerd Font Propo"
 terminal = "kitty"            # for apps that need one
 screenshot_dir = "~/Pictures"
+web_search = "https://duckduckgo.com/?q={}"   # the search's web row; empty hides it
 
 [icons]                       # app id = any glyph
 "org.gnome.nautilus" = "󰉋"
@@ -89,6 +101,17 @@ normal = 5
 schedule = "20:00-07:00"      # empty: manual only. A manual toggle holds until the next edge
 warmth = 3400                 # Kelvin, 2500-6500; the panel slider's choice is remembered
 dim = 0.85                    # brightness while on
+
+[pomodoro]                    # minutes
+focus = 25
+short = 5
+long = 15
+rounds = 4                    # focus rounds before the long break
+auto = true                   # start the next phase on its own
+
+[claude]
+approve = true                # permission prompts become Allow/Deny cards when you're elsewhere
+notify = true                 # a note when a session finishes or needs you
 
 [commands]
 lock = "hyprlock"
