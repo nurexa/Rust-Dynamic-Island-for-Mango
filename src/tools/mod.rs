@@ -25,6 +25,7 @@ mod clipboard;
 mod power;
 #[cfg(feature = "run")]
 mod run;
+mod settings;
 #[cfg(feature = "screenshot")]
 pub mod screenshot;
 #[cfg(feature = "wallpaper")]
@@ -69,6 +70,8 @@ pub enum Act {
     /// Like `Open`, for a list that takes a while to build (a Bluetooth scan): it's
     /// built on a worker the way a tool's own list is, and shows loading meanwhile.
     Load(fn(&Ctx) -> Vec<Item>),
+    /// One of the island's settings commands. The list stays open, showing the change.
+    Setting(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -118,6 +121,7 @@ impl Item {
 #[cfg_attr(not(feature = "windows"), allow(dead_code))]
 pub struct Ctx {
     pub cfg: Config,
+    pub style: crate::style::Style,
     pub clients: Vec<wm::Client>,
     /// What's typed, for live tools that search as you type.
     pub query: String,
@@ -155,6 +159,7 @@ pub const TOOLS: &[Tool] = &[
     Tool { name: "wallpaper", glyph: "image", hint: "Choose a wallpaper", list: wallpaper::list, typed: None, live: false },
     #[cfg(feature = "power")]
     Tool { name: "power", glyph: "power_settings_new", hint: "Lock, log out or shut down", list: power::list, typed: None, live: false },
+    Tool { name: "settings", glyph: "settings", hint: "Change the island", list: settings::list, typed: None, live: false },
 ];
 
 /// A tool in the palette: built in, or a pair of shell commands from `[[tool]]`.
@@ -206,6 +211,11 @@ impl Entry {
             _ => None,
         }
     }
+}
+
+/// A built-in tool by name, whether or not it is one of the tabs.
+pub fn builtin(name: &str) -> Option<Entry> {
+    TOOLS.iter().position(|t| t.name == name).map(Entry::Builtin)
 }
 
 /// The palette's tabs, in the order config.toml gives. Tools compiled out or

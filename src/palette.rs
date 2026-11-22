@@ -22,6 +22,8 @@ pub struct Ask {
 pub struct Palette {
     pub entries: Vec<Entry>,
     pub current: usize,
+    /// The row to land on when the list arrives.
+    pub hold: Option<(usize, usize)>,
     pub query: String,
     pub items: Vec<Item>,
     /// Indices into `items`, best match first.
@@ -95,7 +97,7 @@ fn score_sub(query: &str, text: &str) -> Option<i32> {
 
 impl Palette {
     pub fn new(entries: Vec<Entry>, current: usize, generation: u64) -> Self {
-        Palette { entries, current, query: String::new(), items: Vec::new(), shown: Vec::new(), selected: 0, top: 0,
+        Palette { entries, current, hold: None, query: String::new(), items: Vec::new(), shown: Vec::new(), selected: 0, top: 0,
                   generation, loading: true, ask: None, confirming: None, dmenu: None, back: Vec::new(),
                   web: String::new(), calc: true, instant: 0 }
     }
@@ -118,6 +120,10 @@ impl Palette {
             self.instant = 0;
             self.loading = false;
             self.refilter();
+            if let Some((selected, top)) = self.hold.take() {
+                self.selected = selected.min(self.shown.len().saturating_sub(1));
+                self.top = top.min(self.selected);
+            }
         }
     }
 

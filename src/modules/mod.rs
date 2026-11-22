@@ -119,7 +119,7 @@ fn draw_panel(name: &str, p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     PANEL.iter().find(|(n, _)| *n == name).map_or(y, |(_, draw)| draw(p, c, y))
 }
 
-pub fn pill(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: i32, flash: bool) -> Option<Content> {
+pub fn pill(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: crate::scale::Scale, flash: bool) -> Option<Content> {
     let style = m.style;
     let room = if style == Style::Split { MAX_COMPACT_W + BUBBLE_W } else { MAX_COMPACT_W };
     let (surf, mut p) = Pen::new(room, PILL_H, cfg, &m.pal, scale, icons)?;
@@ -132,7 +132,7 @@ pub fn pill(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: i32, f
     }
     let (bubble, main): (Vec<&str>, Vec<&str>) = cfg.pill.iter().map(String::as_str)
         .filter(|n| style.on_island(n)).partition(|n| style.in_bubble(n));
-    let min = if matches!(style, Style::Minimal | Style::Frame | Style::Bar) { PILL_H } else { MIN_COMPACT_W };
+    let min = if matches!(style, Style::Minimal | Style::Frame | Style::Bar | Style::Glass) { PILL_H } else { MIN_COMPACT_W };
     // Laid out twice when short of the minimum width: the second pass pushes the
     // last module to the far end, which is where the clock belongs.
     let mut spare = 0.0;
@@ -175,7 +175,7 @@ pub fn pill(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: i32, f
 }
 
 /// The frame's rail, over the whole of its strip.
-pub fn rail(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64, f64), scale: i32) -> Option<Content> {
+pub fn rail(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64, f64), scale: crate::scale::Scale) -> Option<Content> {
     let (surf, mut p) = Pen::new(w, h, cfg, &m.pal, scale, icons)?;
     rail::rail(&mut p, &Ctx { m, cfg, mon, pinned: false, tucked: false }, h);
     let regions = std::mem::take(&mut p.regions);
@@ -183,7 +183,7 @@ pub fn rail(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64,
 }
 
 /// The sidebar at a scroll offset: what's in view, and the height of the whole of it.
-pub fn sidebar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, room): (f64, f64), scroll: f64, scale: i32) -> Option<(Content, f64)> {
+pub fn sidebar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, room): (f64, f64), scroll: f64, scale: crate::scale::Scale) -> Option<(Content, f64)> {
     let (surf, mut p) = Pen::new(w, room, cfg, &m.pal, scale, icons)?;
     p.cr.translate(0.0, -scroll.round());
     let total = sidebar::draw(&mut p, &Ctx { m, cfg, mon, pinned: false, tucked: false });
@@ -194,9 +194,19 @@ pub fn sidebar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, room):
 }
 
 /// The bar's two ends.
-pub fn bar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64, f64), scale: i32) -> Option<Content> {
+pub fn bar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64, f64), scale: crate::scale::Scale) -> Option<Content> {
     let (surf, mut p) = Pen::new(w, h, cfg, &m.pal, scale, icons)?;
-    rail::bar(&mut p, &Ctx { m, cfg, mon, pinned: false, tucked: false }, w);
+    let c = Ctx { m, cfg, mon, pinned: false, tucked: false };
+    if m.style == Style::Glass {
+        let top = crate::style::FLOAT;
+        p.cr.translate(0.0, top);
+        rail::glass(&mut p, &c, w);
+        for r in &mut p.regions {
+            r.rect.1 += top;
+        }
+    } else {
+        rail::bar(&mut p, &c, w);
+    }
     let regions = std::mem::take(&mut p.regions);
     Some(Content { surf, w, h, regions, split: None, live: Vec::new() })
 }
@@ -204,7 +214,7 @@ pub fn bar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64, 
 /// The panel at a scroll offset, in the room there is for it: what's in view, and
 /// the height of the whole of it.
 #[allow(clippy::too_many_arguments)]
-pub fn panel(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, view: &View, (room, scroll): (f64, f64), scale: i32, pinned: bool, tucked: bool) -> Option<(Content, f64)> {
+pub fn panel(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, view: &View, (room, scroll): (f64, f64), scale: crate::scale::Scale, pinned: bool, tucked: bool) -> Option<(Content, f64)> {
     let room = room.floor();
     let by = scroll.round();
     let (surf, mut p) = Pen::new(PANEL_W, room, cfg, &m.pal, scale, icons)?;

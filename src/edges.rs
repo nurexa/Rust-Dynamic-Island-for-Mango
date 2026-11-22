@@ -6,6 +6,7 @@ use crate::{
     canvas::Canvas,
     icons::Icons,
     modules,
+    scale::Scale,
     pen::{Action, Content, Rect, Scroll},
     settings::Config,
     style::{self, Insets, Style},
@@ -47,6 +48,10 @@ fn strips(out: (f64, f64), style: Style) -> Vec<(Side, Rect)> {
             ]
         }
         Style::Bar => vec![(Side::Top, (0.0, 0.0, w, i.top + r))],
+        Style::Glass => {
+            let (x, _, bw, _) = style.band(w);
+            vec![(Side::Top, (x, 0.0, bw, i.top))]
+        }
         _ => Vec::new(),
     }
 }
@@ -70,7 +75,7 @@ struct Strip {
     dirty: bool,
     content: Option<Content>,
     hover: Option<usize>,
-    bg: Option<Rgb>,
+    bg: Option<(Rgb, f64)>,
 }
 
 /// An invisible pixel that holds one edge's space: a drawn strip is bigger than
@@ -101,14 +106,14 @@ impl Edges {
     /// Create these before the island: layers stack in creation order, and the
     /// island has to be over the band it grows out of.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(output: &wl_output::WlOutput, name: &str, out: (f64, f64), scale: i32, style: Style, shm: &Shm,
+    pub fn new(output: &wl_output::WlOutput, name: &str, out: (f64, f64), scale: Scale, style: Style, namespace: &str, shm: &Shm,
                shell: &LayerShell, compositor: &CompositorState, qh: &QueueHandle<crate::App>) -> Option<Self> {
         if style.insets() == Insets::default() {
             return None;
         }
         let create = |anchor: Anchor, zone: i32, (w, h): (u32, u32), (top, left): (i32, i32), input: Option<Rect>| {
             let surface = compositor.create_surface(qh);
-            let layer = shell.create_layer_surface(qh, surface, Layer::Top, Some(crate::NAMESPACE), Some(output));
+            let layer = shell.create_layer_surface(qh, surface, Layer::Top, Some(namespace), Some(output));
             layer.set_anchor(anchor);
             layer.set_keyboard_interactivity(KeyboardInteractivity::None);
             layer.set_exclusive_zone(zone);
@@ -127,15 +132,19 @@ impl Edges {
         let mut reserves = Vec::new();
         for (anchor, zone) in [(Anchor::LEFT, i.left), (Anchor::RIGHT, i.right), (Anchor::TOP, i.top), (Anchor::BOTTOM, i.bottom)] {
             if zone > 0.0 {
-                let layer = create(anchor, zone as i32, (1, 1), (0, 0), None);
-                reserves.push(Reserve { layer, canvas: Canvas::new(shm, (1.0, 1.0), 1)? });
+                let layer = create(anchor, scale.wl(zone), (1, 1), (0, 0), None);
+                reserves.push(Reserve { layer, canvas: Canvas::new(shm, (1.0, 1.0), Scale { buffer: 1, ui: 1.0 })? });
             }
         }
         let mut drawn = Vec::new();
         for (side, rect) in strips(out, style) {
-            let size = (rect.2.round(), rect.3.round());
-            let at = (rect.1 as i32, rect.0 as i32);
-            let layer = create(Anchor::TOP | Anchor::LEFT, -1, (size.0 as u32, size.1 as u32), at, Some(solid(side, rect, i)));
+            let rect = scale.snap(rect);
+            let size = (rect.2, rect.3);
+            let at = (scale.wl(rect.1), scale.wl(rect.0));
+            let wl = scale.size(size);
+            let u = scale.ui;
+            let (sx, sy, sw, sh) = solid(side, rect, i);
+            let layer = create(Anchor::TOP | Anchor::LEFT, -1, (wl.0 as u32, wl.1 as u32), at, Some((sx * u, sy * u, sw * u, sh * u)));
             let canvas = Canvas::new(shm, size, scale)?;
             drawn.push(Strip { side, rect, layer, canvas, configured: false, waiting: false, dirty: true, content: None, hover: None, bg: None });
         }
@@ -166,7 +175,7 @@ impl Edges {
     }
 
     fn carries_content(&self, side: Side) -> bool {
-        matches!((self.style, side), (Style::Frame, Side::Left) | (Style::Bar, Side::Top))
+        matches!((self.style, side), (Style::Frame, Side::Left) | (Style::Bar | Style::Glass, Side::Top))
     }
 
     /// Something the rail or the bar's ends show has changed.
@@ -184,7 +193,8 @@ impl Edges {
         for i in 0..self.strips.len() {
             let carries = self.carries_content(self.strips[i].side);
             let s = &mut self.strips[i];
-            s.dirty |= s.bg != Some(m.pal.bg);
+            let look = (m.pal.bg, cfg.alpha(self.style));
+            s.dirty |= s.bg != Some(look);
             if !(s.configured && s.dirty && !s.waiting) {
                 continue;
             }
@@ -200,11 +210,25 @@ impl Edges {
             let cr = &frame.cr;
             let _ = cr.save();
             cr.translate(-x, -y);
-            style::frame(cr, self.out, insets, style::FRAME_R);
+            if self.style == Style::Glass {
+                let (bx, by, bw, bh) = self.style.band(self.out.0);
+                crate::pen::rounded_rect(cr, bx, by, bw, bh, style::GLASS_R);
+            } else {
+                style::frame(cr, self.out, insets, style::FRAME_R);
+            }
             let (r, g, b) = m.pal.bg;
-            cr.set_source_rgba(r, g, b, 1.0);
+            cr.set_source_rgba(r, g, b, look.1);
             let _ = cr.fill();
             let _ = cr.restore();
+            if self.style.bar_like() {
+                // The island paints the middle: two see-through layers would show where they overlap.
+                let (at, wide) = crate::island::middle(self.out, self.style, s.canvas.scale());
+                let _ = cr.save();
+                cr.rectangle(at - x, 0.0, wide, h);
+                cr.set_operator(cairo::Operator::Clear);
+                let _ = cr.fill();
+                let _ = cr.restore();
+            }
             if let Some(c) = &s.content {
                 if cr.set_source_surface(&c.surf, 0.0, 0.0).is_ok() {
                     let _ = cr.paint();
@@ -223,7 +247,7 @@ impl Edges {
             s.layer.commit();
             s.waiting = true;
             s.dirty = false;
-            s.bg = Some(m.pal.bg);
+            s.bg = Some(look);
         }
     }
 

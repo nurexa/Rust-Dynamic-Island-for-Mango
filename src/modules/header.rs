@@ -21,6 +21,9 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
             .right(Action::Sh(cmd.wallpaper_next.clone()))
             .middle(Action::Sh(cmd.wallpaper_toggle.clone())).tip("Wallpaper: pick · right: random · middle: pause"));
     }
+    let r = rect(next);
+    next += 1.0;
+    p.button("settings", r, false, Region::new(r, 16.0, Action::Open("settings")).tip("Settings"));
     if !c.cfg.sidebar.is_empty() {
         let r = rect(next);
         p.button("dock_to_right", r, c.m.sidebar_open, Region::new(r, 16.0, Action::Sidebar).tip("Sidebar"));

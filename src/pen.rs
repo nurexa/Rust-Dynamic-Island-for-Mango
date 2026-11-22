@@ -13,7 +13,7 @@ use pango::{AttrFontFeatures, AttrList, EllipsizeMode, FontDescription, Weight};
 use std::{cell::RefCell, collections::HashMap};
 
 /// Text, icon font, size bits, weight, max width, scale.
-type ShapeKey = (String, bool, u64, Weight, i64, i32);
+type ShapeKey = (String, bool, u64, Weight, i64, u64);
 
 thread_local! {
     static SHAPED: RefCell<HashMap<ShapeKey, pango::Layout>> = RefCell::new(HashMap::new());
@@ -231,7 +231,8 @@ pub struct Pen<'a> {
     layout: pango::Layout,
     cfg: &'a Config,
     pub pal: &'a Palette,
-    pub scale: i32,
+    /// Pixels per unit.
+    pub scale: f64,
     /// The width modules lay out to.
     pub w: f64,
     pub live: Vec<Live>,
@@ -240,13 +241,13 @@ pub struct Pen<'a> {
 }
 
 impl<'a> Pen<'a> {
-    pub fn new(w: f64, h: f64, cfg: &'a Config, pal: &'a Palette, scale: i32, icons: &'a mut Icons) -> Option<(ImageSurface, Self)> {
-        let s = scale as f64;
-        let surf = ImageSurface::create(Format::ARgb32, (w * s) as i32, (h * s) as i32).ok()?;
+    pub fn new(w: f64, h: f64, cfg: &'a Config, pal: &'a Palette, scale: crate::scale::Scale, icons: &'a mut Icons) -> Option<(ImageSurface, Self)> {
+        let s = scale.px();
+        let surf = ImageSurface::create(Format::ARgb32, (w * s).ceil() as i32, (h * s).ceil() as i32).ok()?;
         surf.set_device_scale(s, s);
         let cr = Context::new(&surf).ok()?;
         let layout = pangocairo::functions::create_layout(&cr);
-        Some((surf, Pen { cr, layout, cfg, pal, scale, w, live: Vec::new(), icons, regions: Vec::new() }))
+        Some((surf, Pen { cr, layout, cfg, pal, scale: s, w, live: Vec::new(), icons, regions: Vec::new() }))
     }
 
     pub fn clear(&mut self) {
@@ -268,7 +269,7 @@ impl<'a> Pen<'a> {
     /// One line shaped once and kept: a pill rebuild draws the same few strings
     /// every time, and shaping them was most of what it cost.
     fn shaped(&self, s: &str, icon: bool, size: f64, weight: Weight, max_w: f64) -> pango::Layout {
-        let key = (s.to_owned(), icon, size.to_bits(), weight, max_w as i64, self.scale);
+        let key = (s.to_owned(), icon, size.to_bits(), weight, max_w as i64, self.scale.to_bits());
         SHAPED.with_borrow_mut(|cache| {
             if let Some(l) = cache.get(&key) {
                 return l.clone();
@@ -348,8 +349,9 @@ impl<'a> Pen<'a> {
     /// One of the island's own icons: an outline, or solid with `fill` for a state that's on.
     #[allow(clippy::too_many_arguments)]
     pub fn icon(&mut self, name: &'static str, fill: bool, size: f64, x: f64, y: f64, c: Rgb, a: f64) {
-        let s = self.scale as f64;
-        let Some(mask) = self.icons.symbol(name, fill, (size * s).round() as i32) else { return };
+        let s = self.scale;
+        let solid = fill || self.cfg.ui.solid_icons;
+        let Some(mask) = self.icons.symbol(name, solid, (size * s).round() as i32) else { return };
         mask.set_device_scale(s, s);
         self.set(c, a);
         // On whole device pixels, or every stroke goes soft.
@@ -381,7 +383,7 @@ impl<'a> Pen<'a> {
         if self.cfg.icon_style == IconStyle::Glyph {
             return self.mark(glyph_for(self.cfg, appid), false, size, x, y, c, alpha);
         }
-        if let Some(img) = self.icons.app(appid, (size * self.scale as f64) as i32) {
+        if let Some(img) = self.icons.app(appid, (size * self.scale) as i32) {
             return self.image(&img, x, y, size, alpha);
         }
         self.letter(appid, size, x, y, alpha);
@@ -460,7 +462,7 @@ mod tests {
     #[test]
     fn cached_shaping_matches_a_fresh_shape() {
         let (cfg, pal, mut icons) = (Config::default(), crate::theme::load(""), Icons::new());
-        let (_s, p) = Pen::new(200.0, 40.0, &cfg, &pal, 1, &mut icons).unwrap();
+        let (_s, p) = Pen::new(200.0, 40.0, &cfg, &pal, crate::scale::Scale { buffer: 1, ui: 1.0 }, &mut icons).unwrap();
         let fresh = |s: &str| {
             p.prepare(s, &cfg.font, 12.5, Weight::Bold, -1.0);
             p.layout.pixel_size().0 as f64

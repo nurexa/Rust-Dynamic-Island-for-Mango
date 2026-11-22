@@ -6,6 +6,7 @@
 use crate::{
     Model,
     canvas::Canvas,
+    scale::Scale,
     modules::{self, MAX_COMPACT_W, MAX_PANEL_H, PANEL_W, PILL_H},
     pen::{Action, Content, Rect, Scroll, View, is_slider},
     icons::Icons,
@@ -135,7 +136,7 @@ pub struct Island {
     pub output: wl_output::WlOutput,
     pub name: String,
     pub out: (f64, f64),
-    pub scale: i32,
+    pub scale: Scale,
     pub layer: LayerSurface,
     configured: bool,
     canvas: Canvas,
@@ -148,6 +149,9 @@ pub struct Island {
     bud: Spring,
     bud_w: f64,
     size: (f64, f64),
+    /// How solid the background is, and whether the compositor is to blur behind it.
+    alpha: f64,
+    blurred: bool,
 
     /// Pill centre x and top y. None is docked at top centre.
     pub pos: Option<(f64, f64)>,
@@ -205,7 +209,7 @@ pub struct Island {
 /// part of a frame, and content-only redraws like a workspace switch keep them.
 /// ponytail: pill only; a pinned panel's chrome would hold megabytes for less gain.
 struct Chrome {
-    key: [f64; 9],
+    key: [f64; 11],
     surf: ImageSurface,
     at: (f64, f64),
 }
@@ -222,7 +226,7 @@ struct Shape {
 
 impl Island {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(output: wl_output::WlOutput, name: String, out: (f64, f64), scale: i32, layer: LayerSurface,
+    pub fn new(output: wl_output::WlOutput, name: String, out: (f64, f64), scale: Scale, layer: LayerSurface,
                shm: &Shm, style: Style, state_pos: Option<(f64, f64)>, pinned: bool, tucked: bool) -> Option<Self> {
         let size = surface_size(out, style);
         let canvas = Canvas::new(shm, size, scale)?;
@@ -233,7 +237,7 @@ impl Island {
         let retracted = tucked || style == Style::Frame;
         Some(Island {
             output, name, out, scale, layer, configured: false, canvas, chrome: None, size, pos,
-            style, flipped: false, bud: Spring::new(0.0, 0.44, 0.8, 0.002), bud_w: PILL_H,
+            style, alpha: 1.0, blurred: false, flipped: false, bud: Spring::new(0.0, 0.44, 0.8, 0.002), bud_w: PILL_H,
             place: (Spring::new(at.0, 0.34, 0.82, 0.3), Spring::new(at.1, 0.34, 0.82, 0.3)),
             placed: None, input: None,
             t: Spring::new(if pinned { 1.0 } else { 0.0 }, 0.42, 0.78, 0.002),
@@ -251,8 +255,8 @@ impl Island {
         })
     }
 
-    pub fn surface_size(&self) -> (f64, f64) {
-        self.size
+    pub fn surface_size(&self) -> (i32, i32) {
+        self.scale.size(self.size)
     }
 
     pub fn surface(&self) -> &WlSurface {
@@ -414,7 +418,7 @@ impl Island {
         self.dirty = true;
     }
 
-    pub fn set_output(&mut self, out: (f64, f64), scale: i32) {
+    pub fn set_output(&mut self, out: (f64, f64), scale: Scale) {
         if scale != self.scale {
             self.scale = scale;
             self.chrome = None;
@@ -424,7 +428,8 @@ impl Island {
         let size = surface_size(out, self.style);
         if size != self.size {
             self.size = size;
-            self.layer.set_size(size.0 as u32, size.1 as u32);
+            let (w, h) = scale.size(size);
+            self.layer.set_size(w as u32, h as u32);
         }
         self.canvas.resize(size, scale);
         self.out = out;
@@ -441,6 +446,11 @@ impl Island {
 
     fn home(&self) -> (f64, f64) {
         home(self.out, self.style)
+    }
+
+    fn body_alpha(&self, k: f64) -> f64 {
+        let a = lerp(0.97, 0.72, k);
+        if self.alpha < 1.0 { self.alpha * a / 0.97 } else { a }
     }
 
     fn opens_down(&self) -> bool {
@@ -539,7 +549,8 @@ impl Island {
 
     fn apply_input(&mut self, compositor: &CompositorState) {
         let r = self.target_rect();
-        let rect = (r.0.floor() as i32, r.1.floor() as i32, r.2.ceil() as i32, r.3.ceil() as i32);
+        let u = self.scale.ui;
+        let rect = ((r.0 * u).floor() as i32, (r.1 * u).floor() as i32, (r.2 * u).ceil() as i32, (r.3 * u).ceil() as i32);
         if self.input == Some(rect) {
             return;
         }
@@ -554,7 +565,7 @@ impl Island {
     /// and two margins cover every position.
     fn apply_place(&mut self) {
         let (x, y) = self.surface_pos();
-        let want = (x as i32, y as i32);
+        let want = (self.scale.wl(x), self.scale.wl(y));
         if self.placed != Some(want) {
             self.placed = Some(want);
             self.layer.set_margin(want.1, 0, 0, want.0);
@@ -681,8 +692,16 @@ impl Island {
         }
 
         let shape = self.shape();
-        let bounds = (shape.x - SHADOW, shape.y - SHADOW, shape.w + 2.0 * SHADOW, shape.h + 2.0 * SHADOW);
-        let resting = !animating && self.t.x == 0.0;
+        let bounds = if self.style.bar_like() {
+            // The band's middle is always the island's, all the way across.
+            (0.0, 0.0, self.size.0, (shape.y + shape.h + SHADOW).max(self.style.insets().top))
+        } else {
+            (shape.x - SHADOW, shape.y - SHADOW, shape.w + 2.0 * SHADOW, shape.h + 2.0 * SHADOW)
+        };
+        self.alpha = cfg.alpha(self.style);
+        self.blurred = cfg.blurred(self.style);
+        // A bar's chrome is a flat fill wider than the cache would be.
+        let resting = !animating && self.t.x == 0.0 && !self.style.bar_like();
         if resting {
             self.cache_chrome(shape, &m.pal);
         } else {
@@ -726,7 +745,7 @@ impl Island {
             (None, Some((x, y, w, h))) => {
                 let (r, g, b) = pal.bg;
                 let solid = self.style.attached() || self.parted(sh, t).is_some();
-                cr.set_source_rgba(r, g, b, if solid { 1.0 } else { lerp(0.97, 0.72, k) });
+                cr.set_source_rgba(r, g, b, if solid { self.alpha } else { self.body_alpha(k) });
                 cr.rectangle(x, y, w, h);
                 let _ = cr.fill();
             }
@@ -825,13 +844,13 @@ impl Island {
     }
 
     fn cache_chrome(&mut self, sh: Shape, pal: &crate::theme::Palette) {
-        let key = [sh.x, sh.y, sh.w, sh.h, self.k.x, self.bud.x, pal.bg.0, pal.bg.1, pal.bg.2];
+        let key = [sh.x, sh.y, sh.w, sh.h, self.k.x, self.bud.x, pal.bg.0, pal.bg.1, pal.bg.2, self.alpha, f64::from(self.blurred)];
         if self.chrome.as_ref().is_some_and(|c| c.key == key) {
             return;
         }
         self.chrome = None;
         // Pixel-aligned, so the cached copy lands exactly where a direct draw would.
-        let s = self.scale as f64;
+        let s = self.scale.px();
         let (x, y) = (((sh.x - SHADOW) * s).floor() / s, ((sh.y - SHADOW) * s).floor() / s);
         let w = ((sh.x + sh.w + SHADOW - x) * s).ceil() as i32;
         let h = ((sh.y + sh.h + SHADOW - y) * s).ceil() as i32;
@@ -853,12 +872,15 @@ impl Island {
         } else {
             (self.style.insets().top, sh.y + sh.h)
         };
+        // Glass floats, so its band starts below the screen's edge.
+        let top = if self.style == Style::Glass { style::FLOAT } else { 0.0 };
         let _ = cr.save();
         if self.flipped {
             cr.translate(0.0, self.size.1);
             cr.scale(1.0, -1.0);
         }
-        style::tab(cr, (sh.x, sh.x + sh.w), band, end, style::FILLET, sh.r);
+        cr.translate(0.0, top);
+        style::tab(cr, (sh.x, sh.x + sh.w), band - top, end - top, style::FILLET, sh.r);
         let _ = cr.restore();
     }
 
@@ -878,20 +900,48 @@ impl Island {
         let k = self.k.x.clamp(0.0, 1.0);
         let (r, g, b) = pal.bg;
         if self.style.attached() {
-            // Solid and flat, exactly like the band it's joined to: that's what hides the seam.
+            // Flat, exactly like the band it's joined to: that's what hides the seam.
+            let _ = cr.save();
+            let border = self.style.insets().top;
+            if self.alpha < 1.0 && self.style == Style::Frame {
+                // Two see-through layers would show the border it grows out of as a darker band.
+                let (y, h) = if self.flipped { (0.0, self.size.1 - border) } else { (border, self.size.1 - border) };
+                cr.rectangle(0.0, y, self.size.0, h);
+                cr.clip();
+            }
             self.outline(cr, sh, t);
-            cr.set_source_rgba(r, g, b, 1.0);
+            if self.style.bar_like() {
+                // The strip leaves this stretch of the band to the island: one fill, one layer.
+                let sx = self.surface_pos().0;
+                let (x, y, w, h) = self.style.band(self.out.0);
+                let (x0, x1) = ((x - sx).max(0.0), (x + w - sx).min(self.size.0));
+                cr.rectangle(x0, y, x1 - x0, h);
+            }
+            cr.set_source_rgba(r, g, b, self.alpha);
             let _ = cr.fill();
+            let _ = cr.restore();
+            if self.style == Style::Glass {
+                // The capsule the workspaces sit in, until it opens.
+                let a = 0.08 * (1.0 - smooth(t / 0.45)) * (1.0 - k);
+                if a > 0.001 {
+                    crate::pen::rounded_rect(cr, sh.x, sh.y + 3.0, sh.w, PILL_H - 6.0, (PILL_H - 6.0) / 2.0);
+                    let (fr, fg, fb) = pal.fg;
+                    cr.set_source_rgba(fr, fg, fb, a);
+                    let _ = cr.fill();
+                }
+            }
             return;
         }
         let parted = self.parted(sh, t);
+        let see_through = self.alpha < 1.0 || self.blurred;
         let bodies = match parted {
             Some((main, bubble)) => [Some((sh.x, main)), Some((bubble, sh.x + sh.w - bubble))],
             None => [Some((sh.x, sh.w)), None],
         };
         // Soft shadow as nested strokes: only the rim is touched, so a big panel
         // costs what a small one does, and no blur pass is needed.
-        let lift = 1.0 - k;
+        // None under a see-through one: it would show through, and be blurred into a halo.
+        let lift = if see_through { 0.0 } else { 1.0 - k };
         if lift > 0.0 {
             let depth = lerp(12.0, 24.0, t);
             for i in (1..=6).rev() {
@@ -905,7 +955,12 @@ impl Island {
             }
         }
         // Two bodies and the drop between them overlap, so those have to be solid.
-        cr.set_source_rgba(r, g, b, if parted.is_some() { 1.0 } else { lerp(0.97, 0.72, k) });
+        // Two bodies and the drop between them overlap, so see-through ones are drawn solid, then thinned as one.
+        let group = see_through && parted.is_some();
+        if group {
+            cr.push_group();
+        }
+        cr.set_source_rgba(r, g, b, if parted.is_some() { 1.0 } else { self.body_alpha(k) });
         for &(x, w) in bodies.iter().flatten() {
             squircle(cr, x, sh.y, w, sh.h, sh.r, t);
             let _ = cr.fill();
@@ -914,6 +969,9 @@ impl Island {
             if style::neck(cr, (sh.x, sh.y, main, sh.h), bubble) {
                 let _ = cr.fill();
             }
+        }
+        if group && cr.pop_group_to_source().is_ok() {
+            let _ = cr.paint_with_alpha(self.alpha);
         }
     }
 
@@ -1270,6 +1328,13 @@ fn surface_size(out: (f64, f64), style: Style) -> (f64, f64) {
     let w = (PANEL_W.max(compact) + 2.0 * SHADOW).min(out.0);
     let h = (MAX_PANEL_H + 2.0 * SHADOW + SLACK).min(out.1);
     (w.floor(), h.floor())
+}
+
+/// The stretch of a bar that is the island's to paint: exactly its surface, in units.
+pub(crate) fn middle(out: (f64, f64), style: Style, scale: Scale) -> (f64, f64) {
+    let size = surface_size(out, style);
+    let x = (home(out, style).0 - size.0 / 2.0).clamp(0.0, (out.0 - size.0).max(0.0)).round();
+    (f64::from(scale.wl(x)) / scale.ui, f64::from(scale.size(size).0) / scale.ui)
 }
 
 /// Centred on the space the windows get, which the frame's rail pushes right.

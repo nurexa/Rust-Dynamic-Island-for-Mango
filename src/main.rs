@@ -18,7 +18,9 @@ mod notify;
 mod palette;
 mod pen;
 mod power;
+mod prefs;
 mod privacy;
+mod scale;
 mod settings;
 mod sidebar;
 mod symbols;
@@ -82,6 +84,21 @@ pub type Tx = channel::Sender<Msg>;
 
 const STATS_EVERY: Duration = Duration::from_millis(1500);
 const NAMESPACE: &str = "island";
+/// Its own name, so compositor rules can blur these and leave the rest alone.
+const BLURRED: &str = "island-blur";
+
+#[derive(Default)]
+struct Feeds {
+    bluetooth: bool,
+    privacy: bool,
+    power: bool,
+    ddc: bool,
+    audio: bool,
+}
+
+fn namespace(cfg: &Config, style: style::Style) -> &'static str {
+    if cfg.blurred(style) { BLURRED } else { NAMESPACE }
+}
 /// parec dies with the audio server, which is back in a few seconds.
 const CAPTURE_RETRY: Duration = Duration::from_secs(5);
 /// Bounds a `dmenu` request, which is anything a local script cares to pipe in.
@@ -204,6 +221,8 @@ pub struct App {
     bus: Option<bus::Bus>,
     wm: Box<dyn wm::Backend>,
     net_poke: mpsc::Sender<()>,
+    /// The watchers running. Each starts when something first shows what it feeds.
+    feeds: Feeds,
     tx: Tx,
     next_stats: Option<Instant>,
     /// Permission cards waiting on a click: note id, the request, where the hook waits.
@@ -244,8 +263,8 @@ impl App {
             let Some(name) = info.name.clone() else { continue };
             let size = info.logical_size.or_else(|| info.modes.iter().find(|m| m.current).map(|m| m.dimensions));
             let Some((w, h)) = size else { continue };
-            let out = (w as f64, h as f64);
-            let scale = info.scale_factor.max(1);
+            let scale = scale::Scale { buffer: info.scale_factor.max(1), ui: self.cfg.ui.scale };
+            let out = scale.units((w as f64, h as f64));
             if self.sidebar.as_ref().is_some_and(|s| s.output == output && !s.fits(out, scale)) {
                 self.drop_sidebar();
             }
@@ -264,17 +283,17 @@ impl App {
                 self.islands.remove(n);
                 self.edges.retain(|e| e.output != output);
             }
-            let edges = Edges::new(&output, &name, out, scale, style, &self.shm, &self.layer_shell, &self.compositor, &qh);
+            let edges = Edges::new(&output, &name, out, scale, style, namespace(&self.cfg, style), &self.shm, &self.layer_shell, &self.compositor, &qh);
             self.edges.extend(edges);
             let surface = self.compositor.create_surface(&qh);
-            let layer = self.layer_shell.create_layer_surface(&qh, surface, Layer::Top, Some(NAMESPACE), Some(&output));
+            let layer = self.layer_shell.create_layer_surface(&qh, surface, Layer::Top, Some(namespace(&self.cfg, style)), Some(&output));
             layer.set_anchor(Anchor::TOP | Anchor::LEFT);
             layer.set_keyboard_interactivity(KeyboardInteractivity::None);
             // Mango gives zone-0 layers a rectangular drop shadow, decided at map
             // time. It would outline the whole transparent surface.
             layer.set_exclusive_zone(-1);
             let island = Island::new(output.clone(), name.clone(), out, scale, layer, &self.shm, style,
-                                     self.state.pos.get(&name).copied(), self.state.pinned, self.state.tucked);
+                                     self.state.pos.get(&name).map(|p| scale.units(*p)), self.state.pinned, self.state.tucked);
             if let Some(island) = island {
                 let size = island.surface_size();
                 island.layer.set_size(size.0 as u32, size.1 as u32);
@@ -290,9 +309,83 @@ impl App {
     }
 
     fn set_style(&mut self, style: style::Style) {
-        if self.model.style == style {
-            return;
+        if self.model.style != style {
+            self.rebuild_surfaces(style);
         }
+    }
+
+    /// What nothing shows costs no thread, bus connection or wakeup. Switched off, one
+    /// already running lasts until the island next starts.
+    fn start_feeds(&mut self) {
+        let (cfg, on, tx) = (&self.cfg, &mut self.feeds, &self.tx);
+        let controls = cfg.uses("controls");
+        let first = |flag: &mut bool, wanted: bool| wanted && !std::mem::replace(flag, true);
+        if first(&mut on.bluetooth, cfg.uses("bluetooth") || controls && !cfg.off("bluetooth")) {
+            bluetooth::spawn(tx.clone());
+        }
+        if first(&mut on.privacy, cfg.uses("privacy")) {
+            privacy::spawn(tx.clone());
+        }
+        if first(&mut on.power, cfg.uses("battery")) {
+            power::spawn(tx.clone());
+        }
+        if first(&mut on.ddc, cfg.uses("brightness") || controls && !cfg.off("brightness")) {
+            ddc::spawn(tx.clone());
+        }
+        if first(&mut on.audio, cfg.uses("audio") || controls && !cfg.off("audio")) {
+            audio::spawn(tx.clone());
+        }
+    }
+
+    /// config.toml and what was chosen over it, read again and put on screen.
+    fn configure(&mut self) {
+        let cfg = Config::load(&self.state);
+        let style = self.state.style(cfg.style);
+        // These are fixed when a surface is made.
+        let remake = style != self.model.style || cfg.ui.scale != self.cfg.ui.scale
+            || cfg.blurred(style) != self.cfg.blurred(self.model.style);
+        self.cfg = cfg;
+        if remake {
+            self.rebuild_surfaces(style);
+        }
+        if self.cfg.sidebar.is_empty() {
+            self.drop_sidebar();
+        }
+        self.model.can_capture = !self.cfg.visualizer.is_empty() && tools::on_path("parec");
+        self.load_calendar();
+        self.model.pal = theme::load(&self.cfg.palette);
+        self.model.brightness = brightness::read(&self.cfg.commands);
+        self.model.night.configure(&self.cfg.nightlight);
+        self.night_apply();
+        self.start_feeds();
+        self.all(true, true);
+    }
+
+    fn choose(&mut self, choices: &[(&str, &str)]) {
+        let written = Config::written();
+        for (key, value) in choices {
+            if !self.state.choose(&written, key, value) {
+                eprintln!("island: can't set {key} to {value}");
+            }
+        }
+        self.configure();
+        self.save();
+    }
+
+    /// A setting changed from its list: the same list again, with what's typed and where it was.
+    fn change_setting(&mut self, cmd: &str) {
+        let Some(p) = &self.model.palette else { return };
+        let place = if p.back.is_empty() { (p.query.clone(), p.selected, p.top) } else { Default::default() };
+        self.close_palette();
+        self.command(cmd);
+        self.open_palette(Some("settings"));
+        if let Some(p) = &mut self.model.palette {
+            p.query = place.0;
+            p.hold = Some((place.1, place.2));
+        }
+    }
+
+    fn rebuild_surfaces(&mut self, style: style::Style) {
         self.close_palette();
         self.model.notes.cancel_reply(Instant::now());
         self.save();
@@ -329,7 +422,7 @@ impl App {
             return;
         }
         let i = &self.islands[island];
-        self.sidebar = Sidebar::open(&i.output, &i.name, i.out, i.scale, self.model.style, by_hover,
+        self.sidebar = Sidebar::open(&i.output, &i.name, i.out, i.scale, self.model.style, by_hover, namespace(&self.cfg, self.model.style),
                                      &self.shm, &self.layer_shell, &self.compositor, &self.qh);
         self.sidebar_shown();
     }
@@ -441,14 +534,23 @@ impl App {
 
     fn tool_ctx(&self) -> tools::Ctx {
         let query = self.model.palette.as_ref().map_or(String::new(), |p| p.query.clone());
-        tools::Ctx { cfg: self.cfg.clone(), clients: self.model.clients.clone(), query }
+        tools::Ctx { cfg: self.cfg.clone(), style: self.model.style, clients: self.model.clients.clone(), query }
     }
 
     fn open_palette(&mut self, tool: Option<&str>) {
         // The palette's field takes the keyboard from a notification's.
         self.model.notes.cancel_reply(Instant::now());
         self.islands.iter_mut().for_each(|i| i.set_typing(false));
-        let entries = tools::enabled(&self.cfg);
+        let mut entries = tools::enabled(&self.cfg);
+        // Not a tab, so it opens even with every tool switched off.
+        if tool == Some("settings") && !entries.iter().any(|e| e.name() == "settings") {
+            entries.extend(tools::builtin("settings"));
+            if let Some(open) = &self.model.palette {
+                if open.entries.get(open.current).is_none_or(|e| e.name() != "settings") {
+                    self.close_palette();
+                }
+            }
+        }
         let wanted = tool.and_then(|t| entries.iter().position(|e| e.name() == t));
         if let Some(open) = &mut self.model.palette {
             // The same key again closes it; another tool's key switches to it.
@@ -496,6 +598,7 @@ impl App {
             O::Nothing => {}
             O::Redraw => self.palette_redraw(),
             O::Close => self.close_palette(),
+            O::Run(tools::Act::Setting(cmd)) => self.change_setting(&cmd),
             O::Run(act) => {
                 self.close_palette();
                 self.run(act);
@@ -533,6 +636,7 @@ impl App {
             A::Focus(window) => self.wm.focus(window),
             A::Quit => self.wm.quit(),
             A::Task(task) => tools::run_task(task, self.tool_ctx(), self.tx.clone()),
+            A::Setting(cmd) => self.command(&cmd),
             A::Confirm(..) | A::Ask { .. } | A::Reply(_) | A::Open(_) | A::Back | A::Load(_) => {}
         }
     }
@@ -611,26 +715,28 @@ impl App {
     }
 
     fn save(&mut self) {
-        self.state.pos = self.islands.iter().filter_map(|i| Some((i.name.clone(), i.pos?))).collect();
+        self.state.pos = self.islands.iter()
+            .filter_map(|i| i.pos.map(|(x, y)| (i.name.clone(), (x * i.scale.ui, y * i.scale.ui))))
+            .collect();
         self.state.save();
     }
 
     /// Sharp on the densest output; the others scale it down.
-    fn raster_scale(&self) -> i32 {
-        self.islands.iter().map(|i| i.scale).max().unwrap_or(1)
+    fn raster_scale(&self) -> f64 {
+        self.islands.iter().map(|i| i.scale.px()).reduce(f64::max).unwrap_or(1.0)
     }
 
     fn set_art(&mut self) {
         let path = self.model.media.as_ref().and_then(|t| t.art.clone());
         let scale = self.raster_scale();
-        let load = |p: &PathBuf, px: i32| icons::load_art(p, px * scale);
-        self.model.art_small = path.as_ref().and_then(|p| load(p, 20)).map(|s| rounded(s, 5.0 * scale as f64));
+        let load = |p: &PathBuf, px: i32| icons::load_art(p, (f64::from(px) * scale).round() as i32);
+        self.model.art_small = path.as_ref().and_then(|p| load(p, 20)).map(|s| rounded(s, 5.0 * scale));
         // Sized for the sidebar; the panel scales it down.
         self.model.art_large = path.as_ref().and_then(|p| load(p, 104));
     }
 
     fn set_tray(&mut self) {
-        let px = 18 * self.raster_scale();
+        let px = (18.0 * self.raster_scale()).round() as i32;
         let icons = &mut self.icons;
         self.model.tray = self.tray_items.iter().map(|i| (i.clone(), icons.tray(&i.icon, px))).collect();
     }
@@ -812,19 +918,9 @@ impl App {
             "style" => self.choose_style(self.model.style.next()),
             "sidebar" => self.toggle_sidebar(None),
             "reload" => {
-                self.cfg = Config::load();
-                self.set_style(self.state.style(self.cfg.style));
-                if self.cfg.sidebar.is_empty() {
-                    self.drop_sidebar();
-                }
-                self.model.can_capture = !self.cfg.visualizer.is_empty() && tools::on_path("parec");
-                self.load_calendar();
-                self.model.pal = theme::load(&self.cfg.palette);
-                self.model.brightness = brightness::read(&self.cfg.commands);
-                self.model.night.configure(&self.cfg.nightlight);
-                self.night_apply();
-                self.all(true, true);
+                self.configure();
             }
+            "settings" => self.open_palette(Some("settings")),
             "wall" => {
                 let wall = modules::wallpaper::load();
                 if wall != self.model.wall {
@@ -857,6 +953,14 @@ impl App {
                     None => eprintln!("island: no style called {name}"),
                 },
                 Some(("nightlight", arg)) => self.night_command(arg),
+                Some(("set", rest)) => match rest.split_once(' ') {
+                    Some((key, value)) => self.choose(&[(key, value)]),
+                    None => eprintln!("island: set what to what?"),
+                },
+                Some(("preset", name)) => match prefs::preset(name) {
+                    Some(all) => self.choose(&all),
+                    None => eprintln!("island: presets are light and full"),
+                },
                 Some(("shot", kind)) => {
                     if let Some(task) = tools::shot_task(kind) {
                         self.run(tools::Act::Task(task));
@@ -1616,7 +1720,10 @@ impl KeyboardHandler for App {
 
 impl PointerHandler for App {
     fn pointer_frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
-        for e in events {
+        for raw in events {
+            let mut e = raw.clone();
+            e.position = (e.position.0 / self.cfg.ui.scale, e.position.1 / self.cfg.ui.scale);
+            let e = &e;
             let Some(idx) = self.island_at(&e.surface) else {
                 if self.sidebar.as_ref().is_some_and(|s| s.surface() == &e.surface) {
                     self.sidebar_pointer(e);
@@ -1667,7 +1774,7 @@ impl RelativePointerHandler for App {
     fn relative_pointer_motion(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &ZwpRelativePointerV1,
                                _: &wl_pointer::WlPointer, e: RelativeMotionEvent) {
         for i in &mut self.islands {
-            i.relative(e.delta);
+            i.relative(i.scale.units(e.delta));
         }
     }
 }
@@ -1842,14 +1949,23 @@ fn main() {
                 }
             }
             "doctor" => doctor::run(),
+            "set" if !args.get(1).zip(args.get(2)).is_some_and(|(k, v)| args.len() == 3 && prefs::put(&mut Config::default(), k, v)) => {
+                let parts: Vec<&str> = prefs::LOOKS.iter().map(|l| l.0).chain(prefs::PARTS.iter().map(|p| p.0)).collect();
+                eprintln!("island: set <key> <value>, the keys being {}", parts.join(", "));
+                std::process::exit(2);
+            }
+            "preset" if args.get(1).is_none_or(|n| prefs::preset(n).is_none()) => {
+                eprintln!("island: presets are light and full");
+                std::process::exit(2);
+            }
             "style" if args.get(1).is_some_and(|a| style::Style::parse(a).is_none()) => {
                 eprintln!("island: styles are {}", style::Style::ALL.map(style::Style::name).join(", "));
                 std::process::exit(2);
             }
-            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" | "nightlight" | "style" | "sidebar" => run_client(&args.join(" ")),
+            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" | "nightlight" | "style" | "sidebar" | "settings" | "set" | "preset" => run_client(&args.join(" ")),
             _ => {}
         }
-        eprintln!("usage: island [pin|tuck|reset|reload|style [name]|sidebar|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|nightlight [on|off|toggle]|audio|doctor|claude-setup [--undo]|dmenu [-p prompt]]");
+        eprintln!("usage: island [pin|tuck|reset|reload|style [name]|settings|set <key> <value>|preset <light,full>|sidebar|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|nightlight [on|off|toggle]|audio|doctor|claude-setup [--undo]|dmenu [-p prompt]]");
         std::process::exit(2);
     }
 
@@ -1873,10 +1989,10 @@ fn main() {
         }
     }).expect("message source");
 
-    let cfg = Config::load();
     let state = State::load();
+    let cfg = Config::load(&state);
     let net_poke = net::spawn(tx.clone());
-    bluetooth::spawn(tx.clone());
+
     let wm = wm::detect();
     wm.watch(tx.clone());
     modules::custom::spawn(&cfg.custom, tx.clone());
@@ -1926,6 +2042,7 @@ fn main() {
         bus: bus::spawn(tx.clone(), cfg_notifications),
         wm,
         net_poke,
+        feeds: Feeds::default(),
         tx: tx.clone(),
         next_stats: None,
         next_clock: next_minute(),
@@ -1937,10 +2054,10 @@ fn main() {
         scroll: 0.0,
         quit: false,
     };
-    privacy::spawn(tx.clone());
-    power::spawn(tx.clone());
-    ddc::spawn(tx.clone());
-    audio::spawn(tx);
+
+
+
+    app.start_feeds();
 
     while !app.quit {
         let wait = app.next_deadline().saturating_duration_since(Instant::now());

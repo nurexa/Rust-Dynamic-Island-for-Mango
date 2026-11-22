@@ -7,6 +7,7 @@ use crate::{
     icons::Icons,
     island::{BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, Outcome, Spring, blit, lerp, live_bounds, smooth},
     modules,
+    scale::Scale,
     pen::{Action, Content, Rect, Scroll, is_slider},
     settings::Config,
     style,
@@ -38,8 +39,10 @@ pub struct Sidebar {
     canvas: Canvas,
     out: (f64, f64),
     size: (f64, f64),
-    scale: i32,
+    scale: Scale,
     band: f64,
+    /// How solid its background is.
+    alpha: f64,
     /// The middle of the windows' space, and the most it can take of it.
     middle: f64,
     room: f64,
@@ -69,23 +72,24 @@ pub struct Sidebar {
 
 impl Sidebar {
     #[allow(clippy::too_many_arguments)]
-    pub fn open(output: &wl_output::WlOutput, name: &str, out: (f64, f64), scale: i32, style: style::Style, by_hover: bool,
-                shm: &Shm, shell: &LayerShell, compositor: &CompositorState, qh: &QueueHandle<crate::App>) -> Option<Self> {
+    pub fn open(output: &wl_output::WlOutput, name: &str, out: (f64, f64), scale: Scale, style: style::Style, by_hover: bool,
+                namespace: &str, shm: &Shm, shell: &LayerShell, compositor: &CompositorState, qh: &QueueHandle<crate::App>) -> Option<Self> {
         let i = style.insets();
         let size = ((W + i.right + SLACK).min(out.0).floor(), out.1.floor());
         let canvas = Canvas::new(shm, size, scale)?;
         let surface = compositor.create_surface(qh);
-        let layer = shell.create_layer_surface(qh, surface, Layer::Top, Some(crate::NAMESPACE), Some(output));
+        let layer = shell.create_layer_surface(qh, surface, Layer::Top, Some(namespace), Some(output));
         layer.set_anchor(Anchor::TOP | Anchor::LEFT);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer.set_exclusive_zone(-1);
-        layer.set_size(size.0 as u32, size.1 as u32);
-        layer.set_margin(0, 0, 0, (out.0 - size.0) as i32);
+        let (w, h) = scale.size(size);
+        layer.set_size(w as u32, h as u32);
+        layer.set_margin(0, 0, 0, scale.wl(out.0) - w);
         layer.commit();
         let mut t = Spring::new(0.0, 0.42, 0.78, 0.002);
         t.target = 1.0;
         Some(Sidebar {
-            output: output.clone(), name: name.to_owned(), layer, canvas, out, size, scale, band: i.right,
+            output: output.clone(), name: name.to_owned(), layer, canvas, out, size, scale, band: i.right, alpha: 1.0,
             middle: ((i.top + out.1 - i.bottom) / 2.0).round(),
             // Room for the corners where it meets the edge, and the frame's own past those.
             room: (out.1 - i.top - i.bottom - 2.0 * (style::FILLET + 4.0)).max(120.0).floor(),
@@ -97,7 +101,7 @@ impl Sidebar {
         })
     }
 
-    pub fn fits(&self, out: (f64, f64), scale: i32) -> bool {
+    pub fn fits(&self, out: (f64, f64), scale: Scale) -> bool {
         self.out == out && self.scale == scale
     }
 
@@ -230,6 +234,7 @@ impl Sidebar {
         let only_live = !self.dirty;
         self.live_dirty = false;
         self.rebuild(m, icons, cfg);
+        self.alpha = cfg.alpha(m.style);
         let now = Instant::now();
         let dt = self.last.map_or(1.0 / 240.0, |l| (now - l).as_secs_f64()).min(1.0 / 30.0) * self.time_scale;
         self.t.step(dt);
@@ -268,6 +273,12 @@ impl Sidebar {
 
     fn paint(&self, cr: &Context, patch: Option<Rect>, (out, y, h): (f64, f64, f64), m: &Model) {
         let edge = self.size.0 - self.band;
+        let _ = cr.save();
+        if self.alpha < 1.0 {
+            // Two see-through layers would show the border it grows out of as a darker band.
+            cr.rectangle(0.0, 0.0, edge, self.size.1);
+            cr.clip();
+        }
         match patch {
             // A visualizer's patch is all inside, so there's no outline to work out.
             Some((px, py, pw, ph)) => cr.rectangle(px, py, pw, ph),
@@ -281,8 +292,10 @@ impl Sidebar {
             }
         }
         let (r, g, b) = m.pal.bg;
-        cr.set_source_rgba(r, g, b, 1.0);
+        cr.set_source_rgba(r, g, b, self.alpha);
         let _ = cr.fill_preserve();
+        // The path outlives the clip.
+        let _ = cr.restore();
         let Some(c) = &self.content else {
             cr.new_path();
             return;
@@ -315,7 +328,8 @@ impl Sidebar {
             (Some(c), true) => (self.size.0 - self.band - W, self.middle - c.h / 2.0, W + self.band, c.h),
             _ => (0.0, 0.0, 0.0, 0.0),
         };
-        let rect = (r.0.floor() as i32, r.1.floor() as i32, r.2.ceil() as i32, r.3.ceil() as i32);
+        let u = self.scale.ui;
+        let rect = ((r.0 * u).floor() as i32, (r.1 * u).floor() as i32, (r.2 * u).ceil() as i32, (r.3 * u).ceil() as i32);
         if self.input == Some(rect) {
             return;
         }

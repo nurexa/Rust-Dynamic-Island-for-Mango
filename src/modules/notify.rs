@@ -14,7 +14,7 @@ const GROUPS: usize = 3;
 const EXPANDED: usize = 4;
 
 fn image(p: &mut Pen, note: &Note, x: f64, y: f64, size: f64) -> bool {
-    let px = (size * p.scale as f64) as i32;
+    let px = (size * p.scale) as i32;
     if let NoteImage::Named(name) = &note.image {
         if let Some(name) = icons::builtin(name) {
             p.fill((x, y, size, size), size * 0.3, p.pal.accent, 0.18);

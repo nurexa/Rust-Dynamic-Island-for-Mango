@@ -20,6 +20,8 @@ pub enum Style {
     Bar,
     /// The pill, with what's live budding off into a bubble of its own.
     Split,
+    /// A see-through floating bar with three groups, blurred where the compositor can.
+    Glass,
     /// The time, and whatever needs you.
     Minimal,
 }
@@ -36,6 +38,11 @@ pub struct Insets {
 pub const RAIL: f64 = 40.0;
 pub const BORDER: f64 = 8.0;
 pub const BAR: f64 = 32.0;
+/// The glass bar: how far it floats from the top, and how round it is.
+pub const FLOAT: f64 = 6.0;
+pub const GLASS_R: f64 = 10.0;
+/// Narrower than this and its three groups run into each other.
+const GLASS_MIN: f64 = 1280.0;
 /// The frame's inner corners.
 pub const FRAME_R: f64 = 20.0;
 /// The reversed corners where a shape leaves its edge.
@@ -44,7 +51,7 @@ pub const FILLET: f64 = 18.0;
 pub const SPLIT_GAP: f64 = 7.0;
 
 impl Style {
-    pub const ALL: [Style; 6] = [Style::Pill, Style::Frame, Style::Notch, Style::Bar, Style::Split, Style::Minimal];
+    pub const ALL: [Style; 7] = [Style::Pill, Style::Frame, Style::Notch, Style::Bar, Style::Glass, Style::Split, Style::Minimal];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -52,6 +59,7 @@ impl Style {
             Style::Frame => "frame",
             Style::Notch => "notch",
             Style::Bar => "bar",
+            Style::Glass => "glass",
             Style::Split => "split",
             Style::Minimal => "minimal",
         }
@@ -68,14 +76,31 @@ impl Style {
 
     /// Part of the screen's edge, so it doesn't float, drag or cast a shadow.
     pub fn attached(self) -> bool {
-        matches!(self, Style::Frame | Style::Notch | Style::Bar)
+        matches!(self, Style::Frame | Style::Notch | Style::Bar | Style::Glass)
     }
 
     pub fn insets(self) -> Insets {
         match self {
             Style::Frame => Insets { left: RAIL, top: BORDER, right: BORDER, bottom: BORDER },
             Style::Bar => Insets { top: BAR, ..Insets::default() },
+            Style::Glass => Insets { top: FLOAT + BAR, ..Insets::default() },
             _ => Insets::default(),
+        }
+    }
+
+    /// Its middle is the island, which paints that stretch of it.
+    pub fn bar_like(self) -> bool {
+        matches!(self, Style::Bar | Style::Glass)
+    }
+
+    /// The band that stretches across: its ends, its top and its bottom.
+    pub fn band(self, width: f64) -> Rect {
+        match self {
+            Style::Glass => {
+                let margin = ((width - GLASS_MIN) / 2.0).min(width * 0.11).max(FLOAT);
+                (margin, FLOAT, width - 2.0 * margin, BAR)
+            }
+            _ => (0.0, 0.0, width, BAR),
         }
     }
 
@@ -83,6 +108,7 @@ impl Style {
     pub fn dock_y(self) -> f64 {
         match self {
             Style::Frame => BORDER,
+            Style::Glass => FLOAT,
             Style::Notch | Style::Bar => 0.0,
             _ => 6.0,
         }
@@ -94,6 +120,7 @@ impl Style {
         match self {
             Style::Frame => !matches!(module, "workspaces" | "clock" | "network" | "battery"),
             Style::Bar => !matches!(module, "workspaces" | "network" | "battery"),
+            Style::Glass => matches!(module, "workspaces" | "claude" | "timer" | "privacy"),
             Style::Minimal => matches!(module, "claude" | "timer" | "privacy" | "clock"),
             _ => true,
         }
@@ -238,10 +265,10 @@ mod tests {
     }
 
     #[test]
-    fn styles_round_trip_and_only_two_reserve_space() {
+    fn styles_round_trip_and_only_three_reserve_space() {
         for s in Style::ALL {
             assert_eq!(Style::parse(s.name()), Some(s));
-            assert_eq!(s.insets() != Insets::default(), matches!(s, Style::Frame | Style::Bar), "{s:?}");
+            assert_eq!(s.insets() != Insets::default(), matches!(s, Style::Frame | Style::Bar | Style::Glass), "{s:?}");
         }
         assert_eq!(Style::parse("blob"), None);
         assert_eq!(Style::ALL.iter().fold(Style::Pill, |s, _| s.next()), Style::Pill);

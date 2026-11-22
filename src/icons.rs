@@ -13,8 +13,10 @@ use std::{
 const SIZES: [&str; 14] = ["scalable", "512x512", "256x256", "192x192", "128x128", "96x96", "72x72", "64x64",
     "48x48", "36x36", "32x32", "24x24", "22x22", "16x16"];
 /// Trimmed off each side of an icon's box.
-const MARGIN: i32 = 30;
+const MARGIN: i32 = 16;
 const RESCAN: Duration = Duration::from_secs(30);
+/// Weight 500 to about 700.
+const BOLD: &str = r##" stroke="#000" stroke-width="28" stroke-linejoin="round""##;
 
 pub fn data_dirs() -> Vec<PathBuf> {
     let home = crate::settings::home();
@@ -48,7 +50,10 @@ fn builtin_svg(name: &str, fill: bool, margin: i32) -> Option<String> {
     let (_, outline, solid) = *entry(name)?;
     let d = if fill && !solid.is_empty() { solid } else { outline };
     let (x, y, w) = (margin, margin - 960, 960 - 2 * margin);
-    Some(format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {w} {w}"><path d="{d}"/></svg>"#))
+    // Solid ones get a heavier edge as well, for the weight of the apps' bold glyphs:
+    // many, like arrows and Wi-Fi, have nothing to fill.
+    let bold = if fill { BOLD } else { "" };
+    Some(format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {w} {w}"><path d="{d}"{bold}/></svg>"#))
 }
 
 /// Map every name a window might use (file stem, its last dotted part,

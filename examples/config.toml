@@ -1,8 +1,8 @@
 # Copy to ~/.config/island/config.toml. Every key is optional; these are the
 # defaults. Run `island reload` after editing. MODDING.md explains the rest.
 
-# pill, frame, notch, bar, split or minimal. `island style <name>` switches live and
-# holds until this line changes. Only frame and bar take space from your windows.
+# pill, frame, notch, bar, glass, split or minimal. `island style <name>` switches live and
+# holds until this line changes. Only frame, bar and glass take space from your windows.
 style = "pill"
 font = "Adwaita Sans"
 icon_font = "JetBrainsMono Nerd Font Propo"   # for app glyphs: any Nerd Font; big ones cost real memory
@@ -20,9 +20,14 @@ tools = ["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "
 sidebar = ["media", "calendar", "controls", "notifications"]   # [] leaves it out
 visualizer = ["bars", "wave", "ring"]   # run only while music plays and one is on screen; [] is off
 notifications = true              # false keeps your own notification daemon
-disable = []                      # parts to leave out wherever they appear, plus "calc", "web", "sidebar" and "visualizer"
+disable = []                      # parts to leave out wherever they appear; `island settings` lists every one, `island preset light` keeps the basics
 
 [ui]
+# `island settings` changes these live; a choice holds until its line here changes.
+solid_icons = true                # false: outlines, solid only for what is on
+scale = 1.0                       # 0.75 to 2: the size of all of it
+blur = "auto"                     # "on", "off", or "auto" for the glass style. The compositor does the blurring: see README
+# opacity = 0.8                   # 0.3 to 1; unset is the style's own
 hover_open = true                 # false: the panel opens only on click or the pin key
 hover_open_ms = 130               # delay before hover opens it
 hover_close_ms = 280              # delay before leaving closes it

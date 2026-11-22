@@ -1,7 +1,7 @@
 //! One layer surface's shared-memory buffers. The island, the sidebar and the edge
 //! strips all draw through this: it finds a free buffer, clears only what that
 //! buffer held, and damages only what changed on screen.
-use crate::pen::Rect;
+use crate::{pen::Rect, scale::Scale};
 use cairo::{Context, Format, ImageSurface};
 use smithay_client_toolkit::{
     reexports::client::protocol::{wl_shm, wl_surface::WlSurface},
@@ -16,7 +16,7 @@ pub struct Canvas {
     drawn: Vec<u64>,
     newest: u64,
     size: (f64, f64),
-    scale: i32,
+    scale: Scale,
     /// No slot has been given back, so each new one is untouched memory: zero, which is clear.
     untouched: bool,
     /// What's on screen now.
@@ -41,17 +41,18 @@ fn union(a: Rect, b: Rect) -> Rect {
 }
 
 impl Canvas {
-    pub fn new(shm: &Shm, size: (f64, f64), scale: i32) -> Option<Self> {
-        let bytes = (size.0 * size.1).max(1.0) as usize * 4 * scale.pow(2) as usize;
+    pub fn new(shm: &Shm, size: (f64, f64), scale: Scale) -> Option<Self> {
+        let (w, h) = scale.size(size);
+        let bytes = (w * h) as usize * 4 * scale.buffer.pow(2) as usize;
         let pool = SlotPool::new(bytes, shm).ok()?;
         Some(Canvas { pool, buffers: Vec::new(), drawn: Vec::new(), newest: 0, size, scale, untouched: true, shown: (0.0, 0.0, size.0, size.1) })
     }
 
-    pub fn scale(&self) -> i32 {
+    pub fn scale(&self) -> Scale {
         self.scale
     }
 
-    pub fn resize(&mut self, size: (f64, f64), scale: i32) {
+    pub fn resize(&mut self, size: (f64, f64), scale: Scale) {
         if (size, scale) != (self.size, self.scale) {
             (self.size, self.scale) = (size, scale);
             self.untouched &= self.buffers.is_empty();
@@ -74,8 +75,9 @@ impl Canvas {
     }
 
     fn draw(&mut self, bounds: Rect, changed: Option<Rect>) -> Option<Frame> {
-        let s = self.scale as f64;
-        let (bw, bh) = ((self.size.0 * s) as i32, (self.size.1 * s) as i32);
+        let s = self.scale.px();
+        let (w, h) = self.scale.size(self.size);
+        let (bw, bh) = (w * self.scale.buffer, h * self.scale.buffer);
         let stride = bw * 4;
         let free = self.buffers.iter().position(|(b, _)| b.canvas(&mut self.pool).is_some());
         let index = match free {
@@ -120,8 +122,8 @@ impl Canvas {
         target.finish();
         let (x, y, w, h) = changed.unwrap_or_else(|| union(bounds, self.shown));
         self.shown = bounds;
-        let s = self.scale as f64;
-        surface.set_buffer_scale(self.scale);
+        let s = self.scale.px();
+        surface.set_buffer_scale(self.scale.buffer);
         let _ = self.buffers[index].0.attach_to(surface);
         surface.damage_buffer((x * s).floor() as i32 - 2, (y * s).floor() as i32 - 2,
                               (w * s).ceil() as i32 + 4, (h * s).ceil() as i32 + 4);

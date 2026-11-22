@@ -14,7 +14,7 @@ const LIST_TOP: f64 = 62.0;
 
 fn icon(p: &mut Pen, item: &Item, x: f64, cy: f64, tone: Rgb, selected: bool) {
     let size = 26.0;
-    let px = (size * p.scale as f64) as i32;
+    let px = (size * p.scale) as i32;
     let picture = match &item.icon {
         Icon::None => None,
         Icon::Glyph(g) => return p.mark(g, selected, 20.0, x + 3.0, cy - 10.0, tone, 1.0),

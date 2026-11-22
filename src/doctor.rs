@@ -118,7 +118,7 @@ pub fn run() -> ! {
             }
         },
     }
-    let cfg = Config::load();
+    let cfg = Config::load(&crate::settings::State::load());
     for (font, what) in [(&cfg.font, "Text font"), (&cfg.icon_font, "Icon font")] {
         let found = output("fc-list", &[font.as_str(), "family"]).is_some_and(|o| !o.trim().is_empty());
         r.check(found, &format!("{what}: {font}"), "Not installed, so another font stands in. Any Nerd Font works for icons (set icon_font).");
@@ -174,6 +174,15 @@ pub fn run() -> ! {
         let check = Command::new("mango").arg("-p").env_remove("DBUS_SESSION_BUS_ADDRESS").output();
         let clean = check.as_ref().is_ok_and(|o| o.status.success());
         r.check(clean, "mango -p: no config warnings", "Run `mango -p` to see them; a key bound twice is the usual one.");
+        let state = crate::settings::State::load();
+        if cfg.blurred(state.style(cfg.style)) {
+            // island.conf is sourced last, so its lines win.
+            // ponytail: those two files only; follow source= lines if this gives false warnings.
+            let text: String = ["config.conf", "config.toml", "island.conf"].iter()
+                .filter_map(|f| std::fs::read_to_string(conf.join(f)).ok()).map(|s| s + "\n").collect();
+            r.check(blurs(&text), "Mango blurs behind layers",
+                    "The island is only see-through until Mango blurs: set blur=1 and blur_layer=1, or run ./install.sh --blur.");
+        }
     }
 
     println!();
@@ -183,4 +192,24 @@ pub fn run() -> ! {
         (p, _) => { println!("{p} problem(s) need fixing."); 1 }
     };
     std::process::exit(code)
+}
+
+/// Both of Mango's switches for blur behind layers are on, the last word winning.
+fn blurs(conf: &str) -> bool {
+    let last = |key: &str| {
+        conf.lines().filter_map(|l| l.split_once('=')).filter(|(k, _)| k.trim() == key)
+            .last().is_some_and(|(_, v)| matches!(v.trim(), "1" | "true"))
+    };
+    last("blur") && last("blur_layer")
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn blur_needs_both_switches_and_the_last_word_wins() {
+        use super::blurs;
+        assert!(blurs("blur=1\nblur_layer=0\nblur_layer=1\n") && blurs("blur = true\nblur_layer = 1"));
+        assert!(!blurs("blur=1\nblur_layer=0\n"));
+        assert!(!blurs("blur_layer=1\n# blur=1\n"));
+    }
 }

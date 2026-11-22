@@ -30,7 +30,9 @@ impl Button {
 
     fn draw(&self, p: &mut Pen, x: f64, y: f64) {
         let inset = (BUTTON - ICON) / 2.0;
-        p.icon(self.icon, self.fill, ICON, x + inset, y + inset, p.pal.fg, 1.0);
+        // With solid icons, colour is what says it's on.
+        let tone = if self.fill { p.pal.accent } else { p.pal.fg };
+        p.icon(self.icon, self.fill, ICON, x + inset, y + inset, tone, 1.0);
         let mut r = Region::new((x, y, BUTTON, BUTTON), BUTTON / 2.0, self.left.clone()).right(self.right.clone());
         r.scroll = self.scroll;
         p.regions.push(r);
@@ -257,6 +259,124 @@ pub fn bar(p: &mut Pen, c: &Ctx, width: f64) {
         for i in (0..c.m.tray.len().min(TRAY)).rev() {
             end -= BUTTON;
             tray(p, c, i, end, y);
+        }
+    }
+}
+
+/// Either side of the middle that's kept clear for the island's capsule.
+/// ponytail: a fixed half; measure the island's if long workspace rows ever reach the chips.
+const MIDDLE: f64 = 190.0;
+const CHIP: f64 = 24.0;
+const GAP: f64 = 6.0;
+
+/// A chip: an icon, words or both, on a tint of `tint`. Returns its width.
+fn chip(p: &mut Pen, x: f64, icon: Option<&'static str>, words: &str, tint: Option<crate::theme::Rgb>, most: f64) -> f64 {
+    let y = (crate::style::BAR - CHIP) / 2.0;
+    let lead = if icon.is_some() { 20.0 } else { 0.0 };
+    let words_w = if words.is_empty() { 0.0 } else { p.width(words, 12.0, Weight::Semibold).min(most) };
+    let gap = if icon.is_some() && words.is_empty() { -4.0 } else { 0.0 };
+    let w = 8.0 + lead + gap + words_w + 8.0;
+    match tint {
+        Some(c) => p.fill((x, y, w, CHIP), 8.0, c, 1.0),
+        None => p.fill((x, y, w, CHIP), 8.0, p.pal.fg, 0.08),
+    }
+    let tone = if tint.is_some() { p.pal.on_accent } else { p.pal.fg };
+    if let Some(name) = icon {
+        p.icon(name, true, 16.0, x + 8.0, y + 4.0, tone, 1.0);
+    }
+    if !words.is_empty() {
+        p.text(words, 12.0, Weight::Semibold, tone, x + 8.0 + lead, y + CHIP / 2.0, most);
+    }
+    w
+}
+
+/// The glass bar's two outer groups: what's in front, and the state of the machine.
+pub fn glass(p: &mut Pen, c: &Ctx, width: f64) {
+    let (cfg, m, pal) = (c.cfg, c.m, p.pal);
+    let bar = crate::style::BAR;
+    let (top, cy) = ((bar - CHIP) / 2.0, bar / 2.0);
+    let target = |p: &mut Pen, x: f64, w: f64, left: Action, right: Action| {
+        p.regions.push(Region::new((x, top, w, CHIP), 8.0, left).right(right));
+    };
+
+    let (mut x, limit) = (GAP, width / 2.0 - MIDDLE);
+    if !cfg.tools.is_empty() {
+        let w = chip(p, x, Some("search"), "", None, 0.0);
+        target(p, x, w, Action::Cmd("open".into()), Action::Open("settings"));
+        x += w + GAP;
+    }
+    let front = m.clients.iter().find(|w| w.is_focused && !w.is_minimized && w.monitor == c.mon);
+    if let Some(win) = front.filter(|_| !cfg.off("title") && limit - x > 90.0) {
+        let appid = win.appid.as_deref().unwrap_or("");
+        let name = app_name(appid);
+        let words = p.width(&name, 12.0, Weight::Semibold).min(150.0_f64.min(limit - x - 36.0));
+        let w = 8.0 + 20.0 + words + 8.0;
+        p.fill((x, top, w, CHIP), 8.0, pal.fg, 0.08);
+        p.app(appid, 16.0, x + 8.0, top + 4.0, pal.fg, 1.0);
+        p.text(&name, 12.0, Weight::Semibold, pal.fg, x + 28.0, cy, words + 1.0);
+        target(p, x, w, Action::Focus(win.id), Action::None);
+        x += w + GAP;
+    }
+    if let Some(t) = m.media.as_ref().filter(|_| has(&cfg.pill, "media") && limit - x > 70.0) {
+        match &m.art_small {
+            Some(art) => p.image(art, x + 2.0, cy - 10.0, 20.0, 1.0),
+            None => p.icon("music_note", true, 16.0, x + 4.0, cy - 8.0, if t.playing { pal.accent } else { pal.muted }, 1.0),
+        }
+        let w = p.text(&t.title, 12.0, Weight::Medium, pal.muted, x + 28.0, cy, (limit - x - 28.0).min(220.0));
+        let room = (limit - x - 28.0).min(220.0);
+        target(p, x, 32.0 + w.min(room), Action::Sh("playerctl play-pause".into()), Action::Sh("playerctl next".into()));
+    }
+
+    // From the far end in, so running short of room drops from the middle outwards.
+    let (mut end, limit) = (width - GAP, width / 2.0 + MIDDLE);
+    if has(&cfg.tools, "power") {
+        end -= CHIP + 8.0;
+        let w = chip(p, end, Some("power_settings_new"), "", None, 0.0);
+        target(p, end, w, Action::Open("power"), Action::Open("settings"));
+        end -= GAP;
+    }
+    if has(&cfg.pill, "clock") {
+        let now = clock::format(&cfg.clock);
+        let w = p.width(&now, 12.0, Weight::Semibold) + 16.0;
+        end -= w;
+        chip(p, end, None, &now, Some(pal.accent), w);
+        target(p, end, w, if cfg.sidebar.is_empty() { Action::Pin } else { Action::Sidebar }, Action::Pin);
+        end -= GAP;
+    }
+    if !cfg.sidebar.is_empty() && end - BUTTON > limit {
+        end -= BUTTON;
+        Button::new("dock_to_right", m.sidebar_open, Action::Sidebar).draw(p, end, (bar - BUTTON) / 2.0);
+        end -= GAP;
+    }
+    if let Some(b) = m.battery.as_ref().filter(|_| has(&cfg.pill, "battery") && end - 64.0 > limit) {
+        let pct = format!("{:.0}%", b.pct);
+        let w = p.width(&pct, 12.0, Weight::Semibold);
+        end -= w + 22.0;
+        let tone = if b.pct <= 15.0 && !b.plugged { pal.error } else { pal.fg };
+        p.icon(battery::symbol(b.pct, b.charging), b.charging, 16.0, end, cy - 8.0, tone, 1.0);
+        p.text(&pct, 12.0, Weight::Semibold, tone, end + 19.0, cy, -1.0);
+        end -= 10.0;
+    }
+    for (i, b) in state(c).iter().enumerate().rev() {
+        // Volume comes first, and says how much.
+        let level = m.audio.as_ref().filter(|_| i == 0 && has(&cfg.panel, "audio")).map(|a| format!("{}%", a.volume));
+        let w = level.as_ref().map_or(0.0, |s| p.width(s, 12.0, Weight::Semibold) + 4.0);
+        if end - BUTTON - w < limit {
+            break;
+        }
+        end -= BUTTON + w;
+        b.draw(p, end, (bar - BUTTON) / 2.0);
+        if let (Some(level), Some(r)) = (level, p.regions.last_mut()) {
+            r.rect.2 += w;
+            p.text(&level, 12.0, Weight::Semibold, pal.fg, end + BUTTON, cy, -1.0);
+        }
+    }
+    let count = m.tray.len().min(TRAY).min(((end - limit - 12.0) / BUTTON).max(0.0) as usize);
+    if count > 0 && has(&cfg.panel, "status") {
+        end -= GAP + count as f64 * BUTTON;
+        p.fill((end, top, count as f64 * BUTTON, CHIP), CHIP / 2.0, pal.fg, 0.08);
+        for i in 0..count {
+            tray(p, c, i, end + i as f64 * BUTTON, (bar - BUTTON) / 2.0);
         }
     }
 }

@@ -3,7 +3,7 @@
 use crate::style::Style;
 use serde::Deserialize;
 use smithay_client_toolkit::seat::keyboard::Keysym;
-use std::{collections::HashMap, env, fs, path::PathBuf};
+use std::{collections::{BTreeMap, HashMap}, env, fs, path::PathBuf};
 
 pub fn home() -> PathBuf {
     env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/tmp".into())
@@ -267,10 +267,28 @@ impl Calendar {
     }
 }
 
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Blur {
+    /// For the styles made for it: glass.
+    Auto,
+    On,
+    Off,
+}
+
 /// Look and feel switches.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Ui {
+    /// See-through, so a compositor that blurs layers has something to blur.
+    pub blur: Blur,
+    /// How solid backgrounds are. Unset is the style's own.
+    pub opacity: Option<f64>,
+    /// The island's own icons are solid, like the apps' glyphs. Off draws outlines,
+    /// solid only for what's on.
+    pub solid_icons: bool,
+    /// The size of all of it: 0.75 to 2.
+    pub scale: f64,
     /// Hovering the pill opens the panel. Off leaves it to a click or the pin key.
     pub hover_open: bool,
     /// Resting on the middle of the frame's right border opens the sidebar.
@@ -281,7 +299,7 @@ pub struct Ui {
 
 impl Default for Ui {
     fn default() -> Self {
-        Ui { hover_open: true, hover_sidebar: true, hover_open_ms: 130, hover_close_ms: 280 }
+        Ui { blur: Blur::Auto, opacity: None, solid_icons: true, scale: 1.0, hover_open: true, hover_sidebar: true, hover_open_ms: 130, hover_close_ms: 280 }
     }
 }
 
@@ -372,30 +390,50 @@ impl Config {
 
     pub fn parse(src: &str) -> Result<Self, toml::de::Error> {
         let mut c: Config = toml::from_str(src)?;
-        let off = c.disable.clone();
-        for list in [&mut c.pill, &mut c.panel, &mut c.sidebar, &mut c.tools] {
-            list.retain(|n| !off.contains(n));
-        }
-        if off.iter().any(|d| d == "sidebar") {
-            c.sidebar.clear();
-        }
-        if off.iter().any(|d| d == "visualizer") {
-            c.visualizer.clear();
-        }
-        if off.iter().any(|d| d == "web") {
-            c.web_search.clear();
-        }
+        c.finish();
         Ok(c)
     }
 
-    pub fn calc(&self) -> bool {
-        !self.disable.iter().any(|d| d == "calc")
+    /// Takes out what's switched off, once everything that can switch it has had its say.
+    pub fn finish(&mut self) {
+        let off = self.disable.clone();
+        for list in [&mut self.pill, &mut self.panel, &mut self.sidebar, &mut self.tools] {
+            list.retain(|n| !off.contains(n));
+        }
+        if self.off("sidebar") {
+            self.sidebar.clear();
+        }
+        if self.off("visualizer") {
+            self.visualizer.clear();
+        }
+        if self.off("web") {
+            self.web_search.clear();
+        }
+        if self.off("notifications") {
+            self.notifications = false;
+        }
+        let ui = &mut self.ui;
+        ui.scale = if ui.scale.is_finite() { ui.scale.clamp(crate::scale::MIN, crate::scale::MAX) } else { 1.0 };
+        ui.opacity = ui.opacity.filter(|a| a.is_finite()).map(|a| a.clamp(0.3, 1.0));
     }
 
-    /// A broken config must not take the bar down with it: complain, use defaults.
-    pub fn load() -> Self {
+    pub fn off(&self, part: &str) -> bool {
+        self.disable.iter().any(|d| d == part)
+    }
+
+    pub fn calc(&self) -> bool {
+        !self.off("calc")
+    }
+
+    /// Something on screen uses it, so whatever feeds it has to run.
+    pub fn uses(&self, part: &str) -> bool {
+        [&self.pill, &self.panel, &self.sidebar, &self.tools].into_iter().flatten().any(|n| n == part)
+    }
+
+    /// config.toml as it's written. A broken one mustn't take the bar down with it: complain, use defaults.
+    pub fn written() -> Self {
         let Ok(src) = fs::read_to_string(Self::path()) else { return Config::default() };
-        match Self::parse(&src) {
+        match toml::from_str::<Config>(&src) {
             Ok(c) => {
                 c.keys.warn();
                 c
@@ -405,6 +443,27 @@ impl Config {
                 Config::default()
             }
         }
+    }
+
+    /// What's written, under what was chosen on the island.
+    pub fn load(state: &State) -> Self {
+        let mut c = Self::written();
+        state.apply(&mut c);
+        c.finish();
+        c
+    }
+
+    /// How solid backgrounds are in this style.
+    pub fn alpha(&self, style: Style) -> f64 {
+        self.ui.opacity.unwrap_or(match () {
+            _ if self.blurred(style) => 0.68,
+            _ if style == Style::Glass => 0.88,
+            _ => 1.0,
+        })
+    }
+
+    pub fn blurred(&self, style: Style) -> bool {
+        self.ui.blur == Blur::On || self.ui.blur == Blur::Auto && style == Style::Glass
     }
 }
 
@@ -420,9 +479,33 @@ pub struct State {
     pub warmth: Option<u32>,
     /// The style `island style` chose, and what config.toml said then.
     pub style: Option<(Style, Style)>,
+    /// Other settings chosen on the island: key -> the choice, and what config.toml said then.
+    pub chosen: BTreeMap<String, (String, String)>,
 }
 
 impl State {
+    /// Each choice holds until the line it overrode changes.
+    pub fn apply(&self, cfg: &mut Config) {
+        for (key, (choice, base)) in &self.chosen {
+            if crate::prefs::get(cfg, key).as_ref() == Some(base) {
+                crate::prefs::put(cfg, key, choice);
+            }
+        }
+    }
+
+    /// `written` is config.toml with no choices over it. False, and no change, if it makes no sense.
+    pub fn choose(&mut self, written: &Config, key: &str, value: &str) -> bool {
+        let (Some(base), mut probe) = (crate::prefs::get(written, key), written.clone()) else { return false };
+        if !crate::prefs::put(&mut probe, key, value) {
+            return false;
+        }
+        match crate::prefs::get(&probe, key) {
+            Some(choice) if choice != base => self.chosen.insert(key.to_owned(), (choice, base)),
+            _ => self.chosen.remove(key),
+        };
+        true
+    }
+
     /// The last word wins: the command's, until the config's line changes.
     pub fn style(&self, configured: Style) -> Style {
         match self.style {
@@ -447,6 +530,9 @@ impl State {
                 ["night"] => s.night = true,
                 ["warmth", k] => s.warmth = k.parse().ok(),
                 ["style", chosen, base] => s.style = Style::parse(chosen).zip(Style::parse(base)),
+                ["set", key, choice, base] => {
+                    s.chosen.insert(key.into(), (choice.into(), base.into()));
+                }
                 _ => {}
             }
         }
@@ -475,6 +561,9 @@ impl State {
         }
         if let Some((chosen, base)) = self.style {
             out += &format!("style {} {}\n", chosen.name(), base.name());
+        }
+        for (key, (choice, base)) in &self.chosen {
+            out += &format!("set {key} {choice} {base}\n");
         }
         out
     }
