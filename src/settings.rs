@@ -238,6 +238,30 @@ impl Default for Claude {
     }
 }
 
+/// The weather tile. Empty `location` is off: nothing runs.
+#[derive(serde::Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct Weather {
+    /// "lat,lon" or a place name. Empty turns weather off.
+    pub location: String,
+    pub units: Units,
+    /// Minutes between fetches.
+    pub interval: u64,
+}
+
+#[derive(serde::Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Units {
+    Metric,
+    Imperial,
+}
+
+impl Default for Weather {
+    fn default() -> Self {
+        Weather { location: String::new(), units: Units::Metric, interval: 30 }
+    }
+}
+
 /// The calendar, wherever it's placed.
 #[derive(serde::Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
@@ -325,6 +349,7 @@ pub struct Config {
     pub sidebar: Vec<String>,
     pub visualizer: Vec<crate::viz::Look>,
     pub calendar: Calendar,
+    pub weather: Weather,
     /// App id -> glyph, over the built-in table.
     pub icons: HashMap<String, String>,
     pub commands: Commands,
@@ -367,6 +392,7 @@ impl Default for Config {
             sidebar: list(&["media", "calendar", "controls", "notifications"]),
             visualizer: vec![crate::viz::Look::Bars, crate::viz::Look::Wave, crate::viz::Look::Ring],
             calendar: Calendar::default(),
+            weather: Weather::default(),
             icons: HashMap::new(),
             commands: Commands::default(),
             custom: Vec::new(),

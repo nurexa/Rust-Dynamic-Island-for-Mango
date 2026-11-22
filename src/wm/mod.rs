@@ -62,6 +62,8 @@ pub trait Backend {
     fn cycle(&self, forward: bool);
     /// End the session.
     fn quit(&self);
+    /// Its name, for display.
+    fn name(&self) -> &'static str;
 }
 
 /// No compositor integration: the workspaces module stays empty and every other
@@ -75,6 +77,7 @@ impl Backend for Bare {
     fn focus(&self, _: u64) {}
     fn cycle(&self, _: bool) {}
     fn quit(&self) {}
+    fn name(&self) -> &'static str { "" }
 }
 
 pub fn detect() -> Box<dyn Backend> {

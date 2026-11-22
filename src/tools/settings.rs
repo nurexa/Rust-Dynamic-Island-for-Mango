@@ -93,6 +93,11 @@ const PAGES: &[Page] = &[
         s("calendar.week_start", "Week starts on", "The calendar's first column", Kind::Pick(&["sunday", "monday", "saturday"])),
         s("calendar.dir", "Calendar folder", "Local .ics files, never the network", Kind::Text),
     ] },
+    Page { title: "Weather", icon: "partly_cloudy_day", about: "Place, units, update interval", settings: &[
+        s("weather.location", "Location", "A place name or lat,lon; empty turns weather off", Kind::Text),
+        s("weather.units", "Units", "Temperature scale", Kind::Pick(&["metric", "imperial"])),
+        s("weather.interval", "Update every", "Minutes between requests", num(&[15.0, 30.0, 60.0, 120.0], " min", 5.0, 1440.0, true)),
+    ] },
     Page { title: "Night light", icon: "bedtime", about: "Schedule, warmth, dimming", settings: &[
         s("nightlight.schedule", "Schedule", "Like 20:00-07:00, empty is by hand", Kind::Text),
         s("nightlight.warmth", "Warmth", "Lower is warmer", num(&[2500.0, 3000.0, 3400.0, 4000.0, 5000.0, 6500.0], "K", 2500.0, 6500.0, true)),

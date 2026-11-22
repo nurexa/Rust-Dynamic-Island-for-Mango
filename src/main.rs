@@ -31,6 +31,7 @@ mod theme;
 mod timer;
 mod tools;
 mod viz;
+mod weather;
 mod wm;
 
 use cairo::ImageSurface;
@@ -109,6 +110,7 @@ pub enum Msg {
     Monitors(Vec<wm::Monitor>),
     Clients(Vec<wm::Client>),
     Custom(String, String),
+    Weather(weather::Now),
     Audio(audio::State),
     Sys(sys::Snapshot),
     Media(Option<bus::Track>),
@@ -142,6 +144,10 @@ pub struct Model {
     pub monitors: Vec<wm::Monitor>,
     pub clients: Vec<wm::Client>,
     pub custom: HashMap<String, String>,
+    /// Last good forecast; None while `[weather] location` is empty or nothing has arrived.
+    pub weather: Option<weather::Now>,
+    /// The compositor's name ("Mango", "Hyprland"), empty if unsupported.
+    pub wm: &'static str,
     pub sys: sys::Snapshot,
     pub audio: Option<audio::State>,
     pub brightness: Option<u32>,
@@ -358,6 +364,10 @@ impl App {
         }
         if cfg.custom != self.cfg.custom {
             modules::custom::spawn(&cfg.custom, self.tx.clone());
+        }
+        if cfg.weather != self.cfg.weather {
+            self.model.weather = None;
+            weather::spawn(&cfg.weather, self.tx.clone());
         }
         self.cfg = cfg;
         if remake {
@@ -892,6 +902,12 @@ impl App {
             Msg::Camera(who) => {
                 self.model.camera = who;
                 self.all(true, false);
+            }
+            Msg::Weather(w) => {
+                if self.model.weather.as_ref() != Some(&w) {
+                    self.model.weather = Some(w);
+                    self.all(false, true);
+                }
             }
             Msg::Sys(s) => {
                 if s != self.model.sys {
@@ -2049,6 +2065,7 @@ fn main() {
     let wm = wm::detect();
     wm.watch(tx.clone());
     modules::custom::spawn(&cfg.custom, tx.clone());
+    weather::spawn(&cfg.weather, tx.clone());
     let cfg_notifications = cfg.notifications;
     watch_theme(&cfg.palette, tx.clone());
     let night = nightlight::Night::new(&globals, &qh, &cfg.nightlight, state.night, state.warmth);
@@ -2078,7 +2095,7 @@ fn main() {
         had_panel: false,
         calendar_range: None,
         under_pointer: None,
-        model: Model { monitors: Vec::new(), clients: Vec::new(), custom: HashMap::new(), sys: sys::Snapshot::default(),
+        model: Model { monitors: Vec::new(), clients: Vec::new(), custom: HashMap::new(), weather: None, wm: wm.name(), sys: sys::Snapshot::default(),
                        audio: None, brightness: brightness::read(&cfg.commands), media: None, art_small: None, art_large: None, net: net::State::Unknown, bluetooth: None,
                        radio: None, levels: [0.0; viz::BANDS], calendar: Default::default(), sidebar_open: false,
                        can_capture: !cfg.visualizer.is_empty() && tools::on_path("parec"),

@@ -147,6 +147,9 @@ pub fn run() -> ! {
             r.warn(&format!("{name}: missing {}", missing.join(", ")), &format!("Install {pkg}. Until then it stays hidden."));
         }
     }
+    if !cfg.weather.location.is_empty() {
+        r.check(on_path("curl"), "Weather: curl", "Install curl; the weather tile fetches with it and stays empty until then.");
+    }
     if output("busctl", &["--system", "status", "org.bluez"]).is_some() {
         r.ok("Bluetooth (BlueZ)");
     } else {

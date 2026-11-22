@@ -77,6 +77,10 @@ fn stream(what: &str, tx: crate::Tx, parse: fn(&str) -> serde_json::Result<Msg>)
 pub struct Mango;
 
 impl Backend for Mango {
+    fn name(&self) -> &'static str {
+        "Mango"
+    }
+
     fn watch(&self, tx: crate::Tx) {
         stream("all-monitors", tx.clone(), |l| Ok(Msg::Monitors(serde_json::from_str::<Monitors>(l)?.monitors)));
         stream("all-clients", tx, |l| Ok(Msg::Clients(serde_json::from_str::<Clients>(l)?.clients)));

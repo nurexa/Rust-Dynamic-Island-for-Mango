@@ -10,7 +10,7 @@ use std::{
     os::unix::process::CommandExt,
     path::PathBuf,
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
-    sync::mpsc,
+    sync::{OnceLock, mpsc},
     thread,
     time::Instant,
 };
@@ -26,6 +26,8 @@ pub struct Snapshot {
     pub tx: f64,
     /// Percent, charging.
     pub battery: Option<(f64, bool)>,
+    /// Seconds since boot.
+    pub uptime: Option<u64>,
 }
 
 #[repr(C)]
@@ -114,6 +116,54 @@ fn parse_net(src: &str) -> (u64, u64) {
         }
     }
     sum
+}
+
+fn parse_uptime(src: &str) -> Option<u64> {
+    src.split_whitespace().next()?.parse::<f64>().ok().map(|s| s as u64)
+}
+
+/// "4 min", "3 h 12 min", "2 d 5 h".
+#[allow(dead_code)] // until the tile grid draws it
+pub fn uptime_text(secs: u64) -> String {
+    let (m, h, d) = (secs / 60 % 60, secs / 3600 % 24, secs / 86400);
+    match (d, h) {
+        (0, 0) => format!("{m} min"),
+        (0, _) => format!("{h} h {m} min"),
+        _ => format!("{d} d {h} h"),
+    }
+}
+
+/// What this machine is, read once.
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct About {
+    pub distro: String,
+    pub kernel: String,
+    pub user: String,
+    pub host: String,
+}
+
+#[allow(dead_code)] // until the tile grid draws it
+#[allow(dead_code)]
+pub fn about() -> &'static About {
+    static ABOUT: OnceLock<About> = OnceLock::new();
+    ABOUT.get_or_init(|| {
+        let file = |p: &str| fs::read_to_string(p).unwrap_or_default().trim().to_owned();
+        let release = fs::read_to_string("/etc/os-release").or_else(|_| fs::read_to_string("/usr/lib/os-release")).unwrap_or_default();
+        About {
+            distro: os_name(&release),
+            kernel: file("/proc/sys/kernel/osrelease"),
+            user: std::env::var("USER").unwrap_or_default(),
+            host: file("/proc/sys/kernel/hostname"),
+        }
+    })
+}
+
+/// PRETTY_NAME, else NAME, from an os-release file.
+#[allow(dead_code)]
+fn os_name(src: &str) -> String {
+    let get = |key: &str| src.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix('=')).map(|v| v.trim().trim_matches('"').to_owned());
+    get("PRETTY_NAME").or_else(|| get("NAME")).unwrap_or_default()
 }
 
 fn battery() -> Option<(f64, bool)> {
@@ -262,6 +312,7 @@ impl Sampler {
             rx,
             tx,
             battery: battery(),
+            uptime: fs::read_to_string("/proc/uptime").ok().as_deref().and_then(parse_uptime),
         }
     }
 
@@ -278,5 +329,15 @@ mod tests {
                    Some((600.0 * 1024.0, 1000.0 * 1024.0)));
         let net = "Inter|\n face |\n    lo: 999 0 0 0 0 0 0 0 999 0\n wlan0: 100 1 0 0 0 0 0 0 50 1 0 0 0 0 0 0\n";
         assert_eq!(parse_net(net), (100, 50));
+        assert_eq!(parse_uptime("12345.67 9999.1\n"), Some(12345));
+        assert_eq!(os_name("NAME=\"Arch\"\nPRETTY_NAME=\"Arch Linux\"\n"), "Arch Linux");
+        assert_eq!(os_name("NAME=Foo\n"), "Foo");
+    }
+
+    #[test]
+    fn uptime_reads_short() {
+        assert_eq!(uptime_text(240), "4 min");
+        assert_eq!(uptime_text(3 * 3600 + 12 * 60 + 5), "3 h 12 min");
+        assert_eq!(uptime_text(2 * 86400 + 5 * 3600 + 900), "2 d 5 h");
     }
 }

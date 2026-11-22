@@ -37,6 +37,11 @@ hover_sidebar = true              # resting on the middle of the frame's right b
 dir = ""                          # a folder of .ics files (vdirsyncer's, or exports) for dots and what's next; never the network
 week_start = "sunday"             # or "monday", "saturday"
 
+[weather]                         # the weather tile; needs curl, asks open-meteo.com (no key)
+location = ""                     # "52.52,13.40" or a place name like "Berlin"; empty turns weather off
+units = "metric"                  # or "imperial"
+interval = 30                     # minutes between updates
+
 # Palette keys. A list replaces the default, [] turns the action off.
 # Chords: ctrl+ alt+ shift+ then a letter or enter, escape, tab, space, backspace,
 # up, down, pageup, pagedown. Modifiers must match exactly. Typing and plain

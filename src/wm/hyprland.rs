@@ -132,6 +132,10 @@ fn relevant(event: &str) -> bool {
 pub struct Hyprland;
 
 impl Backend for Hyprland {
+    fn name(&self) -> &'static str {
+        "Hyprland"
+    }
+
     fn watch(&self, tx: crate::Tx) {
         let (poke, poked) = mpsc::channel::<Option<u64>>();
         let reader_tx = tx.clone();
