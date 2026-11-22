@@ -85,9 +85,9 @@ doctor` says so.
 | Mic and camera dots | | The pill, while an app uses them |
 | Claude Code status | | The pill, with permission cards |
 
-**Every part is optional.** Leave it out of a list in the config, or leave it out of the
-binary with a Cargo feature. A tool costs nothing until you open it: its list is built
-on demand and dropped when it closes.
+**Every part is optional.** Switch it off in Settings or the config, or install with
+`--light`. Tools can also be left out of the binary with a Cargo feature. A tool costs
+nothing until you open it: its list is built on demand and dropped when it closes.
 
 The island doesn't replace your lock screen, idle daemon or polkit agent. Those guard
 your session, and they should stay small, separate programs.
@@ -102,34 +102,36 @@ measured on Nov 2 and is shown for reference, not ranked.
 
 | | Waybar | Island | mangobar, on Nov 2 |
 |---|---|---|---|
-| Real memory (PSS) | 37.0 MB | **15.2 MB** | 18.6 MB |
-| Resident memory (RSS) | 59.7 MB | **35.9 MB** | 40.6 MB |
-| CPU per workspace switch | n/a | 0.5 ms | 0.5 ms |
-| Bar startup | 98 ms | **33 ms** | 50 ms |
-| Idle wakeups per second | **0.8** | 4.7 | 12.0 |
-| Idle CPU, across all runs | 0–0.03% | 0–0.03% | 0–0.07% |
-| Binary size | 3.8 MB | **3.7 MB** | 0.3 MB |
+| Real memory (PSS) | 28.0 MB | **11.8 MB** | 18.6 MB |
+| Resident memory (RSS) | 58.8 MB | **33.2 MB** | 40.6 MB |
+| CPU per workspace switch | n/a | 1.0 ms | 0.5 ms |
+| Bar startup | 95 ms | **46 ms** | 50 ms |
+| Idle wakeups per second | **3.4** | 6.3 | 12.0 |
+| Idle CPU, across all runs | 0.03–0.1% | **0%** | 0–0.07% |
+| Binary size | 3.8 MB | 3.8 MB | 0.3 MB |
 
 Waybar's stock config has no module for Mango's workspaces, so it redraws nothing on a switch
 and that cell is n/a. The island's switch cost is counted in 10 ms clock ticks over 40
 switches, so 0.25 ms is the resolution.
 
-Absolute memory moves with what else is running, so compare within a session. The island's
-Nov 2 build read 12.5 MB that day, beside mangobar's 18.6 MB. The same build read
-14.8 MB in this session, so everything added since costs 0.4 MB and
-0.6 idle wakeups a second.
+Absolute numbers move with what else is running, so compare within a session: startup,
+wakeups and switch cost varied widely between these runs, memory hardly at all. The previous
+build, without glass, settings and scale, read 12.5 MB PSS and 34.9 MB RSS in the same
+rotation, so this one is lighter by 0.7 MB and 1.7 MB.
 
-Each style at rest (median of 3):
+Each style at rest, and the light setup (median of 3):
 
-| | pill | frame | notch | bar | split | minimal |
-|---|---|---|---|---|---|---|
-| PSS, MB | 14.8 | 14.7 | 14.6 | 14.5 | 14.7 | 12.9 |
-| CPU per switch, ms | 0.75 | 0.75 | 0.5 | 0.75 | 0.5 | 0.5 |
+| | pill | frame | notch | bar | glass | split | minimal | light setup |
+|---|---|---|---|---|---|---|---|---|
+| PSS, MB | 11.8 | 12.4 | 11.8 | 12.1 | 12.6 | 11.9 | 10.6 | 11.5 |
+| CPU per switch, ms | 1.75 | 0.5 | 0.75 | 1.25 | 1.25 | 1.0 | 0.75 | 0.75 |
 
-While music plays, the pill's bars cost 0.6% of one core, the panel's wave and ring 1.4%,
-and the sidebar's 1.6% (fed synthetic audio). Paused, they cost nothing measurable and
-capture stops. The sidebar takes about 4 MB while it's open and the palette about 3 MB;
-the launcher is on screen 10 ms after its key. A busy desktop moves these numbers,
+Blur is Mango's work, on the GPU, and isn't counted in the island's numbers.
+
+While music plays, the pill's bars cost 0.9% of one core, the panel's wave and ring 2.7%,
+and the sidebar's 3.0% (fed synthetic audio). Paused, they cost 0.01% and
+capture stops. The sidebar takes about 4 MB while it's open and the palette about 3.5 MB;
+the launcher is on screen 14 ms after its key. A busy desktop moves these numbers,
 so rerun it on yours.
 
 Run `bench/run.py` to reproduce this (`BASELINE=path/to/older/island` adds an older build);
@@ -232,7 +234,8 @@ is taken only while the palette is open, and goes straight back afterwards.
 Notifications appear in the pill and leave on their own. Hover one to hold it, click it
 to open or dismiss, and right-click to dismiss. Critical ones stay until you deal with
 them. `island dnd` turns on do not disturb, which keeps notifications in the panel's
-history without showing them.
+history without showing them. Switching notifications off in Settings hands them to
+another daemon at once, if one is running (the installer masks dunst; `--undo` brings it back).
 
 Several from one app within a few seconds share one card that shows the newest and a
 `+N` count. The history groups them by app: click an app's header to see all of them,

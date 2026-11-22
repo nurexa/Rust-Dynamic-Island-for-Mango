@@ -3,258 +3,272 @@
   "waybar_version": "Waybar v0.16.0",
   "binary_mb": {
     "waybar": 3.8,
-    "island": 3.7
+    "island": 3.8
   },
   "median": {
     "waybar": {
-      "startup_ms": 98,
-      "pss_mb": 37.0,
-      "rss_mb": 59.7,
+      "startup_ms": 95,
+      "pss_mb": 28.0,
+      "rss_mb": 58.8,
       "threads": 21,
       "processes": 1,
       "idle_cpu_pct": 0.033,
-      "idle_wakeups_per_s": 0.8,
+      "idle_wakeups_per_s": 3.4,
       "switch_cpu_ms": 0.0
     },
     "island": {
-      "startup_ms": 33,
-      "pss_mb": 15.2,
-      "rss_mb": 35.9,
-      "threads": 15,
-      "processes": 2,
-      "idle_cpu_pct": 0.0,
-      "idle_wakeups_per_s": 4.7,
-      "switch_cpu_ms": 0.5,
-      "morph_cpu_ms": 42.0
-    },
-    "island_before": {
-      "startup_ms": 42,
-      "pss_mb": 14.8,
-      "rss_mb": 35.4,
+      "startup_ms": 46,
+      "pss_mb": 11.8,
+      "rss_mb": 33.2,
       "threads": 14,
       "processes": 2,
       "idle_cpu_pct": 0.0,
-      "idle_wakeups_per_s": 4.1,
-      "switch_cpu_ms": 1.75
+      "idle_wakeups_per_s": 6.3,
+      "switch_cpu_ms": 1.0,
+      "morph_cpu_ms": 60.0
+    },
+    "island_before": {
+      "startup_ms": 57,
+      "pss_mb": 12.5,
+      "rss_mb": 34.9,
+      "threads": 15,
+      "processes": 2,
+      "idle_cpu_pct": 0.0,
+      "idle_wakeups_per_s": 8.5,
+      "switch_cpu_ms": 1.0
     },
     "launcher_ms": {
-      "island": 10
+      "island": 14
     },
     "island_palette_pss_mb": {
-      "idle": 18.1,
-      "open": 21.2,
-      "after": 19.4
+      "idle": 11.8,
+      "open": 15.3,
+      "after": 13.3
     },
     "island_styles": {
       "pill": {
-        "pss_mb": 14.8,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.7,
-        "switch_cpu_ms": 0.75
+        "pss_mb": 11.8,
+        "idle_cpu_pct": 0.2,
+        "idle_wakeups_per_s": 15.3,
+        "switch_cpu_ms": 1.75
       },
       "minimal": {
-        "pss_mb": 12.9,
+        "pss_mb": 10.6,
         "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.7,
-        "switch_cpu_ms": 0.5
-      },
-      "split": {
-        "pss_mb": 14.7,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.7,
-        "switch_cpu_ms": 0.5
-      },
-      "notch": {
-        "pss_mb": 14.6,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.7,
-        "switch_cpu_ms": 0.5
-      },
-      "bar": {
-        "pss_mb": 14.5,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.7,
+        "idle_wakeups_per_s": 6.8,
         "switch_cpu_ms": 0.75
       },
-      "frame": {
-        "pss_mb": 14.7,
+      "split": {
+        "pss_mb": 11.9,
         "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.9,
+        "idle_wakeups_per_s": 9.2,
+        "switch_cpu_ms": 1.0
+      },
+      "notch": {
+        "pss_mb": 11.8,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 6.7,
+        "switch_cpu_ms": 0.75
+      },
+      "bar": {
+        "pss_mb": 12.1,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 8.1,
+        "switch_cpu_ms": 1.25
+      },
+      "frame": {
+        "pss_mb": 12.4,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 7.0,
+        "switch_cpu_ms": 0.5
+      },
+      "glass": {
+        "pss_mb": 12.6,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 8.5,
+        "switch_cpu_ms": 1.25
+      },
+      "light": {
+        "pss_mb": 11.5,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 5.0,
         "switch_cpu_ms": 0.75
       }
     },
     "island_live": {
-      "pill_bars_cpu_pct": 0.64,
-      "panel_wave_ring_cpu_pct": 1.43,
-      "sidebar_wave_ring_cpu_pct": 1.61,
-      "sidebar_open_paused_cpu_pct": 0.02,
-      "sidebar_open_pss_mb": 20.2,
-      "sidebar_closed_pss_mb": 16.2,
-      "paused_cpu_pct": 0.0
+      "pill_bars_cpu_pct": 0.9,
+      "panel_wave_ring_cpu_pct": 2.74,
+      "sidebar_wave_ring_cpu_pct": 2.98,
+      "sidebar_open_paused_cpu_pct": 0.01,
+      "sidebar_open_pss_mb": 18.0,
+      "sidebar_closed_pss_mb": 14.3,
+      "paused_cpu_pct": 0.01
     }
   },
   "runs": {
     "waybar": [
       {
-        "startup_ms": 215,
-        "pss_mb": 36.2,
-        "rss_mb": 59.4,
+        "startup_ms": 99,
+        "pss_mb": 28.4,
+        "rss_mb": 58.8,
         "threads": 21,
         "processes": 1,
-        "idle_cpu_pct": 0.033,
-        "idle_wakeups_per_s": 0.8,
+        "idle_cpu_pct": 0.067,
+        "idle_wakeups_per_s": 3.4,
         "switch_cpu_ms": 0.0
       },
       {
-        "startup_ms": 78,
-        "pss_mb": 37.0,
-        "rss_mb": 59.7,
+        "startup_ms": 77,
+        "pss_mb": 27.8,
+        "rss_mb": 58.9,
         "threads": 21,
         "processes": 1,
         "idle_cpu_pct": 0.033,
-        "idle_wakeups_per_s": 0.9,
+        "idle_wakeups_per_s": 2.9,
         "switch_cpu_ms": 0.0
       },
       {
-        "startup_ms": 98,
-        "pss_mb": 37.1,
-        "rss_mb": 59.8,
+        "startup_ms": 121,
+        "pss_mb": 27.7,
+        "rss_mb": 58.7,
         "threads": 21,
         "processes": 1,
         "idle_cpu_pct": 0.033,
-        "idle_wakeups_per_s": 0.8,
+        "idle_wakeups_per_s": 5.9,
+        "switch_cpu_ms": 0.5
+      },
+      {
+        "startup_ms": 95,
+        "pss_mb": 28.0,
+        "rss_mb": 58.9,
+        "threads": 21,
+        "processes": 1,
+        "idle_cpu_pct": 0.1,
+        "idle_wakeups_per_s": 6.9,
         "switch_cpu_ms": 0.0
       },
       {
-        "startup_ms": 71,
-        "pss_mb": 37.1,
-        "rss_mb": 59.8,
+        "startup_ms": 80,
+        "pss_mb": 28.0,
+        "rss_mb": 58.6,
         "threads": 21,
         "processes": 1,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 0.9,
+        "idle_cpu_pct": 0.033,
+        "idle_wakeups_per_s": 3.0,
         "switch_cpu_ms": 0.25
-      },
-      {
-        "startup_ms": 232,
-        "pss_mb": 37.0,
-        "rss_mb": 59.7,
-        "threads": 21,
-        "processes": 1,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 0.8,
-        "switch_cpu_ms": 0.0
       }
     ],
     "island": [
       {
-        "startup_ms": 65,
-        "pss_mb": 14.9,
-        "rss_mb": 35.9,
+        "startup_ms": 46,
+        "pss_mb": 11.7,
+        "rss_mb": 33.2,
         "threads": 15,
         "processes": 2,
         "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.7,
-        "switch_cpu_ms": 0.5
-      },
-      {
-        "startup_ms": 33,
-        "pss_mb": 15.3,
-        "rss_mb": 36.1,
-        "threads": 15,
-        "processes": 2,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.7,
-        "switch_cpu_ms": 1.5
-      },
-      {
-        "startup_ms": 31,
-        "pss_mb": 15.2,
-        "rss_mb": 35.8,
-        "threads": 15,
-        "processes": 2,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.7,
-        "switch_cpu_ms": 0.5
-      },
-      {
-        "startup_ms": 31,
-        "pss_mb": 15.2,
-        "rss_mb": 35.9,
-        "threads": 15,
-        "processes": 2,
-        "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.7,
-        "switch_cpu_ms": 0.5
-      },
-      {
-        "startup_ms": 33,
-        "pss_mb": 15.0,
-        "rss_mb": 35.9,
-        "threads": 15,
-        "processes": 2,
-        "idle_cpu_pct": 0.033,
-        "idle_wakeups_per_s": 4.7,
+        "idle_wakeups_per_s": 7.2,
         "switch_cpu_ms": 1.0
+      },
+      {
+        "startup_ms": 53,
+        "pss_mb": 11.7,
+        "rss_mb": 33.2,
+        "threads": 15,
+        "processes": 2,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 7.8,
+        "switch_cpu_ms": 1.25
+      },
+      {
+        "startup_ms": 36,
+        "pss_mb": 11.8,
+        "rss_mb": 33.0,
+        "threads": 14,
+        "processes": 2,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 5.1,
+        "switch_cpu_ms": 0.5
+      },
+      {
+        "startup_ms": 86,
+        "pss_mb": 11.8,
+        "rss_mb": 33.2,
+        "threads": 14,
+        "processes": 2,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 6.3,
+        "switch_cpu_ms": 1.25
+      },
+      {
+        "startup_ms": 33,
+        "pss_mb": 11.8,
+        "rss_mb": 33.1,
+        "threads": 14,
+        "processes": 2,
+        "idle_cpu_pct": 0.0,
+        "idle_wakeups_per_s": 6.0,
+        "switch_cpu_ms": 0.75
       }
     ],
     "island_before": [
       {
-        "startup_ms": 42,
-        "pss_mb": 14.5,
-        "rss_mb": 35.4,
-        "threads": 14,
-        "processes": 2,
-        "idle_cpu_pct": 0.033,
-        "idle_wakeups_per_s": 4.1,
-        "switch_cpu_ms": 1.25
-      },
-      {
-        "startup_ms": 40,
-        "pss_mb": 14.8,
-        "rss_mb": 35.3,
-        "threads": 14,
+        "startup_ms": 69,
+        "pss_mb": 12.4,
+        "rss_mb": 34.9,
+        "threads": 15,
         "processes": 2,
         "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.0,
-        "switch_cpu_ms": 3.5
+        "idle_wakeups_per_s": 6.5,
+        "switch_cpu_ms": 1.0
       },
       {
-        "startup_ms": 56,
-        "pss_mb": 14.9,
-        "rss_mb": 35.6,
-        "threads": 14,
+        "startup_ms": 57,
+        "pss_mb": 12.5,
+        "rss_mb": 35.0,
+        "threads": 15,
+        "processes": 2,
+        "idle_cpu_pct": 0.133,
+        "idle_wakeups_per_s": 13.6,
+        "switch_cpu_ms": 1.0
+      },
+      {
+        "startup_ms": 101,
+        "pss_mb": 12.5,
+        "rss_mb": 34.9,
+        "threads": 15,
+        "processes": 2,
+        "idle_cpu_pct": 0.167,
+        "idle_wakeups_per_s": 14.8,
+        "switch_cpu_ms": 0.75
+      },
+      {
+        "startup_ms": 48,
+        "pss_mb": 12.7,
+        "rss_mb": 34.9,
+        "threads": 15,
         "processes": 2,
         "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.0,
-        "switch_cpu_ms": 4.0
+        "idle_wakeups_per_s": 8.5,
+        "switch_cpu_ms": 1.0
       },
       {
         "startup_ms": 32,
-        "pss_mb": 14.9,
-        "rss_mb": 35.6,
-        "threads": 14,
+        "pss_mb": 12.7,
+        "rss_mb": 35.0,
+        "threads": 15,
         "processes": 2,
         "idle_cpu_pct": 0.0,
-        "idle_wakeups_per_s": 4.1,
-        "switch_cpu_ms": 1.75
-      },
-      {
-        "startup_ms": 110,
-        "pss_mb": 14.8,
-        "rss_mb": 35.3,
-        "threads": 13,
-        "processes": 2,
-        "idle_cpu_pct": 0.033,
-        "idle_wakeups_per_s": 4.9,
-        "switch_cpu_ms": 1.25
+        "idle_wakeups_per_s": 6.5,
+        "switch_cpu_ms": 1.0
       }
     ]
   },
   "notes": [
-    "2026-11-22. Waybar uses its stock config, which shows no Mango workspaces, so its switch_cpu_ms measures no redraw.",
-    "island_before is the 2026-11-02 binary in the same rotation.",
-    "island_styles and island_live were re-measured straight afterwards: another job saturated the CPU during that phase of the first pass."
+    "2026-11-22, second session. Waybar uses its stock config, which shows no Mango workspaces, so its switch_cpu_ms measures no redraw.",
+    "island_before is commit 7e93ced, the previous build of this branch, in the same rotation.",
+    "island_styles.light is the install.sh light setup in the pill style.",
+    "Idle wakeups, startup and switch cost varied widely between runs in this session; memory did not.",
+    "Live numbers were re-measured in alternation because they read higher than the last session: morph 67 ms here and 70 ms for island_before, panel visualizers 3.07% and 2.96% (6 pairs, each ranging 2.4 to 4.0%)."
   ],
   "not_remeasured": {
     "date": "2026-11-02",

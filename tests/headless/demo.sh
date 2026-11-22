@@ -8,6 +8,7 @@ H=$(dirname "$(readlink -f "$0")")
 ROOT=$(readlink -f "$H/../..")
 $H/fresh.sh 1 >/dev/null; rm -f $H/run/island/state
 source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
+stop(){ for f in $R/*pid; do for p in $(cat "$f"); do grep -qzxF "XDG_RUNTIME_DIR=$R" /proc/$p/environ 2>/dev/null && kill $p; done; done; }
 
 # The owner's two wallpapers: their cached stills and thumbnails stand in for the videos.
 WC=${WALL_CACHE:-$HOME/.cache/wallpapers}
@@ -58,7 +59,9 @@ win 1 steam "sleep 999"
 win 1 kitty "sleep 999"
 win 1 zen "sleep 999"
 
-nohup setsid awww-daemon >/dev/null 2>&1 & echo $! > $R/awww.pid
+# A cache of its own: on yours it would restore, and record, your wallpaper.
+export XDG_CACHE_HOME=$R/cache
+nohup setsid awww-daemon --no-cache >/dev/null 2>&1 & echo $! > $R/awww.pid
 sleep .5; awww img $R/$A.png --transition-type none >/dev/null 2>&1
 
 # Private history and app list: nothing from this machine's user can show up.
@@ -82,7 +85,7 @@ pos(){ read -r _ _ X Y < <(grep pos $R/island/state); X=${X%.*}; Y=${Y%.*}; }
 
 sleep 5                                   # the pill, windows running behind it
 $V path 1400 620 1000 24 24 12; sleep 9   # hover: the panel, with its volume and brightness sliders
-[ -n "$CALIB" ] && { grim $R/calib.png; for f in $R/*pid; do kill $(cat "$f") 2>/dev/null; done; kill $CAP; exit; }
+[ -n "$CALIB" ] && { grim $R/calib.png; stop; kill $CAP; exit; }
 $V path 1000 24 $SL_X0 $VOL_Y 14 12; sleep 1
 $V drag $((SL_X1-SL_X0)) 0 20 25; sleep 3
 $V path $SL_X1 $VOL_Y $SL_X1 $BRI_Y 8 12; $V drag $((SL_X0-SL_X1)) 0 20 25; sleep 4
@@ -119,4 +122,4 @@ ffmpeg -nostdin -v error -y -framerate "$FPS" -pattern_type glob -i "$F/*.ppm" \
   -vf "$CROP,format=yuv420p" -c:v libx264 -crf 20 -preset slow -movflags +faststart -an "$ROOT/docs/demo.mp4"
 ls -la --block-size=K "$ROOT/docs/demo.mp4" | awk '{print $5}'
 ls -la --block-size=K "$ROOT/docs/demo.gif" | awk '{print $5}'
-for f in $R/*pid; do kill $(cat "$f") 2>/dev/null; done
+stop

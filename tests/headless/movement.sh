@@ -44,7 +44,7 @@ $V click 1000 22 m; sleep .1; $V move 1500 900; sleep .9; grim $H/run/e8.png
 ok "tuck: pill gone, sliver left" "$(px $H/run/e8.png 1000 20) | $(grep -c tucked $S)" "$WIN | 1"
 ok "tuck: windows never move" "$(winy)" 12
 $V move 960 4; sleep 1; grim $H/run/e9.png
-ok "tuck: hover opens panel" "$(px $H/run/e9.png 1100 38 opaque)" yes
+ok "tuck: hover opens panel" "$(px $H/run/e9.png 1030 38 opaque)" yes
 $V move 1500 900; sleep .9; grim $H/run/e10.png
 ok "tuck: leaving returns to sliver" "$(px $H/run/e10.png 1000 20)" "$WIN"
 $H/isl; sleep .3; $V move 1500 900; sleep .6
@@ -53,7 +53,7 @@ $V move 960 4; sleep 1; $V click 1173 38; sleep .1; $V move 1500 900; sleep .9
 ok "untuck from panel button" "$(grep -c tucked $S)" 0
 
 $V move 960 22; sleep 1; $V click 1000 225; sleep .2; $V move 1500 900; sleep .9; grim $H/run/e11.png
-ok "pin: background click keeps it open" "$(px $H/run/e11.png 1100 38 opaque) $(grep -c pinned $S)" "yes 1"
+ok "pin: background click keeps it open" "$(px $H/run/e11.png 1030 38 opaque) $(grep -c pinned $S)" "yes 1"
 $V move 960 22; sleep .5; $V click 1000 225; sleep .2; $V move 1500 900; sleep .9; grim $H/run/e12.png
 ok "unpin" "$(px $H/run/e12.png 1100 38) $(grep -c pinned $S)" "$WIN 0"
 echo "$(cat $XDG_RUNTIME_DIR/island.log | tail -3)"

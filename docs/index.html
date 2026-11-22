@@ -184,7 +184,7 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
 
   <section id="parts">
     <h2>Twenty-four parts you can leave out</h2>
-    <p class="lede">Every part is optional. Turn it off in the config, or leave it out of the build. A tool costs nothing until you open it.</p>
+    <p class="lede">Every part is optional. Turn it off in Settings, in the config or at install with <code>--light</code>. Tools can be left out of the build too, and cost nothing until you open them.</p>
     <div class="parts">
       <div class="part"><b>Bar</b><span>Workspaces, media, stats, audio, tray. Replaces Waybar.</span></div>
       <div class="part"><b>App search</b><span>Favourites rise to the top. Replaces rofi.</span></div>
@@ -225,29 +225,29 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
       <div class="metric">
         <h3>Real memory (PSS)</h3>
         <p>Memory shared with other apps is split fairly between them.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(41.1% - 30px)" data-tip="Island: 15.2 MB"></div><span class="value">15.2 MB</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 37.0 MB"></div><span class="value">37.0 MB</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(50.3% - 36px)" data-tip="mangobar: 18.6 MB"></div><span class="value">18.6 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(42.1% - 30px)" data-tip="Island: 11.8 MB"></div><span class="value">11.8 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 28.0 MB"></div><span class="value">28.0 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(66.4% - 48px)" data-tip="mangobar: 18.6 MB"></div><span class="value">18.6 MB</span></div></div>
       </div>
       <div class="metric">
         <h3>Resident memory (RSS)</h3>
         <p>Everything mapped in, shared libraries and fonts included.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(60.1% - 43px)" data-tip="Island: 35.9 MB"></div><span class="value">35.9 MB</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 59.7 MB"></div><span class="value">59.7 MB</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(68.0% - 49px)" data-tip="mangobar: 40.6 MB"></div><span class="value">40.6 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(56.5% - 41px)" data-tip="Island: 33.2 MB"></div><span class="value">33.2 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 58.8 MB"></div><span class="value">58.8 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(69.0% - 50px)" data-tip="mangobar: 40.6 MB"></div><span class="value">40.6 MB</span></div></div>
       </div>
       <div class="metric">
         <h3>Bar startup</h3>
         <p>From launch to first frame on screen.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(33.7% - 24px)" data-tip="Island: 33 ms"></div><span class="value">33 ms</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 98 ms"></div><span class="value">98 ms</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(51.0% - 37px)" data-tip="mangobar: 50 ms"></div><span class="value">50 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(48.4% - 35px)" data-tip="Island: 46 ms"></div><span class="value">46 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 95 ms"></div><span class="value">95 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(52.6% - 38px)" data-tip="mangobar: 50 ms"></div><span class="value">50 ms</span></div></div>
       </div>
       <div class="metric">
         <h3>Idle wakeups per second</h3>
         <p>How often it wakes up doing nothing. Waybar wins this one.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(39.2% - 28px)" data-tip="Island: 4.7"></div><span class="value">4.7</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(6.7% - 5px)" data-tip="Waybar: 0.8"></div><span class="value">0.8</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(52.5% - 38px)" data-tip="Island: 6.3"></div><span class="value">6.3</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(28.3% - 20px)" data-tip="Waybar: 3.4"></div><span class="value">3.4</span></div></div>
         <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(100.0% - 72px)" data-tip="mangobar: 12.0"></div><span class="value">12.0</span></div></div>
       </div>
     </div>
@@ -256,17 +256,17 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
         <caption>Everything we measured</caption>
         <thead><tr><th scope="col">Median of 5 runs</th><th scope="col">Waybar</th><th scope="col">Island</th><th scope="col">mangobar, on Nov 2</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Real memory (PSS)</th><td>37.0 MB</td><td>15.2 MB</td><td>18.6 MB</td></tr>
-          <tr><th scope="row">Resident memory (RSS)</th><td>59.7 MB</td><td>35.9 MB</td><td>40.6 MB</td></tr>
-          <tr><th scope="row">CPU per workspace switch</th><td>n/a</td><td>0.5 ms</td><td>0.5 ms</td></tr>
-          <tr><th scope="row">Bar startup</th><td>98 ms</td><td>33 ms</td><td>50 ms</td></tr>
-          <tr><th scope="row">Idle wakeups per second</th><td>0.8</td><td>4.7</td><td>12.0</td></tr>
-          <tr><th scope="row">Idle CPU, across all runs</th><td>0–0.03%</td><td>0–0.03%</td><td>0–0.07%</td></tr>
-          <tr><th scope="row">Binary size</th><td>3.8 MB</td><td>3.7 MB</td><td>0.3 MB</td></tr>
+          <tr><th scope="row">Real memory (PSS)</th><td>28.0 MB</td><td>11.8 MB</td><td>18.6 MB</td></tr>
+          <tr><th scope="row">Resident memory (RSS)</th><td>58.8 MB</td><td>33.2 MB</td><td>40.6 MB</td></tr>
+          <tr><th scope="row">CPU per workspace switch</th><td>n/a</td><td>1.0 ms</td><td>0.5 ms</td></tr>
+          <tr><th scope="row">Bar startup</th><td>95 ms</td><td>46 ms</td><td>50 ms</td></tr>
+          <tr><th scope="row">Idle wakeups per second</th><td>3.4</td><td>6.3</td><td>12.0</td></tr>
+          <tr><th scope="row">Idle CPU, across all runs</th><td>0.03–0.1%</td><td>0%</td><td>0–0.07%</td></tr>
+          <tr><th scope="row">Binary size</th><td>3.8 MB</td><td>3.8 MB</td><td>0.3 MB</td></tr>
           <tr><th scope="row">Linked shared libraries</th><td>117</td><td>40</td><td>65</td></tr>
         </tbody>
       </table>
-      <p class="fine">Measured 2026-11-22 in a private headless Mango: Waybar 0.16.0 with its stock config and the island with its defaults, each started fresh with the order rotated between runs. Child processes count. Stock Waybar has no module for Mango's workspaces, so it has no switch cost to compare. Absolute memory moves between sessions: the island's Nov 2 build read 12.5 MB beside mangobar that day and 14.8 MB in this session, so everything added since costs 0.4 MB. The six styles rest between 12.9 and 14.8 MB. While music plays the visualizers cost 0.6% of a core on the pill and up to 1.6% in the panel or sidebar, and nothing measurable when it's paused. A busy desktop moves all of these, so run <code>bench/run.py</code> on yours.</p>
+      <p class="fine">Measured 2026-11-22 in a private headless Mango: Waybar 0.16.0 with its stock config and the island with its defaults, each started fresh with the order rotated between runs. Child processes count. Stock Waybar has no module for Mango's workspaces, so it has no switch cost to compare. Absolute numbers move between sessions, so compare within one: the previous build, without glass, settings and scale, read 12.5 MB in the same rotation as this one. The seven styles rest between 10.6 and 12.6 MB and the light setup at 11.5 MB; blur is work Mango does on the GPU and is not counted. While music plays the visualizers cost 0.9% of a core on the pill and up to 3% in the panel or sidebar, and 0.01% when it is paused. A busy desktop moves all of these, so run <code>bench/run.py</code> on yours.</p>
     </div>
   </section>
 
@@ -316,7 +316,7 @@ run = "kitty -d ~/Projects/{}"</pre>
 cd Rust-Dynamic-Island-for-Mango
 ./install.sh</pre>
     <p class="fine">Or <code>paru -S rust-dynamic-island-git</code> on Arch, or <code>nix profile install github:nurexa/Rust-Dynamic-Island</code>, then run <code>/usr/share/island/install.sh</code> (on Nix, <code>~/.nix-profile/share/island/install.sh</code>). Afterwards, <code>island doctor</code> says what works on your machine.</p>
-    <p class="fine">You'll need Rust, cairo, pango, libxkbcommon, a Nerd Font, playerctl for media, and parec for the visualizers. The icons are built in. Pick a look as you install with <code>./install.sh --style=frame</code>. Want to pick each part and key yourself? Use <code>./install.sh --manual</code>. Only the bar? <code>./install.sh --bar-only</code>. Works with <code>config.conf</code> and <code>config.toml</code>, and keys you already use stay yours.</p>
+    <p class="fine">You'll need Rust, cairo, pango, libxkbcommon, a Nerd Font, playerctl for media, and parec for the visualizers. The icons are built in. Pick a look as you install with <code>./install.sh --style=frame</code> (<code>--style=glass --blur</code> for blur), or start small with <code>./install.sh --light</code>. Want to pick each part and key yourself? Use <code>./install.sh --manual</code>. Only the bar? <code>./install.sh --bar-only</code>. Works with <code>config.conf</code> and <code>config.toml</code>, and keys you already use stay yours.</p>
   </section>
 
   <section id="stars" class="stars">
