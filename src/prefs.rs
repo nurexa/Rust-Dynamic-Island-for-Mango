@@ -152,6 +152,14 @@ mod tests {
     }
 
     #[test]
+    fn the_installers_light_list_is_this_ones() {
+        let sh = include_str!("../install.sh");
+        let line = sh.lines().find_map(|l| l.strip_prefix("LIGHT_OFF='")).unwrap().trim_end_matches('\'');
+        let off: Vec<&str> = PARTS.iter().filter(|p| !p.2).map(|p| p.0).collect();
+        assert_eq!(line.split(' ').collect::<Vec<_>>(), off);
+    }
+
+    #[test]
     fn every_default_module_can_be_switched_off() {
         let cfg = Config::default();
         for name in [&cfg.pill, &cfg.panel, &cfg.sidebar, &cfg.tools].into_iter().flatten() {

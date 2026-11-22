@@ -74,7 +74,37 @@ for s in split minimal; do
     ok "$s: windows show around it" "$(px $R/st.png 700 22)" "$WIN"
 done
 
-ok "an unknown style is refused, with the names" "$($BIN style blob 2>&1; echo " $?")" "island: styles are pill, frame, notch, bar, split, minimal
+glassy(){ mmsg get all-layers | python3 -c "import json,sys;print(sum(l['name']=='island-blur' for l in json.load(sys.stdin)['layers']))"; }
+style glass; $V move 1500 900; sleep .8; shot
+ok "glass: its surfaces take the name the blur rule wants" "$(glassy) $(layers)" "3 0"
+ok "glass: windows move down by its height and gap" "$(win)" "12,50 1896x1018"
+ok "glass: it floats, short of both ends" "$([ "$(px $R/st.png 600 22)" != "$(px $R/st.png 100 22)" ] && echo yes) $([ "$(px $R/st.png 100 22)" = "$(px $R/st.png 1820 22)" ] && echo yes)" "yes yes"
+ok "glass: one layer where the island meets the bar, not two" "$(px $R/st.png 592 34)" "$(px $R/st.png 598 34)"
+$V move 960 22; sleep 1.3; shot
+ok "glass: it swells down into the panel" "$([ "$(px $R/st.png 700 200)" != "$WIN" ] && echo yes)" yes
+$V move 1500 900; sleep 1.3
+
+style pill
+$BIN set blur on; sleep 1.5
+ok "blur on: any style takes the blur rule's name" "$(glassy)" 1
+$BIN set blur auto; sleep 1.5
+ok "blur auto: and drops it" "$(glassy) $(layers)" "0 1"
+ok "set: a key that means nothing is refused" "$($BIN set nonsense on >/dev/null 2>&1; echo $?)" 2
+ok "set: a value out of range is refused" "$($BIN set scale 9 >/dev/null 2>&1; echo $?)" 2
+$BIN settings; sleep 1.2
+ok "settings: opens on the island" "$(overlay)" 1
+$BIN close; sleep 1.2
+
+# The cut-off: at twice the size there's room for half a panel, and the rest scrolls.
+for a in one two three; do notify-send -a $a -t 500 "From $a" "History for the panel"; done; sleep 4
+$BIN set scale 2; sleep 1.5; $BIN pin; sleep 1.8; $V move 960 600; sleep .6; shot; cp $R/st.png $R/st-top.png
+ok "tall panel: it stops short of the screen's edge" "$(px $R/st.png 420 1020 opaque) $([ "$(px $R/st.png 960 1078)" = "$(px $R/st.png 420 1020)" ] || echo clear)" "yes clear"
+$V scroll 3; sleep .8; shot
+ok "tall panel: the wheel scrolls it, not the workspaces" "$(tags) $(cmp -s $R/st.png $R/st-top.png || echo moved)" "[1] moved"
+$BIN pin; sleep 1; $BIN set scale 1; sleep 1.5; $V move 1500 900
+ok "scale: back at 1 nothing is saved over the config" "$(grep -c '^set scale' $R/island/state)" 0
+
+ok "an unknown style is refused, with the names" "$($BIN style blob 2>&1; echo " $?")" "island: styles are pill, frame, notch, bar, glass, split, minimal
  2"
 style pill
 ok "back to pill: every edge surface is gone and the space is given back" "$(layers) $(win)" "1 12,12 1896x1056"

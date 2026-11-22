@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rust Dynamic Island</title>
-<meta name="description" content="A minimal, modular, all-in-one desktop tool for MangoWC: bar, launcher, sidebar, notifications, clipboard and screenshots in one Rust island, in six styles.">
+<meta name="description" content="A minimal, modular, all-in-one desktop tool for MangoWC: bar, launcher, sidebar, notifications, clipboard and screenshots in one Rust island, in seven styles.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
@@ -149,7 +149,7 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
 <main>
   <section class="hero">
     <h1>Your whole desktop in one pill</h1>
-    <p class="lede">A minimal, modular, all-in-one tool for MangoWC. One small Rust program is your bar, app search, sidebar, notifications, clipboard and screenshots, in six styles from a floating pill to a frame around your screen. Use all of it, or only the parts you want.</p>
+    <p class="lede">A minimal, modular, all-in-one tool for MangoWC. One small Rust program is your bar, app search, sidebar, notifications, clipboard and screenshots, in seven styles from a floating pill to a frame around your screen. Use all of it, or only the parts you want.</p>
     <p class="hint">That pill at the top is the real one, ported to your browser with made-up stats. Hover it to open the panel, then press the wallpaper button: this page's wallpaper changes, and the accent follows, the way the real one follows yours. Drag it anywhere, double-click it to send it home.</p>
     <p class="keys">With the pointer on the pill, try the keys it has on the desktop (there with <kbd>Super</kbd>): <kbd>Space</kbd> search, <kbd>D</kbd> apps, <kbd>R</kbd> run, <kbd>C</kbd> clipboard, <kbd>S</kbd> screenshot, <kbd>W</kbd> wallpapers, <kbd>M</kbd> power, <kbd>I</kbd> pin, <kbd>N</kbd> a test notification. In search, <kbd>Tab</kbd> switches tools and <kbd>Esc</kbd> closes.</p>
     <div class="actions">
@@ -169,13 +169,14 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
   </section>
 
   <section id="styles">
-    <h2>Six shapes, one island</h2>
-    <p class="lede">Switch live with <code>island style frame</code>, or set it in the config. Only frame and bar take any space from your windows.</p>
+    <h2>Seven shapes, one island</h2>
+    <p class="lede">Switch live with <code>island style frame</code>, or set it in the config. Only frame, bar and glass take any space from your windows.</p>
     <div class="levels">
       <div class="level"><h3>Frame</h3><p>A border with a slim rail. The island, search and sidebar grow out of it.</p><div class="screen"><img src="styles/frame.jpg" loading="lazy" alt="The island in the frame style"></div></div>
       <div class="level"><h3>Pill</h3><p>The default. Floats, and drags anywhere.</p><div class="screen"><img src="styles/pill.jpg" loading="lazy" alt="The island in the pill style"></div></div>
       <div class="level"><h3>Notch</h3><p>Hangs from the top edge.</p><div class="screen"><img src="styles/notch.jpg" loading="lazy" alt="The island in the notch style"></div></div>
       <div class="level"><h3>Bar</h3><p>Full width, and swells down into the panel.</p><div class="screen"><img src="styles/bar.jpg" loading="lazy" alt="The island in the bar style"></div></div>
+      <div class="level"><h3>Glass</h3><p>A see-through floating bar in three groups, blurred by Mango.</p><div class="screen"><img src="styles/glass.jpg" loading="lazy" alt="The island in the glass style"></div></div>
       <div class="level"><h3>Split</h3><p>Music, timers and Claude bud off into a bubble.</p><div class="screen"><img src="styles/split.jpg" loading="lazy" alt="The island in the split style"></div></div>
       <div class="level"><h3>Minimal</h3><p>The time, and whatever needs you.</p><div class="screen"><img src="styles/minimal.jpg" loading="lazy" alt="The island in the minimal style"></div></div>
     </div>
@@ -464,10 +465,11 @@ class Pen {
     this.cr.beginPath(); this.cr.roundRect(x, y, w, h, r);
     this.cr.fillStyle = rgba(c, a); this.cr.fill();
   }
-  symbol(name, size, x, y, c, fill = false) {
+  symbol(name, size, x, y, c) { // solid, as the island ships
     const cr = this.cr;
-    cr.save(); cr.translate(x, y); cr.scale(size / 900, size / 900); cr.translate(-30, 930); // the box in src/icons.rs
-    cr.fillStyle = rgba(c, 1); cr.fill(fill && paths[name][1] || paths[name][0]);
+    cr.save(); cr.translate(x, y); cr.scale(size / 928, size / 928); cr.translate(-16, 944); // the box and edge in src/icons.rs
+    const d = paths[name][1] || paths[name][0];
+    cr.fillStyle = cr.strokeStyle = rgba(c, 1); cr.fill(d); cr.lineWidth = 28; cr.lineJoin = "round"; cr.stroke(d);
     cr.restore();
   }
   app(appid, size, x, y, c) {

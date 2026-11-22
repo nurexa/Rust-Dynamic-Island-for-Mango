@@ -90,14 +90,17 @@ island timer               # start or pause the pomodoro; stop, skip, or minutes
 island audio               # open the panel's list of outputs, mics and apps
 island doctor              # what works on this machine, and how to fix what doesn't
 island claude-setup        # add Claude Code's hooks (--undo takes them out)
-island style               # the next style; or pill, frame, notch, bar, split, minimal
+island style               # the next style; or pill, frame, notch, bar, glass, split, minimal
+island settings            # change any of this from the island
+island set scale 1.25      # or blur, opacity, icons, hover, or any add-on: on, off
+island preset light        # the basics; or full
 island sidebar             # open or close the sidebar
 ```
 
 ## 2. Change how it looks and behaves
 
 ```toml
-style = "pill"                # pill, frame, notch, bar, split or minimal
+style = "pill"                # pill, frame, notch, bar, glass, split or minimal
 icon_style = "glyph"          # or "color" for the apps' own icons
 icon_font = "JetBrainsMono Nerd Font Propo"
 terminal = "kitty"            # for apps that need one

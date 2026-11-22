@@ -3,7 +3,9 @@
 #
 #   ./install.sh             everything: bar, launcher, notifications, clipboard, screenshots
 #   ./install.sh --manual    the same, but asks about each part, each key and each extra first
-#   ./install.sh --style=frame   start in a style: pill, frame, notch, bar, split or minimal
+#   ./install.sh --style=frame   start in a style: pill, frame, notch, bar, glass, split or minimal
+#   ./install.sh --light     just the basics; island settings turns the rest back on
+#   ./install.sh --blur      see-through, with Mango blurring behind it (turns on blur_layer)
 #   ./install.sh --bar-only  only replace the bar; launchers, notifications and binds stay as they are
 #   ./install.sh --undo      put it all back
 #
@@ -41,15 +43,19 @@ fail() {
     exit 1
 }
 
-usage() { sed -n '2,14s/^# \{0,1\}//p' "$0"; exit 0; }
-mode=install manual=0 build=${ISLAND_BUILD:-1} look=''
-STYLES='pill frame notch bar split minimal'
+usage() { sed -n '2,16s/^# \{0,1\}//p' "$0"; exit 0; }
+mode=install manual=0 light=0 blur=0 build=${ISLAND_BUILD:-1} look=''
+STYLES='pill frame notch bar glass split minimal'
+# What --light leaves out: everything src/prefs.rs doesn't mark as a basic.
+LIGHT_OFF='title brightness stats media visualizer sidebar calendar controls nightlight bluetooth timer claude privacy wallpaper windows files clipboard screenshot wifi calc web'
 is_style() { [[ " $STYLES " == *" $1 "* ]]; }
 for a in "$@"; do
     case $a in
         --undo) mode=undo ;;
         --bar-only) mode=bar ;;
         --manual|-i) manual=1 ;;
+        --light) light=1 ;;
+        --blur) blur=1 ;;
         --style=*)
             look=${a#--style=}
             is_style "$look" || { echo "No style '$look'. There's $STYLES." >&2; exit 2; } ;;
@@ -59,6 +65,7 @@ for a in "$@"; do
     esac
 done
 
+[ $light$manual != 11 ] || { echo "--light or --manual, not both: --manual asks about each part." >&2; exit 2; }
 [ -n "${MANGO_INSTANCE_SIGNATURE:-}" ] || { echo "Run this from inside the Mango session." >&2; exit 1; }
 # Matched on this compositor's socket, so only this session's processes are touched.
 mine=(--env "MANGO_INSTANCE_SIGNATURE=$MANGO_INSTANCE_SIGNATURE")
@@ -74,7 +81,7 @@ ISL=$MANGO/island.conf
 toml=0
 case $CONF in *.toml) toml=1 ;; *.conf|'') ;; *) [ "$(head -c1 "$CONF")" = '[' ] && toml=1 ;; esac
 
-has_layer() { mmsg get all-layers | grep -q "\"name\":\"$1\""; }
+has_layer() { mmsg get all-layers | grep -qE "\"name\":\"$1(-blur)?\""; }
 check() { env -u DBUS_SESSION_BUS_ADDRESS mango -c "$CONF" -p 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true; }
 
 stop_bars() {
@@ -221,6 +228,12 @@ extra=()   # new binds asked for in manual mode: "KEY|command"
 for t in "${TOOLS[@]}"; do take[${t%%|*}]=$([ $mode = bar ] && echo 0 || echo 1); done
 take[shots]=${take[apps]} take[notes]=${take[apps]}
 for o in "${OWN[@]}"; do keys[${o%%|*}]=${o##*|}; done
+if [ $light = 1 ]; then
+    read -ra declined <<< "$LIGHT_OFF"
+    for n in "${!extra_on[@]}"; do [[ " $LIGHT_OFF " != *" $n "* ]] || extra_on[$n]=0; done
+    # No keys moved onto, or made for, what it leaves out.
+    take[clipboard]=0 take[wallpaper]=0 take[shots]=0 keys[sidebar]=none
+fi
 
 # Splits a TOOLS row into: pattern, command, label, default key.
 tool() {
@@ -272,7 +285,8 @@ if [ $manual = 1 ]; then
     done
     echo; info "Styles: pill floats and can be dragged; minimal is just the time and what needs you; split buds"
     info "a bubble off for music and timers; notch hangs from the top edge; bar is full width; frame borders"
-    info "the screen with a rail down the left. Frame and bar take a little space from your windows."
+    info "the screen with a rail down the left; glass is a see-through floating bar. Frame, bar and glass"
+    info "take a little space from your windows."
     s=$(ask "Style (${STYLES// /, }), or 'keep' for the one it's in (pill at first)" "${look:-keep}")
     while [ "$s" != keep ] && ! is_style "$s"; do s=$(ask "One of ${STYLES// /, }, or 'keep'" keep); done
     if [ "$s" = keep ]; then look=''; else look=$s; fi
@@ -374,6 +388,8 @@ step "Updating ${CONF/#$HOME/\~}"
 strip_block
 baseline=$(check)
 
+blurring=$blur
+grep -qsx "blur_layer=1" "$ISL" && blurring=1   # asked for before: a re-run keeps it
 # Mango reloads on save, so the rule is live before the island maps. Without
 # no_animation it would slide in and lag behind every drag.
 {
@@ -381,6 +397,14 @@ baseline=$(check)
     echo "# Put island binds of your own in your main config instead."
     grep -qE "^[[:space:]]*exec(_once)?[[:space:]]*=.*scripts/bar" "$CONF" || echo "exec_once=$BAR"
     echo "layer_rule=no_animation:1,no_shadow:1,no_blur:1,layer_name:island"
+    # Blurred surfaces have a name of their own. The last matching rule wins, so this follows.
+    echo "layer_rule=no_animation:1,no_shadow:1,no_blur:0,layer_name:^island-blur$"
+    if [ $blurring = 1 ]; then
+        echo "blur=1"
+        echo "blur_layer=1"
+        # A screen-wide selection overlay would blur all that is being selected.
+        echo "layer_rule=no_animation:1,no_shadow:1,no_blur:1,layer_name:^selection$"
+    fi
     for o in "${OWN[@]}"; do c=${o%%|*}; [ "${keys[$c]}" = none ] || echo "bind=${keys[$c]},spawn,$EXE $c"; done
     for e in ${extra[@]+"${extra[@]}"}; do echo "bind=${e%%|*},spawn,$EXE ${e#*|}"; done
 } > "$ISL"
@@ -519,8 +543,13 @@ if [ -n "$look" ]; then
     if "$EXE" style "$look"; then info "style: $look"; else warn "Couldn't switch to the $look style: try island style $look."; fi
 fi
 
+if [ $blur = 1 ]; then
+    sleep 0.5   # a style switch makes new surfaces
+    if "$EXE" set blur on; then info "blur: on"; else warn "Couldn't turn blur on: try island set blur on."; fi
+    [ $toml = 0 ] || ! grep -qE "^[[:space:]]*blur_layer[[:space:]]*=[[:space:]]*(0|false)" "$CONF" || warn "Your config.toml sets blur_layer off, which wins over island.conf: turn it on there for blur."
+fi
 search=$(sed -nE 's#^bind=([^,]*),([^,]*),spawn,.*/island open$#\1+\2#p' "$ISL" | head -1)
-printf '\n%s✓ Island is running.%s Hover the pill for the panel%s. Change its shape with: island style. Check this machine with: island doctor. Undo with: ./install.sh --undo\n' \
+printf '\n%s✓ Island is running.%s Hover the pill for the panel%s. Change it with: island settings. Check this machine with: island doctor. Undo with: ./install.sh --undo\n' \
     "$G" "$N" "${search:+, $search opens search}"
 if [ ${#NOTES[@]} -gt 0 ]; then
     printf '%s  Worth a look:%s\n' "$Y" "$N"

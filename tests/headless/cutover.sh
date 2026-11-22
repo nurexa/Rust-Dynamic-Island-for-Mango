@@ -180,3 +180,21 @@ ok "--style: a wrong name stops before anything changes" "$(ISLAND_BUILD=0 $H/..
 ISLAND_BUILD=0 $H/../../install.sh --undo > /dev/null
 rm -f $R/island/state
 kill_all
+
+# The light install, and glass with blur: its surfaces have another name to find.
+fresh
+rm -rf $XDG_CONFIG_HOME
+printf 'tag_num=9\nbind=SUPER,v,spawn_shell,cliphist list | rofi -dmenu | cliphist decode | wl-copy\nbind=SUPER,d,spawn,rofi -show drun\n' > $C/config.conf
+ISLAND_EXTRAS="claude calendar sidebar" ISLAND_BUILD=0 $H/../../install.sh --light --style=glass --blur > $R/install.out 2>&1; sleep 1.5
+ok "light: glass comes up without a rollback" "$(layers)" "['island-blur', 'island-blur', 'island-blur']"
+ok "light: what it leaves out is switched off" "$(grep -c '^disable = \["title", .*"web"\]$' $XDG_CONFIG_HOME/island/config.toml)" 1
+ok "light: keys for what it leaves out stay yours" "$(grep -c '^bind=SUPER,v,spawn_shell,cliphist' $C/config.conf) $(grep -c '^bind=SUPER,d,spawn,.*island open apps$' $C/config.conf) $(grep -c 'island sidebar$' $C/island.conf)" "1 1 0"
+ok "light: no Claude Code hooks" "$(cat $CLAUDE_CONFIG_DIR/settings.json 2>/dev/null | grep -c claude-hook)" 0
+ok "blur: Mango is told to blur layers, and only a later rule lets the island's through" "$(grep -cx 'blur=1\|blur_layer=1' $C/island.conf) $(grep -n 'layer_rule' $C/island.conf | grep -o 'layer_name:.*' | tr '\n' ' ')" '2 layer_name:island layer_name:^island-blur$ layer_name:^selection$ '
+ISLAND_EXTRAS="" ISLAND_BUILD=0 $H/../../install.sh > $R/install.out 2>&1; sleep 1.5
+ok "blur: a plain re-run keeps it" "$(grep -cx 'blur_layer=1' $C/island.conf)" 1
+ok "light with manual stops before anything changes" "$(ISLAND_BUILD=0 $H/../../install.sh --light --manual </dev/null >/dev/null 2>&1; echo $?)" 2
+ISLAND_BUILD=0 $H/../../install.sh --undo > /dev/null
+ok "blur: undo takes it back out" "$(ls $C/island.conf 2>/dev/null | wc -l)" 0
+rm -f $R/island/state
+kill_all

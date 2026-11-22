@@ -32,7 +32,10 @@ ok "toast: goes once the pointer leaves" "$(px $H/run/n4.png 757 40)" "$WIN"
 
 # Actions reach the app
 notify-send --action=reply=Reply --wait "Message" "Answer me" > $R/act & N=$!
-sleep .9; grim $H/run/n5.png; $V click 790 86; wait $N
+sleep .9; grim $H/run/n5.png
+$V move 1100 96; sleep .4; grim $H/run/n5h.png
+ok "hover: the card lights down beside its buttons, not just above them" "$([ "$(px $H/run/n5h.png 1100 96)" != "$(px $H/run/n5.png 1100 96)" ] && echo lit)" lit
+$V click 790 86; wait $N
 ok "actions: the button reaches the app" "$(cat $R/act)" reply
 $V move 1500 900; sleep .9
 

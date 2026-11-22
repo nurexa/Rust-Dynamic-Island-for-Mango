@@ -3,7 +3,7 @@
 A minimal, modular, all-in-one desktop tool for [MangoWC](https://mangowm.github.io),
 written in Rust. One island replaces your bar, app launcher, notification daemon and
 power menu, and adds a sidebar, calendar, music visualizers, clipboard search,
-screenshots, Wi-Fi and Bluetooth. It comes in six styles, from a floating pill to a
+screenshots, Wi-Fi and Bluetooth. It comes in seven styles, from a floating pill to a
 border round the whole screen. Use all of it, or only the parts you want.
 
 **[Project page](https://nurexa.github.io/Rust-Dynamic-Island-for-Mango/)** ·
@@ -21,12 +21,39 @@ border round the whole screen. Use all of it, or only the parts you want.
 | **notch**: hangs from the top edge | **bar**: full width, swells down into the panel |
 | ![Split](docs/styles/split.jpg) | ![Minimal](docs/styles/minimal.jpg) |
 | **split**: music, timers and Claude bud off into a bubble | **minimal**: the time, and what needs you |
+| ![Glass](docs/styles/glass.jpg) | |
+| **glass**: a see-through floating bar in three groups, blurred by Mango | |
 
 Switch live with `island style frame` (or plain `island style` for the next one), or set
-`style = "frame"` in the config; whichever you did last wins. Only frame and bar take
+`style = "frame"` in the config; whichever you did last wins. Only frame, bar and glass take
 space from your windows: 40 px on the left and 8 px on the other edges for frame, 32 px
-at the top for bar. The frame style is inspired by
+at the top for bar, 38 px for glass. The frame style is inspired by
 [Caelestia](https://github.com/caelestia-dots/shell); none of its code is used.
+
+## Settings
+
+`island settings` (or the gear in the panel, or a right click on the search button in glass)
+lists the style, size, blur, opacity, icons and every add-on. Enter changes one, live.
+The same from a terminal:
+
+```sh
+island set scale 1.25      # 0.75 to 2
+island set blur on         # on, off, or auto (glass only)
+island set opacity 0.8     # or auto
+island set media off       # any add-on by name
+island preset light        # the basics; full brings the rest back
+```
+
+A choice holds until that setting's line in `config.toml` changes, and your config is never
+rewritten. A part switched off starts no watcher of its own the next time the island starts.
+
+### Blur
+
+The island draws itself see-through; Mango does the blurring. That needs `blur=1` and
+`blur_layer=1` in its config, which `./install.sh --blur` writes for you. `blur_layer` is
+for all layers, so other see-through ones (launchers, notification daemons) blur too
+unless they have a `no_blur` rule. Without it glass is just see-through, and `island
+doctor` says so.
 
 ## What's in it
 
@@ -119,6 +146,8 @@ cd Rust-Dynamic-Island-for-Mango
 ./install.sh --manual    # the same, but asks about each part and each key first
 ./install.sh --bar-only  # only replace the bar; launchers, dunst and your binds stay
 ./install.sh --style=frame   # start in a style
+./install.sh --light     # the basics; everything else stays one switch away
+./install.sh --style=glass --blur   # glass, with Mango blurring behind it
 ./install.sh --undo      # put it all back
 ```
 
@@ -176,8 +205,9 @@ programs are missing simply doesn't appear.
 | Scroll on the pill | Move through occupied workspaces |
 | `Super+Alt+S`, or `island sidebar` | Open or close the sidebar |
 | `island style` | Change its shape |
+| `island settings`, or the gear in the panel | Change style, size, blur, opacity, icons and every add-on |
 
-Dragging is for the floating styles (pill, split, minimal); frame, notch and bar belong
+Dragging is for the floating styles (pill, split, minimal); frame, notch, bar and glass belong
 to their edge. In frame, hover the top border for the panel, the middle of the right
 border for the sidebar, and the palette rises from the bottom. The rail has search,
 workspaces, the tray, the clock (click it for the sidebar), status and power.
@@ -272,7 +302,7 @@ without a restart. [`examples/config.toml`](examples/config.toml) lists every op
 ```toml
 tools = ["apps", "clipboard", "projects"]   # the palette's tabs
 notifications = false                       # keep your own daemon
-style = "frame"                             # or pill, notch, bar, split, minimal
+style = "frame"                             # or pill, notch, bar, glass, split, minimal
 icon_style = "glyph"                        # two-tone glyphs, or "color" for app icons
 
 [[tool]]                                    # a tool made of two shell commands

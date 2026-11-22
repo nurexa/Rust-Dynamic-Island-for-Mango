@@ -18,7 +18,9 @@ H = ROOT / "tests/headless"
 RUNS = int(os.environ.get("RUNS", 3))
 IDLE = int(os.environ.get("IDLE", 30))
 SWITCHES = 40
-STYLES = ("pill", "minimal", "split", "notch", "bar", "frame")
+STYLES = ("pill", "minimal", "split", "notch", "bar", "frame", "glass", "light")
+# What install.sh --light leaves out.
+LIGHT_OFF = next(l for l in (ROOT / "install.sh").read_text().splitlines() if l.startswith("LIGHT_OFF=")).split("'")[1].split()
 TICK = os.sysconf("SC_CLK_TCK")
 HOME = Path.home()
 WAYBAR_CONFIG = Path(os.environ.get("WAYBAR_CONFIG", HOME / ".config/waybar/config.jsonc"))
@@ -103,7 +105,19 @@ def threads(pid):
 
 def layer_up(env, name):
     out = subprocess.run(["mmsg", "get", "all-layers"], env=env, capture_output=True, text=True).stdout
-    return f'"name":"{name}"' in out
+    # Blurred, the island's layers are island-blur.
+    return f'"name":"{name}"' in out or f'"name":"{name}-blur"' in out
+
+
+def stop_fixture(run):
+    """Only what carries its runtime dir: a stale pid file can name someone else's process."""
+    for f in run.glob("*pid"):
+        for p in f.read_text().split():
+            try:
+                if f"XDG_RUNTIME_DIR={run}".encode() in Path(f"/proc/{p}/environ").read_bytes().split(b"\0"):
+                    os.kill(int(p), 15)
+            except OSError:
+                pass
 
 
 def view(env, tag):
@@ -264,7 +278,7 @@ def main():
 
     for h in reversed(helpers):
         h.terminate()
-    subprocess.run(f'for f in {H}/run/*pid; do kill $(cat "$f") 2>/dev/null; done', shell=True)
+    stop_fixture(run)
 
     version = subprocess.run(["waybar", "--version"], capture_output=True, text=True).stdout.strip().splitlines()[-1]  # it logs first
     median = {n: {k: statistics.median(r[k] for r in rs) for k in rs[0]} for n, rs in runs.items()}
@@ -299,7 +313,8 @@ def measure_styles(env, run):
     for style in STYLES:
         home = run / f"style-{style}"
         (home / "island").mkdir(parents=True, exist_ok=True)
-        (home / "island/config.toml").write_text(f'style = "{style}"\n')
+        line = f"disable = {json.dumps(LIGHT_OFF)}" if style == "light" else f'style = "{style}"'
+        (home / "island/config.toml").write_text(line + "\n")
         rs = [measure("island", [ISLAND], dict(env, XDG_CONFIG_HOME=str(home)), idle=10) for _ in range(3)]
         out[style] = {k: statistics.median(r[k] for r in rs) for k in ("pss_mb", "idle_cpu_pct", "idle_wakeups_per_s", "switch_cpu_ms")}
         print(style, out[style], file=sys.stderr, flush=True)

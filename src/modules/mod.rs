@@ -155,6 +155,8 @@ pub fn pill(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: crate:
         spare = min - w;
         p.clear();
     };
+    // Glass sets it in a capsule, so the same at both ends.
+    let main_w = if style == Style::Glass && !empty { main_w - (PILL_PAD.1 - PILL_PAD.0) } else { main_w };
     let (mut w, mut split) = (main_w, None);
     if !bubble.is_empty() {
         let at = main_w + SPLIT_GAP;
