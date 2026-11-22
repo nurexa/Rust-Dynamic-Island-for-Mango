@@ -77,7 +77,7 @@ F=$R/frames; rm -rf $F; mkdir -p $F
 (n=0; while :; do grim -c -t ppm $F/$(printf %05d $n).ppm 2>/dev/null; n=$((n+1)); done) &
 CAP=$!
 START=$(date +%s.%N)
-SL_X0=1000; SL_X1=1160; VOL_Y=297; BRI_Y=329   # slider rows, measured from a screenshot (CALIB=1 takes one)
+SL_X0=1000; SL_X1=1160; VOL_Y=341; BRI_Y=373   # slider rows, measured from a screenshot (CALIB=1 takes one)
 pos(){ read -r _ _ X Y < <(grep pos $R/island/state); X=${X%.*}; Y=${Y%.*}; }
 
 sleep 5                                   # the pill, windows running behind it
@@ -102,8 +102,7 @@ $V path 1400 620 1010 22 20 10; sleep .1
 $V drag 300 420 60 34; sleep 2            # drag it out of the way
 sleep 1.5; pos
 $V move $((X+150)) $((Y+90)); sleep 1
-$V path $((X+150)) $((Y+90)) $((X+120)) $((Y+16)) 10 14
-$V dbl $((X+120)) $((Y+16)); sleep 8      # double-click: home
+$V dbl $((X+120)) $((Y+16)); sleep 8      # double-click the clock, before hover can open the panel: home
 $V path $((X+120)) $((Y+16)) 1400 620 14 10; sleep 3
 
 kill $CAP; sleep .3
