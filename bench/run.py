@@ -314,7 +314,8 @@ def measure_styles(env, run):
         home = run / f"style-{style}"
         (home / "island").mkdir(parents=True, exist_ok=True)
         line = f"disable = {json.dumps(LIGHT_OFF)}" if style == "light" else f'style = "{style}"'
-        (home / "island/config.toml").write_text(line + "\n")
+        # Blur off: numbers are the island's own cost, never the compositor's blur.
+        (home / "island/config.toml").write_text(line + "\n[ui]\nblur = \"off\"\n")
         rs = [measure("island", [ISLAND], dict(env, XDG_CONFIG_HOME=str(home)), idle=10) for _ in range(3)]
         out[style] = {k: statistics.median(r[k] for r in rs) for k in ("pss_mb", "idle_cpu_pct", "idle_wakeups_per_s", "switch_cpu_ms")}
         print(style, out[style], file=sys.stderr, flush=True)
