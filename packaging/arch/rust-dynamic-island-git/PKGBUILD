@@ -6,7 +6,7 @@ pkgrel=1
 pkgdesc="All-in-one Wayland desktop shell in one Dynamic Island pill: bar, launcher, notifications, clipboard, screenshots (git)"
 arch=(x86_64 aarch64)
 url="https://github.com/nurexa/Rust-Dynamic-Island"
-license=('GPL-3.0-only AND Apache-2.0')
+license=('GPL-3.0-only AND MIT')
 depends=(cairo pango glib2 libxkbcommon gcc-libs glibc)
 makedepends=(cargo git)
 optdepends=(
@@ -65,5 +65,5 @@ package() {
   install -Dm644 README.md MODDING.md -t "$pkgdir/usr/share/doc/island"
   install -Dm644 examples/config.toml "$pkgdir/usr/share/doc/island/config.toml"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  install -Dm644 LICENSES/Apache-2.0.txt "$pkgdir/usr/share/licenses/$pkgname/Apache-2.0.txt"
+  install -Dm644 LICENSES/MIT-Phosphor.txt "$pkgdir/usr/share/licenses/$pkgname/MIT-Phosphor.txt"
 }

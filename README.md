@@ -443,5 +443,5 @@ Never start a test Mango with `DBUS_SESSION_BUS_ADDRESS` set: on exit it stops
 ## License
 
 GPL-3.0. See [LICENSE](LICENSE). The built-in icons are
-[Material Symbols](https://github.com/google/material-design-icons) Rounded by Google,
-under [Apache-2.0](LICENSES/Apache-2.0.txt).
+[Phosphor Icons](https://github.com/phosphor-icons/core) (Fill and Duotone),
+under [MIT](LICENSES/MIT-Phosphor.txt).
