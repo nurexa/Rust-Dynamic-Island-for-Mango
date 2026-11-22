@@ -344,6 +344,9 @@ impl App {
         // These are fixed when a surface is made.
         let remake = style != self.model.style || cfg.ui.scale != self.cfg.ui.scale
             || cfg.blurred(style) != self.cfg.blurred(self.model.style);
+        if cfg.notifications != self.cfg.notifications && let Some(bus) = &self.bus {
+            bus.set_notifications(cfg.notifications, &self.tx);
+        }
         self.cfg = cfg;
         if remake {
             self.rebuild_surfaces(style);
@@ -773,8 +776,9 @@ impl App {
                         self.note_gone(gone, 1);
                     }
                     self.all(false, true);
-                } else {
-                    // Someone else is the daemon, so our own messages go through it.
+                } else if note.is_ours() {
+                    // Someone else is the daemon, so our own messages go through it. Only
+                    // ours: relaying one from the bus could bring it straight back.
                     tools::spawn_note(&note);
                 }
             }

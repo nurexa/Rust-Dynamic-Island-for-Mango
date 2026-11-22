@@ -31,6 +31,8 @@ const WATCHER_PATH: &str = "/StatusNotifierWatcher";
 const ITEM: &str = "org.kde.StatusNotifierItem";
 const MENU: &str = "com.canonical.dbusmenu";
 #[cfg(feature = "notifications")]
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "notifications")]
 const NOTIFY: &str = "org.freedesktop.Notifications";
 #[cfg(feature = "notifications")]
 const NOTIFY_PATH: &str = "/org/freedesktop/Notifications";
@@ -314,6 +316,14 @@ fn adopt_items(c: &Connection, owned: &Mutex<Vec<String>>) {
     }
 }
 
+#[cfg(feature = "notifications")]
+fn serve_notifications(c: &Connection, tx: &crate::Tx) {
+    let notifier = Notifier { tx: tx.clone(), next: std::sync::atomic::AtomicU32::new(1) };
+    if let Err(e) = c.object_server().at(NOTIFY_PATH, notifier) {
+        eprintln!("island: can't serve notifications: {e}");
+    }
+}
+
 /// Another daemon may still hold the name, as dunst does before the switch-over.
 #[cfg(feature = "notifications")]
 fn claim_notifications(c: &Connection) {
@@ -339,7 +349,7 @@ struct Tray {
     order: Vec<String>,
     owned: Arc<Mutex<Vec<String>>>,
     #[cfg(feature = "notifications")]
-    notifications: bool,
+    notifications: Arc<AtomicBool>,
 }
 
 impl Tray {
@@ -375,7 +385,7 @@ impl Tray {
             claim_watcher(&self.conn, &self.owned);
         }
         #[cfg(feature = "notifications")]
-        if name == NOTIFY && new_owner.is_empty() && self.notifications {
+        if name == NOTIFY && new_owner.is_empty() && self.notifications.load(Ordering::Relaxed) {
             claim_notifications(&self.conn);
         }
         if name == WATCHER && !new_owner.is_empty() {
@@ -502,7 +512,6 @@ impl Notifier {
     #[allow(clippy::too_many_arguments)]
     fn notify(&self, app_name: String, replaces_id: u32, app_icon: String, summary: String, body: String,
               actions: Vec<String>, hints: Props, expire_timeout: i32) -> u32 {
-        use std::sync::atomic::Ordering;
         let id = if replaces_id != 0 { replaces_id } else { self.next.fetch_add(1, Ordering::Relaxed) };
         let urgency = hints.get("urgency").and_then(|v| match &**v {
             Value::U8(u) => Some(*u),
@@ -549,6 +558,8 @@ pub struct Bus {
     conn: Connection,
     #[cfg(feature = "notifications")]
     outbox: Arc<Mutex<std::collections::VecDeque<NoteSignal>>>,
+    #[cfg(feature = "notifications")]
+    notifications: Arc<AtomicBool>,
 }
 
 #[cfg(feature = "notifications")]
@@ -587,6 +598,21 @@ impl Bus {
             let _ = c.call_method(Some(dest.as_str()), path.as_str(), Some(MENU), "Event", &args);
         });
     }
+
+    /// Switched while running: take the name, or leave it for another daemon.
+    #[cfg(feature = "notifications")]
+    pub fn set_notifications(&self, on: bool, tx: &crate::Tx) {
+        self.notifications.store(on, Ordering::Relaxed);
+        if on {
+            serve_notifications(&self.conn, tx);
+            claim_notifications(&self.conn);
+        } else if let Err(e) = self.conn.release_name(NOTIFY) {
+            eprintln!("island: can't let go of notifications: {e}");
+        }
+    }
+
+    #[cfg(not(feature = "notifications"))]
+    pub fn set_notifications(&self, _: bool, _: &crate::Tx) {}
 
     /// An app reading ActionInvoked or NotificationReplied stops listening at
     /// NotificationClosed, so these must leave in the order they were raised. Each
@@ -664,25 +690,25 @@ pub fn spawn(tx: crate::Tx, notifications: bool) -> Option<Bus> {
     }
     #[cfg(feature = "notifications")]
     if notifications {
-        use std::sync::atomic::AtomicU32;
-        let served = conn.object_server().at(NOTIFY_PATH, Notifier { tx: tx.clone(), next: AtomicU32::new(1) });
-        if let Err(e) = served {
-            eprintln!("island: can't serve notifications: {e}");
-        }
+        serve_notifications(&conn, &tx);
     }
+    #[cfg(feature = "notifications")]
+    let notifications = Arc::new(AtomicBool::new(notifications));
     #[cfg(not(feature = "notifications"))]
     let _ = notifications;
     let bus = Bus {
         conn: conn.clone(),
         #[cfg(feature = "notifications")]
         outbox: Arc::default(),
+        #[cfg(feature = "notifications")]
+        notifications: notifications.clone(),
     };
     thread::spawn(move || {
         // Subscribe before claiming so nothing registered in between is lost.
         let signals = MessageIterator::from(&conn);
         claim_watcher(&conn, &owned);
         #[cfg(feature = "notifications")]
-        if notifications {
+        if notifications.load(Ordering::Relaxed) {
             claim_notifications(&conn);
         }
         let mut tray = Tray {

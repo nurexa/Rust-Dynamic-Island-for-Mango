@@ -53,6 +53,11 @@ impl Note {
                sticky: false, actions: Vec::new(), image, placeholder: String::new() }
     }
 
+    /// Made by the island, whether or not it has its id yet. The bus never hands out 0.
+    pub fn is_ours(&self) -> bool {
+        self.id == 0 || self.is_local()
+    }
+
     pub fn is_local(&self) -> bool {
         self.id >= LOCAL_IDS
     }
@@ -355,6 +360,8 @@ mod tests {
         let mut c = Center::default();
         c.add(Note::local("s", "t", "", NoteImage::None));
         assert!(c.queue[0].note.is_local());
+        assert!(Note::local("s", "t", "", NoteImage::None).is_ours() && c.queue[0].note.is_ours());
+        assert!(!note(7, 1).is_ours(), "one from the bus is never relayed");
         assert!(c.queue[0].note.id != 0);
     }
 

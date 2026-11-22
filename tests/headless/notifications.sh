@@ -117,5 +117,16 @@ $V type on my way; $V key Return; $V move 1500 900; sleep .6
 ok "history reply: Enter sends it" "$(grep "NotificationReplied $id " $R/sigs)" "NotificationReplied $id on my way"
 $BIN pin; $BIN dnd; kill $(cat $R/sigs.pid)
 rm $C/island/config.toml; unset XDG_CONFIG_HOME; $BIN reload; sleep .9
+# Switched while running. Nothing is sent while it's off: a regression would relay it to itself.
+$BIN set notifications off; sleep .6
+ok "switched off: the name is let go" "$(owner)" ""
+nohup setsid python3 -I $R/fakenotify.py >/dev/null 2>&1 & F=$!; sleep .6
+ok "switched off: another daemon can serve" "$(owner)" python3
+kill $F; sleep .6
+ok "switched off: not taken back" "$(owner)" ""
+$H/isl; sleep .3
+ok "switched off: holds through a restart" "$(owner)" ""
+$BIN set notifications on; sleep .6
+ok "switched on without a restart: serving" "$(owner) $(call GetServerInformation | cut -d"'" -f2)" "island island"
 tail -3 $R/island.log | grep -v 'another notification'
 kill -0 $(cat $R/island.pid) && echo "ok   alive after every notification"
