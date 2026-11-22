@@ -24,7 +24,9 @@ bind=SUPER,q,spawn,kitty
 E
 cp $C/config.conf $R/config.original
 # Waybar's own default config, so this doesn't depend on whoever runs it.
-WB="waybar -c /etc/xdg/waybar/config.jsonc -s /etc/xdg/waybar/style.css"
+# WAYBAR_ETC points at it when Waybar is unpacked somewhere rather than installed.
+WE=${WAYBAR_ETC:-/etc/xdg/waybar}
+WB="waybar -c $WE/config.jsonc -s $WE/style.css"
 printf '#!/bin/sh\n# Test copy of the real bar script.\nuntil %s; do sleep 1; done\n' "$WB" > $C/scripts/bar; chmod +x $C/scripts/bar
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$R/bus PATH=$H/shim:$PATH
 nohup setsid $C/scripts/bar >/dev/null 2>&1 &

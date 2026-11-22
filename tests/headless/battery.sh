@@ -4,7 +4,7 @@ H=$(dirname "$(readlink -f "$0")"); source $H/run/env; R=$XDG_RUNTIME_DIR
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$R/bus PATH=$H/shim:$PATH
 BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}
-rm -f $R/sysbus; dbus-daemon --session --nofork --address=unix:path=$R/sysbus >/dev/null 2>&1 & echo $! > $R/sysbus.pid; sleep .3
+rm -f $R/sysbus; dbus-daemon --config-file=$H/bus.conf --nofork --address=unix:path=$R/sysbus >/dev/null 2>&1 & echo $! > $R/sysbus.pid; sleep .3
 echo '{"state":2,"pct":55,"empty":7800}' > $R/battery
 python3 -I -W ignore $H/fakeupower.py $R/battery unix:path=$R/sysbus & echo $! > $R/upower.pid; sleep .5
 notes(){ busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications org.freedesktop.Notifications GetCapabilities >/dev/null 2>&1; grep -c "$1" $R/island.log; }

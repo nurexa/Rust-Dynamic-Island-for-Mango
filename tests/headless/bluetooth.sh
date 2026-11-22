@@ -22,7 +22,7 @@ printf 'accent = "#ffb692"\non_accent = "#542000"\nsurface = "#1a120e"\non_surfa
 printf 'palette = "%s"\nvisualizer = []\n' "$R/bt-colors.toml" > $XDG_CONFIG_HOME/island/config.toml
 printf 'notifications = false\npanel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status", "bluetooth"]\n' >> $XDG_CONFIG_HOME/island/config.toml
 for f in sysbus fakebt; do [ -f $R/$f.pid ] && kill $(cat $R/$f.pid) 2>/dev/null; done
-dbus-daemon --session --nofork --address=$ISLAND_SYSTEM_BUS >/dev/null 2>&1 & echo $! > $R/sysbus.pid; sleep .3
+dbus-daemon --config-file=$H/bus.conf --nofork --address=$ISLAND_SYSTEM_BUS >/dev/null 2>&1 & echo $! > $R/sysbus.pid; sleep .3
 DBUS_SYSTEM_BUS_ADDRESS=$ISLAND_SYSTEM_BUS nohup setsid python3 -I $H/fakebt.py $LOG > $R/fakebt.log 2>&1 &
 echo $! > $R/fakebt.pid; sleep .8
 $H/isl; sleep .3; $V move 1500 900; sleep .4

@@ -7,7 +7,7 @@ px(){ python3 $H/px.py "$@"; }
 layers(){ mmsg get all-layers | python3 -c "import json,sys;print(sorted(l['name'] for l in json.load(sys.stdin)['layers']))"; }
 $H/isl stop; rm -f $R/island/state
 S=$MANGO_INSTANCE_SIGNATURE; unset MANGO_INSTANCE_SIGNATURE
-XDG_STATE_HOME=$R nohup setsid env -u MANGO_INSTANCE_SIGNATURE ${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)} > $R/island.log 2>&1 &
+XDG_STATE_HOME=$R XDG_CONFIG_HOME=$R/xdg nohup setsid env -u MANGO_INSTANCE_SIGNATURE ${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)} > $R/island.log 2>&1 &
 echo $! > $R/island.pid; sleep 1
 export MANGO_INSTANCE_SIGNATURE=$S
 ok "starts with no compositor backend" "$(layers)" "['island']"

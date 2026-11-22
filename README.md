@@ -347,7 +347,7 @@ Why it doesn't use the obvious approach in a few places:
 
 ```sh
 cargo test                 # unit tests
-tests/headless/all.sh      # end-to-end
+tests/headless/all.sh      # end-to-end: read the output for FAIL
 ```
 
 The end-to-end suite runs a private headless Mango and a private session bus, drives a

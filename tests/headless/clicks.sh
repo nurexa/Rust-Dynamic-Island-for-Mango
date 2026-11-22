@@ -42,3 +42,7 @@ mmsg dispatch togglefullscreen >/dev/null; sleep .8; grim $H/run/d.png
 echo "     fullscreen pixel at pill: $(px $H/run/d.png 950 10) (window bg, not pill black)"
 mmsg dispatch togglefullscreen >/dev/null; sleep .8
 echo "--- layers"; mmsg get all-layers
+islenv(){ tr "\\0" "\\n" < /proc/$(cat $H/run/island.pid)/environ | grep "^$1="; }
+ok "isolated: the island is on the test bus" "$(islenv DBUS_SESSION_BUS_ADDRESS)" "DBUS_SESSION_BUS_ADDRESS=unix:path=$H/run/bus"
+ok "isolated: and has no X display" "$(islenv DISPLAY)" ""
+ok "isolated: nothing mounts itself in the runtime dir" "$(grep -cF " $H/run/" /proc/self/mountinfo)" 0
