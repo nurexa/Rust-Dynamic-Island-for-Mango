@@ -8,9 +8,6 @@ listener and Waybar's custom modules spawn helpers.
 
     bench/run.py                       3 runs of 30 s idle, prints JSON
     WAYBAR_CONFIG=... bench/run.py     another Waybar config
-
-Waybar's workspace pills need a feeder script. It runs during the Waybar pass but
-isn't counted against Waybar, because it's a separate program in this setup.
 """
 import json, os, shutil, statistics, subprocess, sys, time
 from pathlib import Path
@@ -25,7 +22,6 @@ TICK = os.sysconf("SC_CLK_TCK")
 HOME = Path.home()
 WAYBAR_CONFIG = Path(os.environ.get("WAYBAR_CONFIG", HOME / ".config/waybar/config.jsonc"))
 WAYBAR_STYLE = WAYBAR_CONFIG.with_name("style.css")
-FEEDER = HOME / ".config/mango/scripts/mangobar"
 # mangobar needs building (meson); its stock config is used, so no config file is read.
 MANGOBAR = Path(os.environ.get("MANGOBAR", HOME / ".cache/claude-tmp/mb/src/build/mangobar"))
 MANGOBAR_LIBS = os.environ.get("MANGOBAR_LIBS", "")  # LD_LIBRARY_PATH for a prefix-installed fcft
@@ -74,14 +70,19 @@ def cpu_ticks(pid):
 
 
 def wakeups(pid):
-    total = 0
+    """Voluntary switches per thread: a sum would drop by a thread's whole history when it exits."""
+    seen = {}
     for p in family(pid):
         for task in Path(f"/proc/{p}/task").glob("*/status"):
             try:
-                total += next(int(l.split()[1]) for l in task.read_text().splitlines() if l.startswith("voluntary"))
+                seen[task.parent.name] = next(int(l.split()[1]) for l in task.read_text().splitlines() if l.startswith("voluntary"))
             except (OSError, StopIteration):
                 pass
-    return total
+    return seen
+
+
+def woken(before, after):
+    return sum(n - before.get(tid, 0) for tid, n in after.items())
 
 
 def memory_kb(pid, field):
@@ -123,7 +124,7 @@ def measure(name, cmd, env, idle=IDLE):
     pid = proc.pid
     before = (cpu_ticks(pid), wakeups(pid))
     time.sleep(idle)
-    idle_ticks, idle_wakes = cpu_ticks(pid) - before[0], wakeups(pid) - before[1]
+    idle_ticks, idle_wakes = cpu_ticks(pid) - before[0], woken(before[1], wakeups(pid))
 
     before = cpu_ticks(pid)
     for i in range(SWITCHES):
@@ -167,14 +168,6 @@ def main():
     helpers.append(subprocess.Popen(["playerctld"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     helpers.append(subprocess.Popen([MOCK], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 
-    # A private copy, so the feeder's fullscreen hook can't reach the real wallpaper.
-    if FEEDER.exists():
-        feed = run / "feeder"
-        feed.mkdir(exist_ok=True)
-        shutil.copy(FEEDER, feed / "mangobar")
-        (feed / "wall").write_text("#!/bin/sh\n")
-        (feed / "wall").chmod(0o755)
-        helpers.append(subprocess.Popen([feed / "mangobar"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     time.sleep(0.5)
     # Idle is idle: the track is paused. The visualizers are measured playing, below.
     subprocess.run(["playerctl", "play-pause"], env=env)
