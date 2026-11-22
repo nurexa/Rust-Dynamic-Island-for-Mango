@@ -19,9 +19,13 @@ def png(path):
         out+=line; prev=bytes(line)
     return w,h,bpp,out
 w,h,bpp,o=png(sys.argv[1]); x,y=int(sys.argv[2]),int(sys.argv[3])
-dark=lambda y: sum(o[(y*w+x)*bpp:(y*w+x)*bpp+3])<40
+def island(y):
+    """One of the dark island's layers: well, background, card, tint. They're neutral to
+    faintly blue. The test window is magenta (less green than red) and the desktop teal."""
+    r,g,b=o[(y*w+x)*bpp:(y*w+x)*bpp+3]
+    return max(r,g,b)<=80 and max(r,g,b)-min(r,g,b)<=22 and g+3>=r
 r,g,b=o[(y*w+x)*bpp:(y*w+x)*bpp+3]
 # "height": how far the opaque panel runs straight down from (x, y).
-if len(sys.argv)>4 and sys.argv[4]=='height': print(next((i for i in range(h-y) if not dark(y+i)), h-y))
-elif len(sys.argv)>4: print('yes' if r+g+b<40 else 'no')
+if len(sys.argv)>4 and sys.argv[4]=='height': print(next((i for i in range(h-y) if not island(y+i)), h-y))
+elif len(sys.argv)>4: print('yes' if island(y) else 'no')
 else: print(r,g,b)

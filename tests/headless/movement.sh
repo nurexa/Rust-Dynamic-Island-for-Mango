@@ -5,7 +5,7 @@ winy(){ mmsg get all-clients | python3 -c "import json,sys;print([c['y'] for c i
 px(){ python3 $H/px.py "$@"; }
 S=$XDG_RUNTIME_DIR/island/state
 pos(){ read _ _ X Y < <(grep pos $S); X=${X%.*}; Y=${Y%.*}; }
-WIN="15 20 23"; BG="42 74 90"
+WIN="40 8 48"; BG="42 74 90"
 near(){ python3 -c "import sys;a=list(map(int,'$1'.split()));b=list(map(int,'$2'.split()));print('same' if max(abs(x-y) for x,y in zip(a,b))<=6 else 'diff')"; }
 rm -f $S; $H/isl; $V move 1500 900; sleep .7
 ok "docked: pill overlays, the window keeps the full height" "$(winy)" 12

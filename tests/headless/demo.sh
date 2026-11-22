@@ -52,7 +52,7 @@ mmsg get all-clients | python3 -c "import json,sys;[print(c['id']) for c in json
 while read -r id; do mmsg dispatch "killclient client,$id" >/dev/null; done < $R/ids
 sleep .6
 win(){ mmsg dispatch "view,$1,0" >/dev/null; sleep .2; (nohup setsid kitty -c $R/kc/k.conf --class "$2" -e sh -c "$3" >/dev/null 2>&1 &); sleep .7; }
-printf 'background_opacity 0.55\ncursor_shape beam\n' >> $R/kc/k.conf
+printf 'background #0f1417\nbackground_opacity 0.55\ncursor_shape beam\n' >> $R/kc/k.conf
 win 2 discord "sleep 999"
 win 3 spotify "sleep 999"
 win 1 steam "sleep 999"

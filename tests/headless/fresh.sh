@@ -12,7 +12,7 @@ for f in $H/run/*pid; do
 done
 sleep .5
 $H/start.sh ${1:-1} || exit 1; source $H/run/env; VP_W=$((1920+1280*(${1:-1}-1))) $H/tui.sh
-mkdir -p $XDG_RUNTIME_DIR/kc; printf 'background #0f1417\nconfirm_os_window_close 0\nallow_remote_control no\nclipboard_control no-append\n' > $XDG_RUNTIME_DIR/kc/k.conf
+mkdir -p $XDG_RUNTIME_DIR/kc; printf 'background #280830\nconfirm_os_window_close 0\nallow_remote_control no\nclipboard_control no-append\n' > $XDG_RUNTIME_DIR/kc/k.conf
 # A window opens on whatever workspace is showing by then, so wait for each one.
 opened(){ for i in $(seq 200); do mmsg get all-clients | grep -q "\"appid\":\"$1\"" && return; sleep .1; done; echo "FAIL fixture: $1 never opened" >&2; }
 (nohup setsid kitty -c $XDG_RUNTIME_DIR/kc/k.conf -e sleep 9999 >/dev/null 2>&1 &)
@@ -23,3 +23,6 @@ opened org.pulseaudio.pavucontrol; sleep 1.2; mmsg dispatch "view,1,0" >/dev/nul
 # were measured on. Tests of newer rows (bluetooth.sh, audio.sh...) set their own.
 mkdir -p $XDG_RUNTIME_DIR/xdg/island
 echo 'panel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status"]' > $XDG_RUNTIME_DIR/xdg/island/config.toml
+# And its palette, so what a probe sees doesn't follow your wallpaper.
+T=$XDG_RUNTIME_DIR/home/.config/theme/generated; mkdir -p $T
+printf 'accent = "#8fcff3"\non_accent = "#003549"\nsurface = "#0f1417"\non_surface = "#dfe3e7"\nmuted = "#8a9297"\nerror = "#ffb4ab"\n' > $T/colors.toml

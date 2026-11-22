@@ -5,11 +5,11 @@ H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_D
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 px(){ python3 $H/px.py "$@"; }
 BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}
-WIN="15 20 23"
+WIN="40 8 48"
 rm -f $R/island/state; $H/isl; $V move 1500 900; sleep .6
 mmsg dispatch togglefullscreen >/dev/null; sleep .8
 grim $H/run/n1.png
-ok "covered: pill hidden" "$(px $H/run/n1.png 960 8)" "15 20 23"
+ok "covered: pill hidden" "$(px $H/run/n1.png 960 8)" "40 8 48"
 $BIN pin; sleep .4
 mmsg dispatch togglefullscreen >/dev/null; sleep 1.4
 grim $H/run/n2.png

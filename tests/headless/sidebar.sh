@@ -17,7 +17,7 @@ capturing(){
     done
     echo $n
 }
-WIN="15 20 23"
+WIN="40 8 48"
 CFG=$R/xdg/island/config.toml
 cp $CFG $R/sidebar.config
 

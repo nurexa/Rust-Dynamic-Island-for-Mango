@@ -32,9 +32,17 @@ at the top for bar, 38 px for glass. The frame style is inspired by
 
 ## Settings
 
-`island settings` (or the gear in the panel, or a right click on the search button in glass)
-lists the style, size, blur, opacity, icons and every add-on. Enter changes one, live.
-The same from a terminal:
+There's no need to open the config file. **Settings** is a button at the top of the panel,
+the last tab in search, a gear on the sidebar, the frame's rail and the bars, and
+`island settings`. It has a control for every key in `config.toml`: style, colors, icons,
+fonts, what's on the pill, panel and sidebar and in what order, add-ons, timings,
+commands, keys, and your own modules and search tabs. Type to find any of them.
+
+A change applies live and is written to `config.toml`: comments and layout stay, a value
+the island wouldn't accept isn't saved, a symlinked file is written through, and the
+version before is kept as `config.toml.bak`.
+
+A few also work from a terminal:
 
 ```sh
 island set scale 1.25      # 0.75 to 2
@@ -44,8 +52,15 @@ island set media off       # any add-on by name
 island preset light        # the basics; full brings the rest back
 ```
 
-A choice holds until that setting's line in `config.toml` changes, and your config is never
-rewritten. A part switched off starts no watcher of its own the next time the island starts.
+Those are saved beside the config instead, and hold until that setting's line changes or you
+change it in Settings. A part switched off starts no watcher of its own the next time the
+island starts.
+
+### Colors and depth
+
+`palette` points at a small file of six colors. The island works out its layers from them
+(wells, background, cards, the leading card, controls) as steps of contrast rather than
+fixed tints, so they stay apart and readable on black, white, pastel or neon alike.
 
 ### Blur
 
@@ -207,7 +222,7 @@ programs are missing simply doesn't appear.
 | Scroll on the pill | Move through occupied workspaces |
 | `Super+Alt+S`, or `island sidebar` | Open or close the sidebar |
 | `island style` | Change its shape |
-| `island settings`, or the gear in the panel | Change style, size, blur, opacity, icons and every add-on |
+| `island settings`, or Settings in the panel, rail, bars and search | Change anything in the config, without opening it |
 
 Dragging is for the floating styles (pill, split, minimal); frame, notch, bar and glass belong
 to their edge. In frame, hover the top border for the panel, the middle of the right

@@ -23,7 +23,7 @@ notifications = true              # false keeps your own notification daemon
 disable = []                      # parts to leave out wherever they appear; `island settings` lists every one, `island preset light` keeps the basics
 
 [ui]
-# `island settings` changes these live; a choice holds until its line here changes.
+# Settings (`island settings`) changes these, and everything else here, live.
 solid_icons = true                # false: outlines, solid only for what is on
 scale = 1.0                       # 0.75 to 2: the size of all of it
 blur = "auto"                     # "on", "off", or "auto" for the glass style. The compositor does the blurring: see README

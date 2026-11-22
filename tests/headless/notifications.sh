@@ -5,7 +5,7 @@ ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want
 px(){ python3 $H/px.py "$@"; }
 BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$R/bus PATH=$H/shim:$PATH
-WIN="15 20 23"
+WIN="40 8 48"
 owner(){ busctl --user status org.freedesktop.Notifications 2>/dev/null | awk -F= '/^Comm=/{print $2}'; }
 # The card's left padding: plain background, wherever the text falls.
 open(){ px $H/run/$1.png 757 40 opaque; }
@@ -112,7 +112,7 @@ ok "groups: clearing one app leaves the others" "$(about $(($(height n17) - $(he
 ok "groups: each cleared note reports dismissed" "$(grep -cE '^NotificationClosed [234] 2$' $R/sigs)" 3
 id=$(ask "Dinner?" 0); sleep .6
 $V click 1196 87; sleep .5; grim $H/run/n21.png
-ok "history reply: the entry turns into a field" "$(px $H/run/n21.png 1100 124 opaque)" no
+ok "history reply: the entry turns into a field" "$(px $H/run/n21.png 1100 134 | awk '{print ($1 < 14 ? "well" : "card")}')" well
 $V type on my way; $V key Return; $V move 1500 900; sleep .6
 ok "history reply: Enter sends it" "$(grep "NotificationReplied $id " $R/sigs)" "NotificationReplied $id on my way"
 $BIN pin; $BIN dnd; kill $(cat $R/sigs.pid)

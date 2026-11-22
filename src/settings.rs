@@ -56,7 +56,7 @@ impl Default for Commands {
 }
 
 /// A module made of a shell command: its first line of output is what shows.
-#[derive(serde::Serialize, Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Custom {
     pub name: String,
     pub exec: String,

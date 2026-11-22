@@ -34,7 +34,7 @@ sed -i '1i tools = ["apps", "run", "windows", "files", "clipboard", "screenshot"
 sed -i '1i web_search = "https://search.test/?q={}"' $XDG_CONFIG_HOME/island/config.toml
 # Opening things and the file index are shims too: they log, they don't open.
 printf '#!/bin/sh\necho "islandtest open $*" >> %s\n' "$LOG" > $H/shim/xdg-open
-printf '#!/bin/sh\ncase "$*" in *needle*) echo "%s/files/a needle.txt"; echo "/usr/share/needle";; esac\n' "$R" > $H/shim/plocate
+printf '#!/bin/sh\ncase "$*" in *needle*) echo "%s/home/files/a needle.txt"; echo "/usr/share/needle";; esac\n' "$R" > $H/shim/plocate
 chmod +x $H/shim/xdg-open $H/shim/plocate
 $H/isl; sleep .3; $V move 1500 900; sleep .4
 ok "starts on the top layer" "$(layer)" top
@@ -67,7 +67,7 @@ ok "web: an unmatched search goes to the web, encoded" "$(logged 'islandtest ope
 
 # Files: live, asks the index on every keystroke
 $BIN open files; sleep .9; $V type needle; sleep .6; $V key Return; sleep .6
-ok "files: your own files first, Enter opens" "$(logged "islandtest open $R/files/a needle.txt")" 1
+ok "files: your own files first, Enter opens" "$(logged "islandtest open $R/home/files/a needle.txt")" 1
 
 # Windows
 $BIN open windows; sleep .9; $V type pav; sleep .3; $V key Return; sleep .8
@@ -136,7 +136,7 @@ mmsg dispatch togglefullscreen >/dev/null; sleep .8
 $BIN open apps; sleep 1.1; grim $H/run/t5.png
 ok "palette: shows over a fullscreen window" "$(px $H/run/t5.png 690 30 opaque)" yes
 $V key Escape; sleep .9; grim $H/run/t6.png
-ok "palette: gone again, back under it" "$(px $H/run/t6.png 690 30)" "15 20 23"
+ok "palette: gone again, back under it" "$(px $H/run/t6.png 690 30)" "40 8 48"
 mmsg dispatch togglefullscreen >/dev/null; sleep .6
 
 kill -0 $(cat $R/island.pid) && echo "ok   alive after every tool"

@@ -8,12 +8,25 @@ use crate::{
     settings::Custom,
 };
 use pango::Weight;
-use std::{process::Command, thread, time::Duration};
+use std::{
+    process::Command,
+    sync::atomic::{AtomicU64, Ordering::Relaxed},
+    thread,
+    time::Duration,
+};
 
+/// Which list is current: a thread from an earlier one stops at its next run.
+static ROUND: AtomicU64 = AtomicU64::new(0);
+
+/// Runs `list` in place of whatever list ran before.
 pub fn spawn(list: &[Custom], tx: crate::Tx) {
-    for module in list.iter().cloned() {
+    let round = ROUND.fetch_add(1, Relaxed) + 1;
+    for module in list.iter().filter(|m| !m.exec.is_empty()).cloned() {
         let tx = tx.clone();
         thread::spawn(move || loop {
+            if ROUND.load(Relaxed) != round {
+                return;
+            }
             let out = Command::new("sh").arg("-c").arg(&module.exec).output();
             let text = out.map(|o| String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or("").to_owned());
             if tx.send(Msg::Custom(module.name.clone(), text.unwrap_or_default())).is_err() || module.interval == 0 {

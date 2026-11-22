@@ -179,6 +179,8 @@ def tag(src, o, size):
     t = f"{size[0]}x{size[1]}-{o['fit']}"
     if is_video(src):
         t += f"-{o['speed']:g}x-{o['fps']}-{o['quality']}"
+    else:
+        t += "-lossless"
     return t
 
 
@@ -187,7 +189,14 @@ def cached(src, t, ext):
 
 
 def media(src, t):
-    return cached(src, t, ".mp4" if is_video(src) else ".jpg")
+    # Not JPEG for a still: gslapper decodes it with jpegdec, which tears 4:4:4 color
+    # into stair steps along every edge.
+    return cached(src, t, ".mp4" if is_video(src) else ".png")
+
+
+def poster_of(src, t):
+    """The still that stands in for it: a video's first frame, or the still itself."""
+    return cached(src, t, ".jpg") if is_video(src) else media(src, t)
 
 
 def is_fresh(path, src):
@@ -224,7 +233,7 @@ def prep(src, o, size):
     cache = settings()["cache"]
     cache.mkdir(parents=True, exist_ok=True)
     t, (w, h) = tag(src, o, size), size
-    out, poster, thumb = media(src, t), cached(src, t, ".jpg"), cache / f"{src.name}.thumb.jpg"
+    out, poster, thumb = media(src, t), poster_of(src, t), cache / f"{src.name}.thumb.jpg"
     fit = fit_filter(o["fit"], w, h)
     # One encoder per output: `apply` and `prep_all` hold different locks and can want the same file.
     gate = open(RUN / f"wall.enc.{hashlib.sha1(out.name.encode()).hexdigest()[:16]}.lock", "w")
@@ -243,7 +252,7 @@ def prep(src, o, size):
             return False
     if not is_fresh(poster, src):
         # A video's poster is its own first frame, already sized; a still gets sized now.
-        if not (still(out, poster, "null") if is_video(src) else still(src, poster, fit)):
+        if not (still(out, poster, "null") if is_video(src) else still(src, poster, fit + ",format=rgb24")):
             return False
     if not is_fresh(thumb, src):
         still(poster, thumb, "scale=320:-2")
@@ -256,10 +265,10 @@ def prune(store, size):
     keep = set()
     if store["playing"] and {"name", "tag"} <= store["playing"].keys():
         p = store["playing"]
-        keep |= {f"{p['name']}.{p['tag']}.mp4", f"{p['name']}.{p['tag']}.jpg"}
+        keep |= {f"{p['name']}.{p['tag']}{ext}" for ext in (".mp4", ".jpg", ".png")}
     for src in sources():
         t = tag(src, effective(store, src.name), size)
-        keep |= {media(src, t).name, cached(src, t, ".jpg").name, f"{src.name}.thumb.jpg"}
+        keep |= {media(src, t).name, poster_of(src, t).name, f"{src.name}.thumb.jpg"}
     for f in settings()["cache"].iterdir():
         # A minute of grace, so a file another run just wrote isn't swept from under it.
         try:
@@ -390,7 +399,7 @@ def apply(block):
     if playing and playing == {"name": src.name, "tag": t} and playing_pid():
         update(playing=playing)
         return
-    if not (is_fresh(media(src, t), src) and is_fresh(cached(src, t, ".jpg"), src)):
+    if not (is_fresh(media(src, t), src) and is_fresh(poster_of(src, t), src)):
         update(busy=True)
         notify(f"Optimizing {src.stem}…")
         try:
@@ -402,10 +411,13 @@ def apply(block):
             if playing:
                 update(current=str(src.parent / playing["name"]))
             return notify(f"Couldn't read {src.name}")
-    old = playing and cached(src.parent / playing["name"], playing["tag"], ".jpg")
+    was = playing and src.parent / playing["name"]
+    old = playing and poster_of(was, playing["tag"])
+    if old and not old.exists():
+        old = cached(was, playing["tag"], ".jpg")  # cached before stills were lossless
     store = update(playing={"name": src.name, "tag": t})
     retheme(src, size)
-    crossfade(old, media(src, t), cached(src, t, ".jpg"))
+    crossfade(old, media(src, t), poster_of(src, t))
     prune(load(), size)
 
 
@@ -501,9 +513,9 @@ def prep_all():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         return
+    size = monitor_size()
     for src in sources():
         prep(src, effective(load(), src.name), size)
-    size = monitor_size()
     prune(load(), size)
     apply(block=False)  # the first-run stopgap, or a setting changed meanwhile
 

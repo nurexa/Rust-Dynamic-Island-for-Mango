@@ -15,7 +15,7 @@ fn symbol(icon: &str) -> &'static str {
         "input-keyboard" => "keyboard",
         "input-mouse" | "input-tablet" => "mouse",
         "input-gaming" => "sports_esports",
-        "phone" => "phone",
+        "phone" => "mobile",
         "computer" => "computer",
         _ => "bluetooth",
     }
@@ -47,4 +47,12 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
         y += 24.0;
     }
     y + 12.0
+}
+
+#[test]
+fn every_kind_of_device_has_an_icon() {
+    let kinds = ["audio-headset", "audio-headphones", "audio-card", "input-keyboard", "input-mouse", "input-gaming", "phone", "computer", ""];
+    for kind in kinds {
+        assert!(crate::symbols::SYMBOLS.iter().any(|s| s.0 == symbol(kind)), "{kind}");
+    }
 }

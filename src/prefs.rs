@@ -1,6 +1,6 @@
 //! What can be changed from the island itself: a few looks, and every part on or off.
 //! A choice is saved beside the state and holds until that setting's line in
-//! config.toml changes, the same as a style. Nothing here writes your config.
+//! config.toml changes, the same as a style. This is `island set`; Settings writes the file.
 use crate::settings::{Blur, Config};
 
 /// What's switched, by key, with what it can be. The first spelling is canonical.

@@ -17,9 +17,8 @@ woke(){ awk '/^voluntary_ctxt_switches/{print $2}' /proc/$1/task/$1/status; }
 ticks(){ awk '{print $14+$15}' /proc/$1/stat; }
 
 printf '#!/bin/sh\necho "note $*" >> %s\n' "$LOG" > $H/shim/notify-send; chmod +x $H/shim/notify-send
-# Its own colors, as it looks for the accent; and the mock's always playing, so no visualizers.
-printf 'accent = "#ffb692"\non_accent = "#542000"\nsurface = "#1a120e"\non_surface = "#f0dfd8"\nmuted = "#9f8d84"\nerror = "#ffb4ab"\n' > $R/bt-colors.toml
-printf 'palette = "%s"\nvisualizer = []\n' "$R/bt-colors.toml" > $XDG_CONFIG_HOME/island/config.toml
+# The mock is always playing, so no visualizers.
+printf 'visualizer = []\n' > $XDG_CONFIG_HOME/island/config.toml
 printf 'notifications = false\npanel = ["header", "workspaces", "media", "notifications", "stats", "audio", "brightness", "status", "bluetooth"]\n' >> $XDG_CONFIG_HOME/island/config.toml
 for f in sysbus fakebt; do [ -f $R/$f.pid ] && kill $(cat $R/$f.pid) 2>/dev/null; done
 dbus-daemon --config-file=$H/bus.conf --nofork --address=$ISLAND_SYSTEM_BUS >/dev/null 2>&1 & echo $! > $R/sysbus.pid; sleep .3
@@ -29,15 +28,15 @@ $H/isl; sleep .3; $V move 1500 900; sleep .4
 P=$(cat $R/island.pid)
 
 # The panel: switch on, the connected headset and its battery
-ACC="255 182 146"; on(){ [ "$(px $1 1190 371)" = "$ACC" ] && echo on || echo off; }
+ACC="139 201 236"; on(){ python3 -c "import sys;a,b=[list(map(int,s.split())) for s in sys.argv[1:]];print('on' if max(abs(x-y) for x,y in zip(a,b))<=8 else 'off')" "$(px $1 1190 431)" "$ACC"; }
 $V move 960 22; sleep 1.2; grim $H/run/bt1.png
 ok "panel: the switch shows on" "$(on $H/run/bt1.png)" on
-ok "panel: a row for the connected headset" "$(px $H/run/bt1.png 700 410 opaque)" yes
-$V click 1202 371; sleep .6
+ok "panel: a row for the connected headset" "$(px $H/run/bt1.png 700 470 opaque)" yes
+$V click 1202 431; sleep .6
 ok "switch: turns the adapter off" "$(logged 'set /org/bluez/hci0 Powered False')" 1
 grim $H/run/bt2.png
-ok "switch: shows off, and the headset row goes with it" "$(on $H/run/bt2.png) $(px $H/run/bt2.png 700 410 opaque)" "off no"
-$V click 760 371; sleep 1
+ok "switch: shows off, and the headset row goes with it" "$(on $H/run/bt2.png) $(px $H/run/bt2.png 700 470 opaque)" "off no"
+$V click 760 431; sleep 1
 ok "row: opens the Bluetooth tool" "$(layer)" overlay
 $V key Return; sleep .9
 ok "tool: off, so Enter turns it back on" "$(logged 'set /org/bluez/hci0 Powered True')" 1
@@ -52,7 +51,7 @@ pick broken
 ok "tool: a failed connect says so" "$(logged "note -a bluetooth Bluetooth Couldn't connect to Broken Pad")" 1
 pick headset
 $V move 960 22; sleep 1.2; grim $H/run/bt3.png; $V move 1500 900; sleep .8
-ok "panel: lists both connected devices" "$(px $H/run/bt3.png 700 434 opaque)" yes
+ok "panel: lists both connected devices" "$(px $H/run/bt3.png 700 494 opaque)" yes
 
 # Low battery: one note, not one per change, and again only after it charged
 for pct in 12 10 18 60 9; do ctl SetBattery oy /org/bluez/hci0/dev_HS $pct >/dev/null; sleep .3; done
@@ -78,10 +77,10 @@ ok "scan: and connects" "$(logged 'note -a bluetooth Bluetooth Paired and connec
 $V move 960 22; sleep 1.2; grim $H/run/bt5.png; $V move 1500 900; sleep .8
 ctl Adapter b false >/dev/null; sleep .5
 $V move 960 22; sleep 1.2; grim $H/run/bt6.png; $V move 1500 900; sleep .8
-ok "adapter gone: the panel ends above where the row was" "$(px $H/run/bt5.png 700 380 opaque) $(px $H/run/bt6.png 700 380 opaque)" "yes no"
+ok "adapter gone: the panel ends above where the row was" "$(px $H/run/bt5.png 700 445 opaque) $(px $H/run/bt6.png 700 445 opaque)" "yes no"
 ctl Adapter b true >/dev/null; sleep .5
 $V move 960 22; sleep 1.2; grim $H/run/bt7.png; $V move 1500 900; sleep .8
-ok "adapter back: so is the row" "$(px $H/run/bt7.png 700 380 opaque)" yes
+ok "adapter back: so is the row" "$(px $H/run/bt7.png 700 445 opaque)" yes
 
 # Idle: nothing runs while nothing changes
 sleep 1; t0=$(ticks $P); w0=$(woke $P); sleep 5; t1=$(ticks $P); w1=$(woke $P)

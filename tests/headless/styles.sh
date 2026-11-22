@@ -13,7 +13,7 @@ layers(){ mmsg get all-layers | python3 -c "import json,sys;print(sum(l['name']=
 overlay(){ mmsg get all-layers | python3 -c "import json,sys;print(sum(l['name']=='island' and l['layer']=='overlay' for l in json.load(sys.stdin)['layers']))"; }
 style(){ $BIN style $1; sleep 1.5; }
 shot(){ grim $R/st.png; }
-WIN="15 20 23"
+WIN="40 8 48"
 
 $V move 1500 900; sleep .6
 ok "pill: one surface, windows untouched" "$(layers) $(win)" "1 12,12 1896x1056"
@@ -93,6 +93,13 @@ ok "set: a key that means nothing is refused" "$($BIN set nonsense on >/dev/null
 ok "set: a value out of range is refused" "$($BIN set scale 9 >/dev/null 2>&1; echo $?)" 2
 $BIN settings; sleep 1.2
 ok "settings: opens on the island" "$(overlay)" 1
+CFG=$R/xdg/island/config.toml; sed -i '1i # my note' $CFG
+$V type 'filled icons'; sleep .4; $V key Return; sleep 1.2
+ok "settings: a switch saves to config.toml and keeps its comments" "$(grep -c '^solid_icons = false' $CFG) $(grep -c '^# my note' $CFG)" "1 1"
+ok "settings: and keeps the file it replaced" "$(grep -c '^# my note' $CFG.bak)" 1
+$BIN close; sleep 1.2; $BIN settings; sleep 1.2
+$V type 'filled icons'; sleep .4; $V key Return; sleep 1.2
+ok "settings: and switches back" "$(grep -c '^solid_icons = false' $CFG)" 0
 $BIN close; sleep 1.2
 
 # The cut-off: at twice the size there's room for half a panel, and the rest scrolls.

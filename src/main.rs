@@ -352,12 +352,13 @@ impl App {
             pen::fonts_changed();
         }
         if cfg.palette != self.cfg.palette {
+            // ponytail: the old folder's watcher stays, asleep in read(), until the island
+            // restarts. Stop it if palette paths ever change more than by hand.
             watch_theme(&cfg.palette, self.tx.clone());
         }
-        // A new module starts now; one that changed, when the island next starts.
-        let new: Vec<_> = cfg.custom.iter().filter(|m| !m.exec.is_empty()
-            && !self.cfg.custom.iter().any(|o| o.name == m.name && !o.exec.is_empty())).cloned().collect();
-        modules::custom::spawn(&new, self.tx.clone());
+        if cfg.custom != self.cfg.custom {
+            modules::custom::spawn(&cfg.custom, self.tx.clone());
+        }
         self.cfg = cfg;
         if remake {
             self.rebuild_surfaces(style);

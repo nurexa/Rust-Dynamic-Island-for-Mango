@@ -25,13 +25,13 @@ echo '[{"source":1,"properties":{"application.name":"Discord"}}]' > $R/rec
 echo "Event 'new' on source-output #4" >> $R/events; sleep .8; grim $H/run/a1.png
 ok "an app on the mic lights the orange dot" "$(orange $H/run/a1.png)" orange
 pin; sleep 1; $BIN audio; sleep 1; grim -g "560,0 800x620" $H/run/a3.png
-$V click 1100 163; sleep .5
+$V click 1100 173; sleep .5
 ok "an app's slider sets its own volume" "$(grep -c 'pactl set-sink-input-volume 7 ' $R/shim.log)" 1
-$V click 800 114; sleep .5
+$V click 800 124; sleep .5
 ok "a click on another output makes it the default" "$(grep -c "pactl set-default-sink hdmi" $R/shim.log)" 1
-$V click 710 211; sleep .5
+$V click 710 221; sleep .5
 ok "and the same for the microphone" "$(grep -c "pactl set-default-source mic" $R/shim.log)" 1
-$V click 715 163; sleep .5
+$V click 715 173; sleep .5
 ok "the app's icon mutes it" "$(grep -c 'pactl set-sink-input-mute 7 toggle' $R/shim.log)" 1
 echo '[]' > $R/rec; echo "Event 'remove' on source-output #4" >> $R/events
 $BIN audio; sleep .3; unpin; sleep 1.2; grim $H/run/a2.png

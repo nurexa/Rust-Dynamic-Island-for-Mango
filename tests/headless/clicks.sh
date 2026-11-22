@@ -5,7 +5,7 @@ tags(){ mmsg get all-monitors | python3 -c "import json,sys;print(json.load(sys.
 focused(){ mmsg get focusing-client | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('appid'))"; }
 kittytags(){ mmsg get all-clients | python3 -c "import json,sys;print([c['tags'] for c in json.load(sys.stdin)['clients'] if c['appid']=='kitty'])"; }
 px(){ python3 $H/px.py "$@"; }
-WIN="15 20 23"   # kitty background from the test config, now behind the island
+WIN="40 8 48"   # kitty background from the test config, now behind the island
 $H/isl
 $V move 1500 900; sleep .8; grim $H/run/a.png
 ok "idle: window runs behind the pill" "$(px $H/run/a.png 800 22)" "$WIN"
@@ -24,14 +24,14 @@ ok "leave closes panel" "$(px $H/run/c.png 800 22)" "$WIN"
 
 # tag click in compact: chip 3 is at x ~ 925 given chips [1 kitty][3 pav]
 $V move 960 22; sleep 1
-$V click 840 106; sleep .5; ok "panel chip click switches tag" "$(tags)" "[3]"
-$V click 730 106; sleep .5; ok "panel chip click switches back" "$(tags)" "[1]"
+$V click 840 128; sleep .5; ok "panel chip click switches tag" "$(tags)" "[3]"
+$V click 730 128; sleep .5; ok "panel chip click switches back" "$(tags)" "[1]"
 # app icon on another tag: focuses that window and its tag
-$V click 848 106; sleep .6; ok "icon click focuses window on other tag" "$(focused) $(tags)" "org.pulseaudio.pavucontrol [3]"
-$V click 738 106; sleep .6; ok "icon click returns" "$(focused) $(tags)" "kitty [1]"
+$V click 848 128; sleep .6; ok "icon click focuses window on other tag" "$(focused) $(tags)" "org.pulseaudio.pavucontrol [3]"
+$V click 738 128; sleep .6; ok "icon click returns" "$(focused) $(tags)" "kitty [1]"
 # right click on an empty chip moves focused window there, silently
-$V click 786 106 r; sleep .6; ok "right click moves focused window (tagsilent)" "$(kittytags) $(tags)" "[[2]] [1]"
-$V click 786 106 l; sleep .4; ok "follow it" "$(tags)" "[2]"
+$V click 786 128 r; sleep .6; ok "right click moves focused window (tagsilent)" "$(kittytags) $(tags)" "[[2]] [1]"
+$V click 786 128 l; sleep .4; ok "follow it" "$(tags)" "[2]"
 mmsg dispatch "tag,1,0" >/dev/null; sleep .4
 mmsg dispatch "view,1,0" >/dev/null; sleep .4
 ok "restored" "$(kittytags) $(tags)" "[[1]] [1]"

@@ -91,7 +91,7 @@ island audio               # open the panel's list of outputs, mics and apps
 island doctor              # what works on this machine, and how to fix what doesn't
 island claude-setup        # add Claude Code's hooks (--undo takes them out)
 island style               # the next style; or pill, frame, notch, bar, glass, split, minimal
-island settings            # change any of this from the island
+island settings            # change any of this from the island: it edits config.toml, comments kept
 island set scale 1.25      # or blur, opacity, icons, hover, or any add-on: on, off
 island preset light        # the basics; or full
 island sidebar             # open or close the sidebar
@@ -265,6 +265,9 @@ it can take its time and costs nothing the rest of the time.
 - **Return `x` or `y` unchanged** from a module when there's nothing to show. It then
   takes no room.
 - **Panel modules** work in `y`, and what they return includes their own bottom spacing.
+  Each sits on a card; `seat()` in `src/modules/mod.rs` says which, and how much of that
+  spacing is outside it. Fill with `pal.card`, `raised` or `well` rather than a fixed
+  color, and the layers hold up under any palette.
 - **`Ctx`** in a module gives you the `Model` (monitors, windows, audio, media, network,
   tray, stats, notifications), the config and the current output.
 - **`Pen`** has `text`, `wrapped`, `glyph`, `fill`, `symbol`, `image` and `button`, plus

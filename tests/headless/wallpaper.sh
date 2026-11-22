@@ -5,7 +5,7 @@ H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_D
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 px(){ python3 $H/px.py "$@"; }
 BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}
-WALL=$(readlink -f $H/../../wall/wall)
+WALL=${WALL:-$(readlink -f $H/../../wall/wall)}
 python3 $WALL --selftest >/dev/null && echo "ok   wall selftest" || echo "FAIL wall selftest"
 mkdir -p $R/bin $R/walls $R/cfg/island; ln -sf $BIN $R/bin/island
 # A 21:9 clip: the case black bars exist for.
@@ -30,3 +30,19 @@ $WALL opt fit bogus 2>/dev/null; ok "bad value is refused" "$?" "1"
 island pin; sleep 1.2; grim $R/wall-b.png
 ok "panel grows to hold the wallpaper section" "$(px $R/wall-b.png 700 200 opaque)" "yes"
 island pin
+
+# A still reaches the screen as it was drawn: thin colored diagonals keep their color and
+# aren't torn into steps on the way through the player (4:4:4 JPEG was, by jpegdec).
+for e in png jpg; do
+  magick -size 3840x2160 xc:white -fill none -stroke '#e02040' -strokewidth 3 \
+    -draw "circle 1920,1180 2720,1180" -quality 94 -sampling-factor 1x1 $R/walls/edge-$e.$e
+  magick $R/walls/edge-$e.$e -filter Lanczos -resize 1920x1080 $R/edge-want.png
+  mmsg dispatch "view,5,0" >/dev/null; $V move 1500 1050; $WALL set $R/walls/edge-$e.$e; sleep 2; grim $R/edge-got.png
+  for f in want got; do magick $R/edge-$f.png -crop 900x800+510+190 +repage -alpha off $R/edge-$f-crop.png; done
+  db=$(magick compare -metric PSNR $R/edge-got-crop.png $R/edge-want-crop.png null: 2>&1 | cut -d' ' -f1)
+  ok "still ($e): edges reach the screen clean" "$(awk -v d="$db" 'BEGIN{print (d >= 40) ? "clean" : "torn at " d " dB"}')" clean
+done
+magick -size 800x450 xc:teal $R/walls/later.png
+$WALL prep
+ok "prep caches a wallpaper that was never set" "$(ls $R/cache/wallpapers/later.png.1920x1080-*-lossless.png 2>/dev/null | wc -l)" 1
+mmsg dispatch "view,1,0" >/dev/null
