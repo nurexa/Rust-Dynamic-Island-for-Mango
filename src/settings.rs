@@ -233,19 +233,55 @@ impl Default for Claude {
     }
 }
 
+/// The calendar, wherever it's placed.
+#[derive(Deserialize, Debug, Clone)]
+#[serde(default)]
+pub struct Calendar {
+    /// A folder of .ics files. Empty is a plain month.
+    pub dir: String,
+    pub week_start: WeekStart,
+}
+
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WeekStart {
+    Monday,
+    Saturday,
+    Sunday,
+}
+
+impl Default for Calendar {
+    fn default() -> Self {
+        Calendar { dir: String::new(), week_start: WeekStart::Sunday }
+    }
+}
+
+impl Calendar {
+    /// Monday is 0.
+    pub fn first_weekday(&self) -> i64 {
+        match self.week_start {
+            WeekStart::Monday => 0,
+            WeekStart::Saturday => 5,
+            WeekStart::Sunday => 6,
+        }
+    }
+}
+
 /// Look and feel switches.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Ui {
     /// Hovering the pill opens the panel. Off leaves it to a click or the pin key.
     pub hover_open: bool,
+    /// Resting on the middle of the frame's right border opens the sidebar.
+    pub hover_sidebar: bool,
     pub hover_open_ms: u64,
     pub hover_close_ms: u64,
 }
 
 impl Default for Ui {
     fn default() -> Self {
-        Ui { hover_open: true, hover_open_ms: 130, hover_close_ms: 280 }
+        Ui { hover_open: true, hover_sidebar: true, hover_open_ms: 130, hover_close_ms: 280 }
     }
 }
 
@@ -262,6 +298,10 @@ pub struct Config {
     /// Module order in the pill and the panel. See src/modules/mod.rs.
     pub pill: Vec<String>,
     pub panel: Vec<String>,
+    /// The sidebar's sections, in order. Empty leaves it out. See src/modules/sidebar.rs.
+    pub sidebar: Vec<String>,
+    pub visualizer: Vec<crate::viz::Look>,
+    pub calendar: Calendar,
     /// App id -> glyph, over the built-in table.
     pub icons: HashMap<String, String>,
     pub commands: Commands,
@@ -301,6 +341,9 @@ impl Default for Config {
             palette: "~/.config/theme/generated/colors.toml".into(),
             pill: list(&["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]),
             panel: list(&["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "nightlight", "status", "bluetooth"]),
+            sidebar: list(&["media", "calendar", "controls", "notifications"]),
+            visualizer: vec![crate::viz::Look::Bars, crate::viz::Look::Wave, crate::viz::Look::Ring],
+            calendar: Calendar::default(),
             icons: HashMap::new(),
             commands: Commands::default(),
             custom: Vec::new(),
@@ -330,8 +373,14 @@ impl Config {
     pub fn parse(src: &str) -> Result<Self, toml::de::Error> {
         let mut c: Config = toml::from_str(src)?;
         let off = c.disable.clone();
-        for list in [&mut c.pill, &mut c.panel, &mut c.tools] {
+        for list in [&mut c.pill, &mut c.panel, &mut c.sidebar, &mut c.tools] {
             list.retain(|n| !off.contains(n));
+        }
+        if off.iter().any(|d| d == "sidebar") {
+            c.sidebar.clear();
+        }
+        if off.iter().any(|d| d == "visualizer") {
+            c.visualizer.clear();
         }
         if off.iter().any(|d| d == "web") {
             c.web_search.clear();

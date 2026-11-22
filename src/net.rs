@@ -72,17 +72,31 @@ pub fn spawn(tx: crate::Tx) -> mpsc::Sender<()> {
                 }
             }
         });
-        let mut last = None;
-        let _ = publish(&conn, &tx, &mut last);
+        let (mut last, mut radio) = (None, None);
+        let _ = publish(&conn, &tx, &mut last, &mut radio);
         while poked.recv().is_ok() {
             while poked.try_recv().is_ok() {}
-            let _ = publish(&conn, &tx, &mut last);
+            let _ = publish(&conn, &tx, &mut last, &mut radio);
         }
     });
     poke
 }
 
-fn publish(conn: &Connection, tx: &crate::Tx, last: &mut Option<State>) -> Result<(), ()> {
+/// Whether Wi-Fi is switched on. None without a Wi-Fi card.
+fn wifi_radio(c: &Connection) -> Option<bool> {
+    // Bit 0 of RadioFlags is a card being there at all.
+    if get::<u32>(c, NM_PATH, NM, "RadioFlags")? & 1 == 0 {
+        return None;
+    }
+    get(c, NM_PATH, NM, "WirelessEnabled")
+}
+
+fn publish(conn: &Connection, tx: &crate::Tx, last: &mut Option<State>, radio: &mut Option<bool>) -> Result<(), ()> {
+    let wifi = wifi_radio(conn);
+    if *radio != wifi {
+        *radio = wifi;
+        tx.send(Msg::Radio(wifi)).map_err(drop)?;
+    }
     let now = read(conn);
     if last.as_ref() != Some(&now) {
         *last = Some(now.clone());

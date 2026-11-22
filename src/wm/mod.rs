@@ -38,6 +38,8 @@ pub struct Client {
     pub is_minimized: bool,
     pub is_urgent: bool,
     #[serde(default)]
+    pub is_fullscreen: bool,
+    #[serde(default)]
     pub x: i32,
     #[serde(default)]
     pub y: i32,
@@ -88,9 +90,15 @@ pub fn detect() -> Box<dyn Backend> {
 
 pub fn same_but_titles(a: &[Client], b: &[Client]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(a, b)| {
-        (a.id, &a.appid, &a.monitor, &a.tags, a.is_focused, a.is_minimized, a.is_urgent)
-            == (b.id, &b.appid, &b.monitor, &b.tags, b.is_focused, b.is_minimized, b.is_urgent)
+        (a.id, &a.appid, &a.monitor, &a.tags, a.is_focused, a.is_minimized, a.is_urgent, a.is_fullscreen)
+            == (b.id, &b.appid, &b.monitor, &b.tags, b.is_focused, b.is_minimized, b.is_urgent, b.is_fullscreen)
     })
+}
+
+/// A fullscreen window is on show on this monitor, over the island.
+pub fn covered(clients: &[Client], monitors: &[Monitor], name: &str) -> bool {
+    let Some(mon) = monitors.iter().find(|m| m.name == name) else { return false };
+    mon.tags.iter().filter(|t| t.is_active).any(|t| clients_on(clients, name, t.index).any(|c| c.is_fullscreen))
 }
 
 /// Windows on one tag of one monitor, in mango's order. Minimized windows stay

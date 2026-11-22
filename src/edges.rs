@@ -262,6 +262,12 @@ impl Edges {
         }
     }
 
+    /// The middle of the frame's right border is the way into the sidebar.
+    pub fn at_sidebar(&self, at: At, (_, y): (f64, f64)) -> bool {
+        let s = &self.strips[at.strip];
+        s.side == Side::Right && (y - s.rect.3 / 2.0).abs() < s.rect.3 * 0.3
+    }
+
     pub fn hovering_target(&self, at: At) -> bool {
         self.strips[at.strip].hover.is_some()
     }

@@ -561,6 +561,7 @@ dependencies = [
  "futures-executor",
  "futures-task",
  "futures-util",
+ "gio-sys",
  "glib-macros",
  "glib-sys",
  "gobject-sys",
@@ -647,6 +648,7 @@ name = "island"
 version = "0.2.0"
 dependencies = [
  "cairo-rs",
+ "glib",
  "libc",
  "libloading",
  "pango",

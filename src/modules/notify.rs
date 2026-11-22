@@ -1,5 +1,5 @@
 //! Notifications on screen: the card the pill grows into, and the history in the panel.
-use super::{Ctx, PAD, PANEL_W};
+use super::{Ctx, PAD};
 use crate::{
     icons,
     notify::{INLINE_REPLY, Note, NoteImage},
@@ -119,13 +119,34 @@ pub fn toast(p: &mut Pen, c: &Ctx) -> f64 {
 }
 
 /// History in the panel, one group per app. Takes no room while there's nothing in it.
-pub fn panel(p: &mut Pen, c: &Ctx, mut y: f64) -> f64 {
+pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     if !c.cfg.notifications || c.m.notes.history.is_empty() {
         return y;
     }
+    history(p, c, y, GROUPS, EXPANDED)
+}
+
+/// All of it, scrolling with the sidebar.
+pub fn sidebar(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
+    if !c.cfg.notifications {
+        return y;
+    }
+    if !c.m.notes.history.is_empty() {
+        return history(p, c, y, usize::MAX, usize::MAX);
+    }
     let pal = p.pal;
     p.text("Notifications", 11.0, Weight::Semibold, pal.muted, PAD, y + 7.0, -1.0);
-    let end = PANEL_W - PAD;
+    p.icon("notifications", false, 22.0, (p.w - 22.0) / 2.0, y + 24.0, pal.muted, 1.0);
+    let none = "All caught up";
+    let w = p.width(none, 12.0, Weight::Medium);
+    p.text(none, 12.0, Weight::Medium, pal.muted, (p.w - w) / 2.0, y + 60.0, -1.0);
+    y + 76.0
+}
+
+fn history(p: &mut Pen, c: &Ctx, mut y: f64, groups: usize, expanded: usize) -> f64 {
+    let pal = p.pal;
+    p.text("Notifications", 11.0, Weight::Semibold, pal.muted, PAD, y + 7.0, -1.0);
+    let end = p.w - PAD;
     let clear = p.width("Clear", 11.0, Weight::Medium);
     p.right("Clear", 11.0, Weight::Medium, pal.muted, end, y + 7.0);
     p.regions.push(Region::new((end - clear - 8.0, y - 4.0, clear + 16.0, 22.0), 8.0, Action::NoteClear));
@@ -135,22 +156,22 @@ pub fn panel(p: &mut Pen, c: &Ctx, mut y: f64) -> f64 {
     p.text(dnd, 11.0, Weight::Medium, if c.m.notes.dnd { pal.accent } else { pal.muted }, dnd_x, y + 7.0, -1.0);
     p.regions.push(Region::new((dnd_x - 8.0, y - 4.0, dnd_w + 16.0, 22.0), 8.0, Action::Dnd));
     y += 22.0;
-    for (app, notes) in c.m.notes.groups().into_iter().take(GROUPS) {
-        y = group(p, c, app, &notes, y);
+    for (app, notes) in c.m.notes.groups().into_iter().take(groups) {
+        y = group(p, c, app, &notes, y, expanded);
     }
     y + 8.0
 }
 
 /// An app's header (icon, name, count, clear), then its newest note, or all of them when open.
-fn group(p: &mut Pen, c: &Ctx, app: &str, notes: &[&Note], mut y: f64) -> f64 {
+fn group(p: &mut Pen, c: &Ctx, app: &str, notes: &[&Note], mut y: f64, expanded: usize) -> f64 {
     let pal = p.pal;
-    let end = PANEL_W - PAD;
+    let end = p.w - PAD;
     let cy = y + 12.0;
     let open = notes.len() > 1 && c.m.notes.expanded(app);
     p.app(app, 14.0, PAD, cy - 7.0, pal.muted, 1.0);
     let name = if app.is_empty() { "Other" } else { app };
     let mut x = PAD + 22.0;
-    x += p.text(name, 11.5, Weight::Semibold, pal.muted, x, cy, 280.0) + 8.0;
+    x += p.text(name, 11.5, Weight::Semibold, pal.muted, x, cy, p.w / 2.0) + 8.0;
     if notes.len() > 1 {
         let n = notes.len().to_string();
         let bw = p.width(&n, 10.5, Weight::Semibold) + 12.0;
@@ -165,7 +186,7 @@ fn group(p: &mut Pen, c: &Ctx, app: &str, notes: &[&Note], mut y: f64) -> f64 {
     p.symbol("close", 12.0, end - 13.0, cy - 6.0, pal.muted);
     p.regions.push(Region::new((end - 18.0, cy - 10.0, 22.0, 20.0), 10.0, Action::NoteClearApp(app.into())).tip("Clear"));
     y += 24.0;
-    for note in notes.iter().take(if open { EXPANDED } else { 1 }) {
+    for note in notes.iter().take(if open { expanded } else { 1 }) {
         y = row(p, c, note, y);
     }
     y + 4.0
@@ -173,9 +194,9 @@ fn group(p: &mut Pen, c: &Ctx, app: &str, notes: &[&Note], mut y: f64) -> f64 {
 
 fn row(p: &mut Pen, c: &Ctx, note: &Note, y: f64) -> f64 {
     let pal = p.pal;
-    let end = PANEL_W - PAD;
+    let end = p.w - PAD;
     let h = 38.0;
-    p.regions.push(Region::new((PAD - 6.0, y, PANEL_W - 2.0 * PAD + 12.0, h), 10.0, Action::NoteDismiss(note.id)).tip("Dismiss"));
+    p.regions.push(Region::new((PAD - 6.0, y, p.w - 2.0 * PAD + 12.0, h), 10.0, Action::NoteDismiss(note.id)).tip("Dismiss"));
     let shown = image(p, note, PAD, y + 5.0, 28.0);
     let x = if shown { PAD + 38.0 } else { PAD };
     let mut w = end - x;

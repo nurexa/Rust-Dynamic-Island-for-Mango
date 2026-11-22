@@ -24,7 +24,7 @@ pub enum Style {
     Minimal,
 }
 
-/// Space a style takes from the windows, per edge.
+/// Space a style takes from the windows, per screen edge.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Insets {
     pub left: f64,

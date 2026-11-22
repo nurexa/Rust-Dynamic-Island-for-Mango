@@ -6,6 +6,7 @@ use crate::{
     icons::{self, Icons},
     settings::{Config, IconStyle},
     theme::{Palette, Rgb, mix},
+    viz::Live,
 };
 use cairo::{Context, Format, ImageSurface};
 use pango::{AttrFontFeatures, AttrList, EllipsizeMode, FontDescription, Weight};
@@ -65,6 +66,10 @@ pub enum Action {
     AudioDevice { source: bool, name: String },
     /// Turns the Bluetooth adapter on or off.
     Bluetooth,
+    Sidebar,
+    /// Page the calendar by months; 0 comes back to this one.
+    CalMonth(i32),
+    CalDay(i64),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -110,6 +115,13 @@ pub struct Content {
     pub regions: Vec<Region>,
     /// Where the split style's bubble starts.
     pub split: Option<f64>,
+    /// Where visualizers get painted over it.
+    pub live: Vec<Live>,
+}
+
+/// Regions that follow the pointer while it's held.
+pub fn is_slider(a: &Action) -> bool {
+    matches!(a, Action::Volume | Action::Brightness | Action::Warmth | Action::StreamVolume(_) | Action::Ddc(_))
 }
 
 /// What a panel is showing: the system view, or a tray app's menu.
@@ -181,6 +193,9 @@ pub struct Pen<'a> {
     cfg: &'a Config,
     pub pal: &'a Palette,
     pub scale: i32,
+    /// The width modules lay out to.
+    pub w: f64,
+    pub live: Vec<Live>,
     pub icons: &'a mut Icons,
     pub regions: Vec<Region>,
 }
@@ -192,7 +207,7 @@ impl<'a> Pen<'a> {
         surf.set_device_scale(s, s);
         let cr = Context::new(&surf).ok()?;
         let layout = pangocairo::functions::create_layout(&cr);
-        Some((surf, Pen { cr, layout, cfg, pal, scale, icons, regions: Vec::new() }))
+        Some((surf, Pen { cr, layout, cfg, pal, scale, w, live: Vec::new(), icons, regions: Vec::new() }))
     }
 
     pub fn clear(&mut self) {
@@ -200,6 +215,7 @@ impl<'a> Pen<'a> {
         let _ = self.cr.paint();
         self.cr.set_operator(cairo::Operator::Over);
         self.regions.clear();
+        self.live.clear();
     }
 
     pub fn set(&self, (r, g, b): Rgb, a: f64) {

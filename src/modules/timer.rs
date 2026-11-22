@@ -1,5 +1,5 @@
 //! The pomodoro on the pill (only while one runs) and its row in the panel.
-use super::{Ctx, PAD, PANEL_W, PILL_H};
+use super::{Ctx, PAD, PILL_H};
 use crate::pen::{Action, Pen, Region};
 use pango::Weight;
 use std::time::Instant;
@@ -20,7 +20,8 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let cy = y + h / 2.0;
     let on = c.m.timer.is_some();
     p.icon("timer", on, 16.0, PAD, cy - 8.0, if on { pal.accent } else { pal.fg }, 1.0);
-    let btn = |i: f64| (PANEL_W - PAD + 4.0 - (i + 1.0) * 34.0, cy - 16.0, 32.0, 32.0);
+    let right = p.w - PAD;
+    let btn = |i: f64| (right + 4.0 - (i + 1.0) * 34.0, cy - 16.0, 32.0, 32.0);
     let Some(t) = &c.m.timer else {
         let w = p.text("Pomodoro", 12.5, Weight::Medium, pal.fg, PAD + 30.0, cy, -1.0);
         p.text(&format!("{} min focus", c.cfg.pomodoro.focus), 12.0, Weight::Medium, pal.muted, PAD + 30.0 + w + 10.0, cy, -1.0);
@@ -41,7 +42,7 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
         p.button(sym, r, false, Region::new(r, 16.0, Action::Cmd(cmd.into())).tip(tip));
     }
     // Progress under the row.
-    let bar = PANEL_W - 2.0 * PAD;
+    let bar = p.w - 2.0 * PAD;
     p.fill((PAD, y + h + 2.0, bar, 3.0), 1.5, pal.fg, 0.12);
     p.fill((PAD, y + h + 2.0, bar * t.progress(now), 3.0), 1.5, pal.accent, 1.0);
     y + h + 14.0

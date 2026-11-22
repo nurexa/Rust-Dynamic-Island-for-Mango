@@ -1,7 +1,7 @@
 //! Workspaces and the windows on them. Two tones, like the old Waybar pills: the
 //! active workspace is a solid accent chip with its icons in the accent's
 //! contrast color, and everything else sits on the background in plain ink.
-use super::{Ctx, MAX_COMPACT_W, PAD, PANEL_W, PILL_H};
+use super::{Ctx, MAX_COMPACT_W, PAD, PILL_H};
 use crate::{
     Model,
     pen::{Action, Pen, Region},
@@ -70,7 +70,7 @@ pub fn pill(p: &mut Pen, c: &Ctx, mut x: f64) -> f64 {
 
 fn chips(p: &mut Pen, c: &Ctx, mon: &wm::Monitor, mut y: f64) -> f64 {
     let pal = p.pal;
-    let (left, right) = (PAD, PANEL_W - PAD);
+    let (left, right) = (PAD, p.w - PAD);
     let h = 36.0;
     let mut x = left;
     for (tag, windows) in tags_with_windows(c.m, mon) {

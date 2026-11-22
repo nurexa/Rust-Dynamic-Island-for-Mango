@@ -190,7 +190,7 @@ pub fn rail(p: &mut Pen, c: &Ctx, height: f64) {
             let w = p.width(s, 13.0, Weight::Bold);
             p.text(s, 13.0, Weight::Bold, pal.accent, (RAIL - w) / 2.0, end + 8.0 + i as f64 * 17.0, -1.0);
         }
-        let mut open = Region::new((x, end - 2.0, BUTTON, 38.0), 10.0, Action::Cmd("sidebar".into()));
+        let mut open = Region::new((x, end - 2.0, BUTTON, 38.0), 10.0, if cfg.sidebar.is_empty() { Action::Pin } else { Action::Sidebar });
         open.right = Action::Pin;
         p.regions.push(open);
         end -= 8.0;
@@ -239,7 +239,11 @@ pub fn bar(p: &mut Pen, c: &Ctx, width: f64) {
         Button::new("power_settings_new", false, Action::Open("power")).draw(p, end, y);
         end -= BUTTON;
     }
-    Button::new("dock_to_right", false, Action::Cmd("sidebar".into())).draw(p, end, y);
+    if cfg.sidebar.is_empty() {
+        end += BUTTON;
+    } else {
+        Button::new("dock_to_right", c.m.sidebar_open, Action::Sidebar).draw(p, end, y);
+    }
     for b in state(c).iter().rev() {
         end -= BUTTON;
         b.draw(p, end, y);

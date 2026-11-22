@@ -1,5 +1,5 @@
 //! CPU, GPU, RAM and network tiles. Hardware a machine lacks loses its tile.
-use super::{Ctx, PAD, PANEL_W};
+use super::{Ctx, PAD};
 use crate::pen::{Pen, Rect};
 use pango::Weight;
 
@@ -48,7 +48,7 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     tiles.push(("NET", format!("↓ {}", rate(s.rx)), format!("↑ {}", rate(s.tx)), None));
     let n = tiles.len() as f64;
     let gap = 8.0;
-    let w = (PANEL_W - 2.0 * PAD - (n - 1.0) * gap) / n;
+    let w = (p.w - 2.0 * PAD - (n - 1.0) * gap) / n;
     let h = 58.0;
     for (i, (label, value, sub, bar)) in tiles.iter().enumerate() {
         tile(p, (PAD + i as f64 * (w + gap), y, w, h), label, value, sub, *bar);

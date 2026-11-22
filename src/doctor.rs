@@ -101,14 +101,19 @@ pub fn run() -> ! {
             Err(e) => r.bad(&format!("{} doesn't parse", cfg_path.display()), &format!("The island ignores it and uses defaults: {e}")),
             Ok(cfg) => {
                 r.ok(&format!("{} parses", cfg_path.display()));
-                let (pill, panel) = crate::modules::names();
+                let (pill, panel, sidebar) = crate::modules::names();
                 let unknown = |list: &[String], known: &[&str]| -> Vec<String> {
                     list.iter().filter(|n| !n.starts_with("custom:") && !known.contains(&n.as_str())).cloned().collect()
                 };
-                for (what, bad) in [("pill", unknown(&cfg.pill, &pill)), ("panel", unknown(&cfg.panel, &panel))] {
+                for (what, list, known) in [("pill", &cfg.pill, &pill), ("panel", &cfg.panel, &panel), ("sidebar", &cfg.sidebar, &sidebar)] {
+                    let bad = unknown(list, known);
                     if !bad.is_empty() {
-                        r.warn(&format!("Unknown {what} modules: {}", bad.join(", ")), &format!("Known ones: {}", if what == "pill" { pill.join(", ") } else { panel.join(", ") }));
+                        r.warn(&format!("Unknown {what} modules: {}", bad.join(", ")), &format!("Known ones: {}", known.join(", ")));
                     }
+                }
+                if !cfg.calendar.dir.is_empty() {
+                    let dir = crate::theme::expand(&cfg.calendar.dir);
+                    r.check(dir.is_dir(), &format!("Calendar folder: {}", dir.display()), "No such folder, so the calendar is a plain month. Set dir under [calendar].");
                 }
             }
         },
@@ -124,6 +129,7 @@ pub fn run() -> ! {
     let features: &[(&str, &[&str], &str)] = &[
         ("Volume", &["pactl", "wpctl"], "PipeWire's pipewire-pulse and wireplumber"),
         ("Media", &["playerctl", "playerctld"], "playerctl"),
+        ("Music visualizers", &["parec"], "pipewire-pulse or pulseaudio-utils (it comes with pactl)"),
         ("Wi-Fi", &["nmcli"], "networkmanager"),
         ("Clipboard history", &["cliphist", "wl-copy"], "cliphist and wl-clipboard, with `wl-paste --watch cliphist store` running"),
         ("Screenshots", &["grim", "slurp"], "grim and slurp"),

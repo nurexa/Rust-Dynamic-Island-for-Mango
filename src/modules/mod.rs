@@ -8,12 +8,14 @@ use crate::{
     pen::{Content, Pen, View},
     settings::Config,
     style::{SPLIT_GAP, Style},
+    viz::Look,
 };
 
 mod audio;
 mod battery;
 mod bluetooth;
 mod brightness;
+mod calendar;
 mod claude;
 mod clock;
 pub mod custom;
@@ -25,6 +27,7 @@ mod notify;
 mod palette;
 mod privacy;
 mod rail;
+mod sidebar;
 mod stats;
 mod status;
 mod timer;
@@ -52,6 +55,18 @@ pub struct Ctx<'a> {
     pub tucked: bool,
 }
 
+impl Ctx<'_> {
+    /// Whether to leave room for this visualizer.
+    fn looks(&self, look: Look) -> bool {
+        self.m.can_capture && self.cfg.visualizer.contains(&look)
+    }
+}
+
+/// The column labels take beside a slider.
+fn label_w(p: &Pen) -> f64 {
+    if p.w < PANEL_W { 104.0 } else { 168.0 }
+}
+
 /// Draws starting at x, returns where it ended. Returning x unchanged means
 /// nothing to show, and the module takes up no room.
 type PillModule = fn(&mut Pen, &Ctx, f64) -> f64;
@@ -73,6 +88,7 @@ const PANEL: &[(&str, PanelModule)] = &[
     ("header", header::panel),
     ("workspaces", workspaces::panel),
     ("media", media::panel),
+    ("calendar", calendar::panel),
     ("timer", timer::panel),
     ("notifications", notify::panel),
     ("stats", stats::panel),
@@ -85,8 +101,8 @@ const PANEL: &[(&str, PanelModule)] = &[
 ];
 
 /// Every built-in module name, pill then panel, for `island doctor`.
-pub fn names() -> (Vec<&'static str>, Vec<&'static str>) {
-    (PILL.iter().map(|m| m.0).collect(), PANEL.iter().map(|m| m.0).collect())
+pub fn names() -> (Vec<&'static str>, Vec<&'static str>, Vec<&'static str>) {
+    (PILL.iter().map(|m| m.0).collect(), PANEL.iter().map(|m| m.0).collect(), sidebar::SECTIONS.iter().map(|m| m.0).collect())
 }
 
 fn draw_pill(name: &str, p: &mut Pen, c: &Ctx, x: f64) -> f64 {
@@ -111,7 +127,7 @@ pub fn pill(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: i32, f
     if flash {
         let w = if m.flash_power { battery::flash(&mut p, &c) } else { audio::flash(&mut p, &c) };
         if let Some(w) = w {
-            return Some(Content { surf, w, h: PILL_H, regions: Vec::new(), split: None });
+            return Some(Content { surf, w, h: PILL_H, regions: Vec::new(), split: None, live: Vec::new() });
         }
     }
     let (bubble, main): (Vec<&str>, Vec<&str>) = cfg.pill.iter().map(String::as_str)
@@ -155,7 +171,7 @@ pub fn pill(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: i32, f
     // Nothing to say, and somewhere to draw back into: no height at all.
     let h = if empty && style == Style::Frame { 0.0 } else { PILL_H };
     let regions = std::mem::take(&mut p.regions);
-    Some(Content { surf, w, h, regions, split })
+    Some(Content { surf, w, h, regions, split, live: p.live })
 }
 
 /// The frame's rail, over the whole of its strip.
@@ -163,7 +179,23 @@ pub fn rail(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64,
     let (surf, mut p) = Pen::new(w, h, cfg, &m.pal, scale, icons)?;
     rail::rail(&mut p, &Ctx { m, cfg, mon, pinned: false, tucked: false }, h);
     let regions = std::mem::take(&mut p.regions);
-    Some(Content { surf, w, h, regions, split: None })
+    Some(Content { surf, w, h, regions, split: None, live: Vec::new() })
+}
+
+/// The sidebar at a scroll offset: what's in view, and the height of the whole of it.
+pub fn sidebar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, room): (f64, f64), scroll: f64, scale: i32) -> Option<(Content, f64)> {
+    let (surf, mut p) = Pen::new(w, room, cfg, &m.pal, scale, icons)?;
+    p.cr.translate(0.0, -scroll.round());
+    let total = sidebar::draw(&mut p, &Ctx { m, cfg, mon, pinned: false, tucked: false });
+    for r in &mut p.regions {
+        r.rect.1 -= scroll.round();
+    }
+    for l in &mut p.live {
+        l.rect.1 -= scroll.round();
+    }
+    let h = total.min(room);
+    let regions = std::mem::take(&mut p.regions);
+    Some((Content { surf, w, h, regions, split: None, live: p.live }, total))
 }
 
 /// The bar's two ends.
@@ -171,7 +203,7 @@ pub fn bar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64, 
     let (surf, mut p) = Pen::new(w, h, cfg, &m.pal, scale, icons)?;
     rail::bar(&mut p, &Ctx { m, cfg, mon, pinned: false, tucked: false }, w);
     let regions = std::mem::take(&mut p.regions);
-    Some(Content { surf, w, h, regions, split: None })
+    Some(Content { surf, w, h, regions, split: None, live: Vec::new() })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -186,5 +218,5 @@ pub fn panel(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, view: &View,
     };
     let regions = std::mem::take(&mut p.regions);
     let w = if *view == View::Toast { notify::TOAST_W } else { PANEL_W };
-    Some(Content { surf, w, h: h.min(MAX_PANEL_H), regions, split: None })
+    Some(Content { surf, w, h: h.min(MAX_PANEL_H), regions, split: None, live: p.live })
 }

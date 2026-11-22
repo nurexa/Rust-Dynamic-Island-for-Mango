@@ -17,8 +17,9 @@ fn log(what: &str) {
 
 #[zbus::interface(name = "org.mpris.MediaPlayer2.Player")]
 impl Player {
-    fn play_pause(&mut self) {
+    async fn play_pause(&mut self, #[zbus(signal_emitter)] emitter: zbus::object_server::SignalEmitter<'_>) {
         self.playing = !self.playing;
+        let _ = self.playback_status_changed(&emitter).await;
         log("media: play-pause");
     }
     fn next(&self) {

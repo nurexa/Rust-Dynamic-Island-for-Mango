@@ -1,5 +1,5 @@
 //! Bottom row of the panel: network, battery and the tray.
-use super::{Ctx, PAD, PANEL_W, PILL_H};
+use super::{Ctx, PAD, PILL_H};
 use crate::{
     net,
     pen::{Action, Pen, Region},
@@ -56,7 +56,7 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
             p.text(&t, 12.0, Weight::Medium, pal.muted, x + 22.0 + w + 8.0, cy, -1.0);
         }
     }
-    let mut x = PANEL_W - PAD - 30.0;
+    let mut x = p.w - PAD - 30.0;
     for (i, (item, icon)) in m.tray.iter().enumerate().rev() {
         let r = (x, y, 30.0, h);
         match icon {

@@ -7,10 +7,11 @@ use crate::{
     Model,
     canvas::Canvas,
     modules::{self, MAX_COMPACT_W, MAX_PANEL_H, PANEL_W, PILL_H},
-    pen::{Action, Content, Rect, Scroll, View},
+    pen::{Action, Content, Rect, Scroll, View, is_slider},
     icons::Icons,
     settings::Config,
     style::{self, Style},
+    viz::{self, Live},
 };
 use cairo::{Context, Format, ImageSurface};
 use smithay_client_toolkit::{
@@ -25,6 +26,7 @@ const SHADOW: f64 = 26.0;
 const PANEL_R: f64 = 30.0;
 const SNAP: f64 = 56.0; // release this close to home and the pill docks
 const DRAG_START: f64 = 5.0;
+const STALLED: Duration = Duration::from_secs(1);
 const FLASH: Duration = Duration::from_millis(1300);
 const DOUBLE_CLICK: Duration = Duration::from_millis(280);
 const TUCK_W: f64 = 72.0;
@@ -43,18 +45,18 @@ pub struct Spring {
 }
 
 impl Spring {
-    fn new(x: f64, period: f64, zeta: f64, eps: f64) -> Self {
+    pub(crate) fn new(x: f64, period: f64, zeta: f64, eps: f64) -> Self {
         let w = std::f64::consts::TAU / period;
         Spring { x, v: 0.0, target: x, k: w * w, c: 2.0 * zeta * w, eps }
     }
 
-    fn tune(&mut self, period: f64, zeta: f64) {
+    pub(crate) fn tune(&mut self, period: f64, zeta: f64) {
         let w = std::f64::consts::TAU / period;
         self.k = w * w;
         self.c = 2.0 * zeta * w;
     }
 
-    fn step(&mut self, dt: f64) {
+    pub(crate) fn step(&mut self, dt: f64) {
         // Fixed substeps keep the integrator stable at any refresh rate.
         let mut left = dt;
         while left > 0.0 {
@@ -69,22 +71,22 @@ impl Spring {
         }
     }
 
-    fn settled(&self) -> bool {
+    pub(crate) fn settled(&self) -> bool {
         (self.x - self.target).abs() < self.eps && self.v.abs() < self.eps * 10.0
     }
 
-    fn snap(&mut self, x: f64) {
+    pub(crate) fn snap(&mut self, x: f64) {
         self.x = x;
         self.target = x;
         self.v = 0.0;
     }
 }
 
-fn lerp(a: f64, b: f64, t: f64) -> f64 {
+pub(crate) fn lerp(a: f64, b: f64, t: f64) -> f64 {
     a + (b - a) * t
 }
 
-fn smooth(t: f64) -> f64 {
+pub(crate) fn smooth(t: f64) -> f64 {
     let t = t.clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
@@ -184,7 +186,10 @@ pub struct Island {
     panel_dirty: bool,
 
     frame_pending: bool,
+    drawn_at: Option<Instant>,
     dirty: bool,
+    /// Only the levels moved.
+    live_dirty: bool,
 }
 
 /// The resting pill's shadow and background. The shadow strokes are the costliest
@@ -232,7 +237,7 @@ impl Island {
             dragging: false, sliding: false, pointer: (0.0, 0.0), hover: None, pin_at: None,
             open_at: None, close_at: None, flash_until: None, view: View::Main,
             compact: None, panel: None, compact_dirty: true, panel_dirty: true,
-            frame_pending: false, dirty: true,
+            frame_pending: false, drawn_at: None, dirty: true, live_dirty: false,
         })
     }
 
@@ -359,6 +364,25 @@ impl Island {
         self.open = true;
         self.close_at = (!self.hovered).then(|| Instant::now() + Duration::from_secs(5));
         self.dirty = true;
+    }
+
+    /// What's on screen with visualizers in it, if anything.
+    fn live_content(&self) -> Option<&Content> {
+        self.active().map(|(c, ..)| c).filter(|c| !c.live.is_empty())
+    }
+
+    /// Frames stop when it's covered or the screen's off: then nothing is listening.
+    pub fn wants_levels(&self) -> bool {
+        let seen = !self.frame_pending || self.drawn_at.is_none_or(|t| t.elapsed() < STALLED);
+        seen && self.live_content().is_some()
+    }
+
+    pub fn levels_changed(&mut self) {
+        self.live_dirty |= self.live_content().is_some();
+    }
+
+    pub fn holds_panel(&self) -> bool {
+        self.panel.is_some()
     }
 
     pub fn flash(&mut self) {
@@ -566,7 +590,7 @@ impl Island {
 
     /// Draw now if the compositor is ready for a frame, otherwise on its next callback.
     pub fn flush(&mut self, m: &Model, icons: &mut Icons, cfg: &Config, compositor: &CompositorState, qh: &QueueHandle<crate::App>) {
-        if self.configured && self.dirty && !self.frame_pending {
+        if self.configured && (self.dirty || self.live_dirty) && !self.frame_pending {
             self.render(m, icons, cfg, compositor, qh);
         }
     }
@@ -576,6 +600,8 @@ impl Island {
     }
 
     fn render(&mut self, m: &Model, icons: &mut Icons, cfg: &Config, compositor: &CompositorState, qh: &QueueHandle<crate::App>) {
+        let only_live = !self.dirty;
+        self.live_dirty = false;
         self.rebuild(m, icons, cfg);
         self.update_targets();
 
@@ -612,8 +638,21 @@ impl Island {
         } else {
             self.chrome = None;
         }
-        let Some(frame) = self.canvas.begin(bounds) else { return };
-        self.paint(&frame.cr, shape, &m.pal, animating, cfg);
+        let area = if only_live && !animating {
+            match self.active().and_then(|(c, x, y)| live_bounds(&c.live, (x, y))) {
+                Some(area) => Some(area),
+                None => return,
+            }
+        } else {
+            None
+        };
+        let frame = match area {
+            Some(area) => self.canvas.begin_live(bounds, area),
+            None => self.canvas.begin(bounds),
+        };
+        let Some(frame) = frame else { return };
+        self.paint(&frame.cr, frame.patch, shape, &m.pal, animating, cfg, &m.levels);
+        self.drawn_at = Some(now);
 
         let surface = self.layer.wl_surface();
         self.canvas.present(frame, surface);
@@ -623,16 +662,25 @@ impl Island {
         self.dirty = animating;
     }
 
-    fn paint(&self, cr: &Context, sh: Shape, pal: &crate::theme::Palette, animating: bool, cfg: &Config) {
+    #[allow(clippy::too_many_arguments)]
+    fn paint(&self, cr: &Context, patch: Option<Rect>, sh: Shape, pal: &crate::theme::Palette, animating: bool, cfg: &Config, levels: &viz::Levels) {
         let t = self.t.x.clamp(0.0, 1.0);
         let k = self.k.x.clamp(0.0, 1.0);
-        match &self.chrome {
-            Some(c) => {
+        match (&self.chrome, patch) {
+            (Some(c), _) => {
                 if cr.set_source_surface(&c.surf, c.at.0, c.at.1).is_ok() {
                     let _ = cr.paint();
                 }
             }
-            None => self.paint_chrome(cr, sh, pal),
+            // A visualizer's patch is well inside a still shape, where chrome is a flat fill.
+            (None, Some((x, y, w, h))) => {
+                let (r, g, b) = pal.bg;
+                let solid = self.style.attached() || self.parted(sh, t).is_some();
+                cr.set_source_rgba(r, g, b, if solid { 1.0 } else { lerp(0.97, 0.72, k) });
+                cr.rectangle(x, y, w, h);
+                let _ = cr.fill();
+            }
+            (None, None) => self.paint_chrome(cr, sh, pal),
         }
 
         let a_compact = if self.flipped { 0.0 } else { (1.0 - smooth(t / 0.45)) * (1.0 - k) };
@@ -655,6 +703,10 @@ impl Island {
                 // While they part, each half rides its own side of the shape.
                 (Some(at), Some((main_w, bubble))) => {
                     blit(cr, c, sh.x, y, main_w.min(at - style::SPLIT_GAP), PILL_H, a_compact);
+                    for l in &c.live {
+                        let x = if l.rect.0 < at { sh.x } else { sh.x + sh.w - c.w };
+                        viz::paint(cr, l, (x, y), levels, pal.accent, a_compact * smooth(self.bud.x));
+                    }
                     let _ = cr.save();
                     cr.rectangle(bubble, y, sh.x + sh.w - bubble, PILL_H);
                     cr.clip();
@@ -664,12 +716,28 @@ impl Island {
                 _ => {
                     let x = if sh.w > c.w { sh.cx - c.w / 2.0 } else { sh.x };
                     blit(cr, c, x, y, sh.w.min(c.w), PILL_H, a_compact);
+                    for l in &c.live {
+                        // Not until the shape has grown out to it.
+                        if l.rect.0 + l.rect.2 <= sh.w + 1.0 {
+                            viz::paint(cr, l, (x, y), levels, pal.accent, a_compact);
+                        }
+                    }
                 }
             }
         }
         if let (true, Some(c)) = (a_panel > 0.003, &self.panel) {
             let y = if down { sh.y } else { sh.y + sh.h - c.h };
-            blit(cr, c, sh.cx - c.w / 2.0, y, c.w, c.h.min(sh.h + 8.0), a_panel);
+            let x = sh.cx - c.w / 2.0;
+            let visualize = |under: bool| {
+                for l in c.live.iter().filter(|l| l.look.under() == under) {
+                    if l.rect.1 + l.rect.3 <= sh.h + 8.0 {
+                        viz::paint(cr, l, (x, y), levels, pal.accent, a_panel);
+                    }
+                }
+            };
+            visualize(true);
+            blit(cr, c, x, y, c.w, c.h.min(sh.h + 8.0), a_panel);
+            visualize(false);
         }
         if morphing {
             let _ = cr.restore();
@@ -956,7 +1024,7 @@ impl Island {
         if button == BTN_LEFT {
             if let Some(i) = region {
                 let slider = self.active().map(|(c, ..)| c.regions[i].left.clone())
-                    .filter(|a| matches!(a, Action::Volume | Action::Brightness | Action::Warmth | Action::StreamVolume(_) | Action::Ddc(_)));
+                    .filter(is_slider);
                 if let Some(action) = slider {
                     self.sliding = true;
                     return Outcome::Act(action, self.slider_frac(i));
@@ -1082,7 +1150,7 @@ fn tip_is_empty(t: Option<&str>) -> bool {
     t.is_none_or(str::is_empty)
 }
 
-fn blit(cr: &Context, c: &Content, x: f64, y: f64, w: f64, h: f64, a: f64) {
+pub(crate) fn blit(cr: &Context, c: &Content, x: f64, y: f64, w: f64, h: f64, a: f64) {
     let _ = cr.save();
     cr.rectangle(x, y, w, h);
     cr.clip();
@@ -1090,6 +1158,18 @@ fn blit(cr: &Context, c: &Content, x: f64, y: f64, w: f64, h: f64, a: f64) {
         let _ = cr.paint_with_alpha(a);
     }
     let _ = cr.restore();
+}
+
+/// What a frame that only moves visualizers has to repaint.
+pub(crate) fn live_bounds(live: &[Live], origin: (f64, f64)) -> Option<Rect> {
+    let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for l in live {
+        let (x, y, w, h) = l.rect;
+        // A pixel over, for antialiasing.
+        (x0, y0) = (x0.min(x - 1.0), y0.min(y - 1.0));
+        (x1, y1) = (x1.max(x + w + 1.0), y1.max(y + h + 1.0));
+    }
+    (!live.is_empty()).then(|| (x0 + origin.0, y0 + origin.1, x1 - x0, y1 - y0))
 }
 
 /// Fits the tallest panel, so opening never needs a layer resize.

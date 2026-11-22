@@ -1,7 +1,7 @@
 //! Wallpaper settings: fit, speed, frame rate and quality, for all wallpapers or just
 //! this one. The island only draws and sends clicks; `wall opt` (wall/wall) does the
 //! work and rewrites the state file, then pokes `island wall` to redraw this.
-use super::{Ctx, PAD, PANEL_W};
+use super::{Ctx, PAD};
 use crate::{
     pen::{Action, Pen, Region},
     settings::home,
@@ -92,7 +92,7 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let name = wall.now.name.rsplit_once('.').map_or(wall.now.name.as_str(), |(s, _)| s);
     let scope: [(&str, &str); 2] = [("All", "all"), ("This one", "this")];
     let widths: Vec<f64> = scope.iter().map(|(l, _)| p.width(l, 12.0, Weight::Medium) + 18.0).collect();
-    let mut x = PANEL_W - PAD + 6.0 - widths.iter().sum::<f64>() - GAP;
+    let mut x = p.w - PAD + 6.0 - widths.iter().sum::<f64>() - GAP;
     let title_w = x - PAD - 8.0;
     let shown = if wall.busy { "Optimizing…" } else { name };
     p.text(shown, 12.5, Weight::Semibold, if wall.busy { pal.accent } else { pal.fg }, PAD, cy, title_w);

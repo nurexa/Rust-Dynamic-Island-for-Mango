@@ -3,6 +3,7 @@ mod audio;
 mod bluetooth;
 mod brightness;
 mod bus;
+mod calendar;
 mod canvas;
 mod claude;
 mod ddc;
@@ -19,12 +20,14 @@ mod pen;
 mod power;
 mod privacy;
 mod settings;
+mod sidebar;
 mod symbols;
 mod style;
 mod sys;
 mod theme;
 mod timer;
 mod tools;
+mod viz;
 mod wm;
 
 use cairo::ImageSurface;
@@ -34,6 +37,7 @@ use notify::Note;
 use palette::Palette;
 use pen::{Action, Scroll, View};
 use settings::{Config, State};
+use sidebar::Sidebar;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_dispatch2, delegate_registry,
@@ -89,6 +93,11 @@ pub enum Msg {
     Sys(sys::Snapshot),
     Media(Option<bus::Track>),
     Net(net::State),
+    /// Wi-Fi switched on or off; None without a card.
+    Radio(Option<bool>),
+    Levels(viz::Levels),
+    /// Events for the range they were loaded for.
+    Calendar((i64, i64), Vec<calendar::Occurrence>),
     Bluetooth(Option<bluetooth::State>),
     Tray(Vec<bus::TrayItem>),
     Menu(usize, Vec<bus::MenuEntry>),
@@ -120,6 +129,12 @@ pub struct Model {
     pub art_small: Option<ImageSurface>,
     pub art_large: Option<ImageSurface>,
     pub net: net::State,
+    pub radio: Option<bool>,
+    pub levels: viz::Levels,
+    /// parec is here, so visualizers get their room.
+    pub can_capture: bool,
+    pub calendar: calendar::View,
+    pub sidebar_open: bool,
     pub bluetooth: Option<bluetooth::State>,
     pub tray: Vec<(bus::TrayItem, Option<(ImageSurface, bool)>)>,
     pub pal: theme::Palette,
@@ -166,6 +181,15 @@ pub struct App {
     islands: Vec<Island>,
     /// The frame's or bar's strips, for the styles that have any.
     edges: Vec<Edges>,
+    sidebar: Option<Sidebar>,
+    /// Resting on the frame's right border: when the sidebar opens, and where.
+    sidebar_at: Option<(Instant, String)>,
+    /// When an open sidebar's progress bar next moves.
+    progress_at: Option<Instant>,
+    capture: Option<viz::Capture>,
+    had_panel: bool,
+    /// The range the calendar's loading or showing.
+    calendar_range: Option<(i64, i64)>,
     under_pointer: Option<wl_surface::WlSurface>,
     model: Model,
     icons: Icons,
@@ -218,6 +242,9 @@ impl App {
             let Some((w, h)) = size else { continue };
             let out = (w as f64, h as f64);
             let scale = info.scale_factor.max(1);
+            if self.sidebar.as_ref().is_some_and(|s| s.output == output && !s.fits(out, scale)) {
+                self.drop_sidebar();
+            }
             let style = self.model.style;
             if let Some(n) = self.islands.iter().position(|i| i.output == output) {
                 let i = &mut self.islands[n];
@@ -268,13 +295,128 @@ impl App {
         self.model.style = style;
         // New surfaces, so the edges are always under the island.
         self.under_pointer = None;
+        self.drop_sidebar();
+        self.sidebar_at = None;
         self.islands.clear();
         self.edges.clear();
+        let _ = self.stats.send(sys::Cmd::Release);
         self.sync_outputs();
         if let Some(critical) = self.model.notes.showing.as_ref().map(|t| t.note.urgency == 2) {
             if let Some(i) = self.focused_island() {
                 self.islands[i].show_toast(critical);
             }
+        }
+    }
+
+    fn drop_sidebar(&mut self) {
+        if self.sidebar.take().is_some() {
+            self.model.sidebar_open = false;
+            self.icons.forget_files();
+            // Its content was a screen's height of pixels.
+            let _ = self.stats.send(sys::Cmd::Release);
+            self.progress_at = None;
+            self.all(false, true);
+            self.edges_changed();
+        }
+    }
+
+    fn open_sidebar(&mut self, island: usize, by_hover: bool) {
+        if self.cfg.sidebar.is_empty() {
+            return;
+        }
+        let i = &self.islands[island];
+        self.sidebar = Sidebar::open(&i.output, &i.name, i.out, i.scale, self.model.style, by_hover,
+                                     &self.shm, &self.layer_shell, &self.compositor, &self.qh);
+        self.sidebar_shown();
+    }
+
+    /// Freshen what only gets read while something is looking at it.
+    fn sidebar_shown(&mut self) {
+        if self.sidebar.is_none() {
+            return;
+        }
+        self.model.sidebar_open = true;
+        self.model.calendar.offset = 0;
+        self.model.calendar.selected = None;
+        self.load_calendar();
+        let _ = self.net_poke.send(());
+        self.model.brightness = brightness::read(&self.cfg.commands);
+        if let Some(b) = &self.bus {
+            b.refresh_media(self.tx.clone());
+        }
+        self.all(false, true);
+        self.edges_changed();
+    }
+
+    fn toggle_sidebar(&mut self, from: Option<usize>) {
+        let target = from.or_else(|| self.focused_island());
+        let open = self.sidebar.as_mut().filter(|s| s.is_open());
+        if let Some(s) = open {
+            let here = target.is_none_or(|i| self.islands[i].name == s.name);
+            if here {
+                s.close();
+                self.model.sidebar_open = false;
+                self.all(false, true);
+                self.edges_changed();
+                return;
+            }
+        }
+        let Some(i) = target else { return };
+        match self.sidebar.as_mut().filter(|s| s.name == self.islands[i].name) {
+            // Caught on its way out: turn it round.
+            Some(s) => {
+                s.reopen();
+                self.sidebar_shown();
+            }
+            None => self.open_sidebar(i, false),
+        }
+    }
+
+    fn calendar_placed(&self) -> bool {
+        [&self.cfg.sidebar, &self.cfg.panel].iter().any(|l| l.iter().any(|n| n == "calendar"))
+    }
+
+    fn load_calendar(&mut self) {
+        if !self.calendar_placed() {
+            return;
+        }
+        let first = self.cfg.calendar.first_weekday();
+        let range = calendar::range(calendar::now().0, self.model.calendar.offset, first);
+        self.calendar_range = Some(range);
+        if self.cfg.calendar.dir.is_empty() {
+            self.model.calendar.events.clear();
+            return;
+        }
+        let (dir, tx) = (theme::expand(&self.cfg.calendar.dir), self.tx.clone());
+        thread::spawn(move || tx.send(Msg::Calendar(range, calendar::load(&dir, range))));
+    }
+
+    /// Capture runs exactly while there's music and a visualizer someone can see.
+    fn sync_capture(&mut self) {
+        let m = &self.model;
+        let covered = |name: &str| wm::covered(&m.clients, &m.monitors, name);
+        let wanted = m.can_capture && m.media.as_ref().is_some_and(|t| t.playing)
+            && (self.islands.iter().any(|i| i.wants_levels() && !covered(&i.name))
+                || self.sidebar.as_ref().is_some_and(|s| s.wants_levels() && !covered(&s.name)));
+        if wanted == self.capture.is_some() {
+            return;
+        }
+        self.capture = wanted.then(|| viz::Capture::start(self.tx.clone())).flatten();
+        if wanted && self.capture.is_none() {
+            self.model.can_capture = false; // it won't start: stop trying, and stop leaving room
+            self.all(true, true);
+        }
+        if !wanted {
+            self.set_levels([0.0; viz::BANDS]);
+            let _ = self.stats.send(sys::Cmd::Release);
+        }
+    }
+
+    fn set_levels(&mut self, levels: viz::Levels) {
+        self.model.levels = levels;
+        self.islands.iter_mut().for_each(Island::levels_changed);
+        if let Some(s) = &mut self.sidebar {
+            s.levels_changed();
         }
     }
 
@@ -442,6 +584,9 @@ impl App {
         for i in &mut self.islands {
             i.invalidate(compact, panel);
         }
+        if let Some(s) = self.sidebar.as_mut().filter(|_| panel) {
+            s.invalidate();
+        }
         if compact {
             self.edges_changed();
         }
@@ -466,7 +611,8 @@ impl App {
         let scale = self.raster_scale();
         let load = |p: &PathBuf, px: i32| icons::load_art(p, px * scale);
         self.model.art_small = path.as_ref().and_then(|p| load(p, 20)).map(|s| rounded(s, 5.0 * scale as f64));
-        self.model.art_large = path.as_ref().and_then(|p| load(p, 58));
+        // Sized for the sidebar; the panel scales it down.
+        self.model.art_large = path.as_ref().and_then(|p| load(p, 104));
     }
 
     fn set_tray(&mut self) {
@@ -596,6 +742,22 @@ impl App {
                 self.all(compact, true);
                 self.edges_changed();
             }
+            Msg::Radio(on) => {
+                self.model.radio = on;
+                self.all(false, true);
+            }
+            Msg::Levels(levels) => {
+                // A last frame can arrive from a capture that's just been stopped.
+                if self.capture.is_some() {
+                    self.set_levels(levels);
+                }
+            }
+            Msg::Calendar(range, events) => {
+                if self.calendar_range == Some(range) && self.model.calendar.events != events {
+                    self.model.calendar.events = events;
+                    self.all(false, true);
+                }
+            }
             Msg::Bluetooth(b) => {
                 self.model.bluetooth = b;
                 self.all(false, true);
@@ -634,9 +796,15 @@ impl App {
             "open" => self.open_palette(None),
             "close" => self.close_palette(),
             "style" => self.choose_style(self.model.style.next()),
+            "sidebar" => self.toggle_sidebar(None),
             "reload" => {
                 self.cfg = Config::load();
                 self.set_style(self.state.style(self.cfg.style));
+                if self.cfg.sidebar.is_empty() {
+                    self.drop_sidebar();
+                }
+                self.model.can_capture = !self.cfg.visualizer.is_empty() && tools::on_path("parec");
+                self.load_calendar();
                 self.model.pal = theme::load(&self.cfg.palette);
                 self.model.brightness = brightness::read(&self.cfg.commands);
                 self.model.night.configure(&self.cfg.nightlight);
@@ -859,6 +1027,19 @@ impl App {
                 self.save();
                 self.all(false, true);
             }
+            Action::Sidebar => self.toggle_sidebar(from),
+            Action::CalMonth(by) => {
+                let cal = &mut self.model.calendar;
+                cal.offset = if by == 0 { 0 } else { (cal.offset + by).clamp(-1200, 1200) };
+                cal.selected = None;
+                self.load_calendar();
+                self.all(false, true);
+            }
+            Action::CalDay(day) => {
+                let cal = &mut self.model.calendar;
+                cal.selected = (cal.selected != Some(day)).then_some(day);
+                self.all(false, true);
+            }
             Action::Bluetooth => {
                 if let Some(b) = &self.model.bluetooth {
                     bluetooth::set_power(b.adapter.clone(), !b.powered);
@@ -1030,7 +1211,9 @@ impl App {
 
     fn next_deadline(&self) -> Instant {
         let islands = self.islands.iter().filter_map(Island::next_deadline);
-        islands.chain(self.next_stats).chain(self.timer_at).chain(self.claude_until).chain(self.model.notes.until).chain([self.next_clock]).min().unwrap_or(self.next_clock)
+        let sidebar = self.sidebar.as_ref().and_then(Sidebar::next_deadline);
+        let hovering = self.sidebar_at.as_ref().map(|s| s.0);
+        islands.chain(sidebar).chain(hovering).chain(self.progress_at).chain(self.next_stats).chain(self.timer_at).chain(self.claude_until).chain(self.model.notes.until).chain([self.next_clock]).min().unwrap_or(self.next_clock)
     }
 
     fn tick(&mut self) {
@@ -1058,10 +1241,15 @@ impl App {
             self.night_minute();
         }
         self.pump_notes(now);
+        self.sidebar_tick(now);
         // However the reply field closed (sent, Esc, the note went), the keyboard goes back.
         if self.model.notes.replying.is_none() {
             self.islands.iter_mut().for_each(|i| i.set_typing(false));
+            if let Some(s) = &mut self.sidebar {
+                s.set_typing(false);
+            }
         }
+        self.sync_capture();
         let visible = self.islands.iter().any(Island::wants_stats);
         match (visible, self.next_stats) {
             (false, None) => {}
@@ -1075,8 +1263,45 @@ impl App {
         }
     }
 
+    fn sidebar_tick(&mut self, now: Instant) {
+        if self.sidebar_at.as_ref().is_some_and(|(t, _)| *t <= now) {
+            if let Some((_, name)) = self.sidebar_at.take() {
+                let island = self.islands.iter().position(|i| i.name == name);
+                let open = self.sidebar.as_ref().is_some_and(Sidebar::is_open);
+                if let (Some(i), false) = (island, open) {
+                    self.open_sidebar(i, true);
+                }
+            }
+        }
+        let Some(s) = &mut self.sidebar else { return };
+        s.tick(now);
+        if s.finished() {
+            return self.drop_sidebar();
+        }
+        if !s.is_open() && self.model.sidebar_open {
+            // It closed itself, on leaving.
+            self.model.sidebar_open = false;
+            self.all(false, true);
+            self.edges_changed();
+        }
+        let moving = self.model.sidebar_open && self.model.media.as_ref().is_some_and(|t| t.playing && t.length > 0.0);
+        match self.progress_at {
+            _ if !moving => self.progress_at = None,
+            Some(t) if t > now => {}
+            due => {
+                self.progress_at = Some(now + Duration::from_secs(1));
+                if let (Some(_), Some(s)) = (due, &mut self.sidebar) {
+                    s.invalidate();
+                }
+            }
+        }
+    }
+
     fn stats(&mut self, now: Instant) {
         let first = self.next_stats.is_none();
+        if first && self.cfg.panel.iter().any(|n| n == "calendar") {
+            self.load_calendar();
+        }
         self.next_stats = Some(now + STATS_EVERY);
         let _ = self.stats.send(sys::Cmd::Sample);
         let _ = self.net_poke.send(());
@@ -1100,9 +1325,21 @@ impl App {
     }
 
     fn flush(&mut self) {
-        let App { islands, edges, model, icons, cfg, compositor, qh, .. } = self;
+        self.draw();
+        let has_panel = self.islands.iter().any(Island::holds_panel);
+        if self.had_panel && !has_panel {
+            let _ = self.stats.send(sys::Cmd::Release);
+        }
+        self.had_panel = has_panel;
+    }
+
+    fn draw(&mut self) {
+        let App { islands, edges, sidebar, model, icons, cfg, compositor, qh, .. } = self;
         for e in edges {
             e.flush(model, icons, cfg, qh);
+        }
+        if let Some(s) = sidebar {
+            s.flush(model, icons, cfg, compositor, qh);
         }
         for i in islands {
             i.flush(model, icons, cfg, compositor, qh);
@@ -1139,15 +1376,72 @@ impl App {
         }
     }
 
+    fn sidebar_pointer(&mut self, e: &PointerEvent) {
+        let Some(s) = &mut self.sidebar else { return };
+        let outcome = match e.kind {
+            PointerEventKind::Enter { serial } => {
+                self.enter_serial = serial;
+                self.cursor = None;
+                self.sidebar_at = None;
+                s.enter(e.position);
+                Outcome::None
+            }
+            PointerEventKind::Leave { .. } => return s.leave(self.cfg.ui.hover_close_ms),
+            PointerEventKind::Motion { .. } => s.motion(e.position),
+            PointerEventKind::Press { button, .. } => s.press(button),
+            PointerEventKind::Release { .. } => s.release(),
+            PointerEventKind::Axis { vertical, .. } => {
+                if s.over_volume() {
+                    return self.scroll(Scroll::Volume, &vertical);
+                }
+                let notches = if vertical.value120 != 0 { vertical.value120 as f64 / 120.0 } else { vertical.absolute / 15.0 };
+                return s.scroll_by(notches);
+            }
+        };
+        if let Outcome::Act(action, frac) = outcome {
+            let island = self.islands.iter().position(|i| i.name == s.name);
+            let reply = matches!(action, Action::NoteReply(_));
+            // The sidebar has the reply's field, so it takes the keys rather than an island.
+            self.act(action, frac, if reply { None } else { island });
+            if let (true, Some(s)) = (reply && self.model.notes.replying.is_some(), &mut self.sidebar) {
+                s.set_typing(true);
+            }
+        }
+        let over = self.sidebar.as_ref().is_some_and(Sidebar::hovering_target);
+        self.set_cursor(if over { Shape::Pointer } else { Shape::Default });
+    }
+
+    /// Resting on the middle of the frame's right border.
+    fn sidebar_hover(&mut self, at: edges::At, pos: (f64, f64)) {
+        let e = &self.edges[at.edges];
+        let wanted = self.cfg.ui.hover_sidebar && !self.cfg.sidebar.is_empty() && e.at_sidebar(at, pos)
+            && !self.sidebar.as_ref().is_some_and(Sidebar::is_open);
+        if !wanted {
+            self.sidebar_at = None;
+        } else if self.sidebar_at.is_none() {
+            self.sidebar_at = Some((Instant::now() + Duration::from_millis(self.cfg.ui.hover_open_ms), e.name.clone()));
+        }
+    }
+
     fn edge_pointer(&mut self, at: edges::At, e: &PointerEvent) {
         match e.kind {
             PointerEventKind::Enter { serial } => {
                 self.enter_serial = serial;
                 self.cursor = None;
                 self.edges[at.edges].motion(at, e.position);
+                self.sidebar_hover(at, e.position);
             }
-            PointerEventKind::Leave { .. } => return self.edges[at.edges].leave(at),
-            PointerEventKind::Motion { .. } => self.edges[at.edges].motion(at, e.position),
+            PointerEventKind::Leave { .. } => {
+                self.sidebar_at = None;
+                if let Some(s) = &mut self.sidebar {
+                    s.edge_left(self.cfg.ui.hover_close_ms);
+                }
+                return self.edges[at.edges].leave(at);
+            }
+            PointerEventKind::Motion { .. } => {
+                self.edges[at.edges].motion(at, e.position);
+                self.sidebar_hover(at, e.position);
+            }
             PointerEventKind::Press { .. } => {
                 self.edges[at.edges].motion(at, e.position);
                 self.edges[at.edges].press(at);
@@ -1209,6 +1503,9 @@ impl CompositorHandler for App {
             self.islands[i].frame_done();
         }
         self.edges.iter_mut().for_each(|e| e.frame_done(surface));
+        if let Some(s) = self.sidebar.as_mut().filter(|s| s.surface() == surface) {
+            s.frame_done();
+        }
     }
     fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
     fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
@@ -1229,18 +1526,27 @@ impl OutputHandler for App {
         self.model.night.drop_output(&output);
         self.islands.retain(|i| i.output != output);
         self.edges.retain(|e| e.output != output);
+        if self.sidebar.as_ref().is_some_and(|s| s.output == output) {
+            self.drop_sidebar();
+        }
     }
 }
 
 impl LayerShellHandler for App {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface) {
         self.islands.retain(|i| &i.layer != layer);
+        if self.sidebar.as_ref().is_some_and(|s| &s.layer == layer) {
+            self.drop_sidebar();
+        }
     }
     fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface, _: LayerSurfaceConfigure, _: u32) {
         if let Some(i) = self.islands.iter_mut().find(|i| &i.layer == layer) {
             i.configured();
         }
         self.edges.iter_mut().for_each(|e| e.configured(layer));
+        if let Some(s) = self.sidebar.as_mut().filter(|s| &s.layer == layer) {
+            s.configured();
+        }
     }
 }
 
@@ -1297,7 +1603,9 @@ impl PointerHandler for App {
     fn pointer_frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
         for e in events {
             let Some(idx) = self.island_at(&e.surface) else {
-                if let Some(at) = self.edge_at(&e.surface) {
+                if self.sidebar.as_ref().is_some_and(|s| s.surface() == &e.surface) {
+                    self.sidebar_pointer(e);
+                } else if let Some(at) = self.edge_at(&e.surface) {
                     self.edge_pointer(at, e);
                 }
                 continue;
@@ -1523,10 +1831,10 @@ fn main() {
                 eprintln!("island: styles are {}", style::Style::ALL.map(style::Style::name).join(", "));
                 std::process::exit(2);
             }
-            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" | "nightlight" | "style" => run_client(&args.join(" ")),
+            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" | "nightlight" | "style" | "sidebar" => run_client(&args.join(" ")),
             _ => {}
         }
-        eprintln!("usage: island [pin|tuck|reset|reload|style [name]|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|nightlight [on|off|toggle]|audio|doctor|claude-setup [--undo]|dmenu [-p prompt]]");
+        eprintln!("usage: island [pin|tuck|reset|reload|style [name]|sidebar|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|nightlight [on|off|toggle]|audio|doctor|claude-setup [--undo]|dmenu [-p prompt]]");
         std::process::exit(2);
     }
 
@@ -1578,9 +1886,17 @@ fn main() {
         generation: 0,
         islands: Vec::new(),
         edges: Vec::new(),
+        sidebar: None,
+        sidebar_at: None,
+        progress_at: None,
+        capture: None,
+        had_panel: false,
+        calendar_range: None,
         under_pointer: None,
         model: Model { monitors: Vec::new(), clients: Vec::new(), custom: HashMap::new(), sys: sys::Snapshot::default(),
                        audio: None, brightness: brightness::read(&cfg.commands), media: None, art_small: None, art_large: None, net: net::State::Unknown, bluetooth: None,
+                       radio: None, levels: [0.0; viz::BANDS], calendar: Default::default(), sidebar_open: false,
+                       can_capture: !cfg.visualizer.is_empty() && tools::on_path("parec"),
                        tray: Vec::new(), pal: theme::load(&cfg.palette), style: state.style(cfg.style), palette: None,
                        notes: notify::Center::new(state.dnd),
                        wall: modules::wallpaper::load(), timer: None,
@@ -1619,6 +1935,7 @@ fn main() {
         app.tick();
         app.flush();
     }
+    app.capture = None; // ends parec
     let _ = std::fs::remove_file(socket_path());
     let _ = conn.flush();
 }

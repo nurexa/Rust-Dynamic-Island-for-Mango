@@ -79,6 +79,9 @@ struct HClient {
     pid: i64,
     #[serde(rename = "focusHistoryID", default)]
     focus: i64,
+    /// A bool before 0.42, a mode since: 2 is fullscreen, 1 only maximized.
+    #[serde(default)]
+    fullscreen: serde_json::Value,
     #[serde(default)]
     at: (i32, i32),
     #[serde(default)]
@@ -104,6 +107,7 @@ fn convert(monitors: &str, workspaces: &str, clients: &str, urgent: &HashSet<u64
                 id, pid: c.pid.max(0) as u32, title: Some(c.title), appid: Some(c.class).filter(|s| !s.is_empty()),
                 monitor: name_of(c.monitor), tags: vec![c.workspace.id as u32], is_focused: c.focus == 0,
                 is_minimized: c.hidden, is_urgent: urgent.contains(&id),
+                is_fullscreen: c.fullscreen == true || c.fullscreen.as_u64().is_some_and(|mode| mode >= 2),
                 x: c.at.0, y: c.at.1, width: c.size.0, height: c.size.1,
             }
         }).collect();

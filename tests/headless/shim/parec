@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""The output's monitor, faked: a little band playing, at real-time pace. It never
+records anything. Starts and stops are logged, so a test can see capture follow
+playback and visibility."""
+import math
+import signal
+import struct
+import sys
+import time
+from pathlib import Path
+
+RUN = Path(__file__).resolve().parent.parent / "run"
+RATE, HOP = 24000, 800
+
+
+def log(what):
+    with open(RUN / "parec.log", "a") as f:
+        f.write(what + "\n")
+
+
+def stop(*_):
+    log("stop")
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, stop)
+log("start " + " ".join(sys.argv[1:]))
+out = sys.stdout.buffer
+notes = ((65, 0.30, 2.0), (131, 0.20, 1.5), (330, 0.16, 3.1), (880, 0.10, 4.3), (2500, 0.06, 5.0), (6100, 0.04, 7.0))
+n, next_at = 0, time.monotonic()
+try:
+    while True:
+        # quiet: a test asks for silence by creating this file
+        loud = 0.0 if (RUN / "parec.quiet").exists() else 1.0
+        gains = [(math.tau * hz / RATE, loud * g * (0.55 + 0.45 * math.sin(rate * n / RATE * math.tau))) for hz, g, rate in notes]
+        out.write(struct.pack(f"<{HOP}f", *[sum(g * math.sin(w * i) for w, g in gains) for i in range(n, n + HOP)]))
+        out.flush()
+        n += HOP
+        next_at += HOP / RATE
+        time.sleep(max(0.0, next_at - time.monotonic()))
+except (BrokenPipeError, KeyboardInterrupt):
+    log("stop")

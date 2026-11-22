@@ -1,5 +1,5 @@
 //! Volume: the panel's slider, and the brief flash on the pill when it changes.
-use super::{Ctx, PAD, PANEL_W, PILL_H};
+use super::{Ctx, PAD, PILL_H};
 use crate::{
     audio,
     pen::{Action, Pen, Region, Scroll},
@@ -36,15 +36,15 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let cy = y + h / 2.0;
     let mute = (PAD - 6.0, y, 30.0, h);
     p.button(symbol(a.volume, a.muted), mute, a.muted, Region::new(mute, 15.0, Action::Mute).right(Action::Sh(c.cfg.commands.mixer.clone())).tip("Mute"));
-    let label_w = 168.0;
+    let label_w = super::label_w(p);
     // The device name opens the list of outputs, apps and microphones.
     let w = p.text(&a.device, 12.5, Weight::Medium, pal.fg, PAD + 30.0, cy, label_w - 18.0);
     p.symbol(if c.m.audio_open { "keyboard_arrow_up" } else { "keyboard_arrow_down" }, 12.0, PAD + 33.0 + w, cy - 6.0, pal.muted);
     p.regions.push(Region::new((PAD + 24.0, y + 2.0, w + 30.0, h - 4.0), 8.0, Action::Cmd("audio".into()))
         .right(Action::Sh(c.cfg.commands.mixer.clone())).tip("Outputs, apps and microphones"));
     let x = PAD + 30.0 + label_w + 12.0;
-    slider(p, (x, y, PANEL_W - PAD - 40.0 - x, h), a.volume, a.muted, Action::Volume);
-    p.right(&format!("{}%", a.volume), 12.0, Weight::Medium, pal.muted, PANEL_W - PAD, cy);
+    slider(p, (x, y, p.w - PAD - 40.0 - x, h), a.volume, a.muted, Action::Volume);
+    p.right(&format!("{}%", a.volume), 12.0, Weight::Medium, pal.muted, p.w - PAD, cy);
     if let Some(r) = p.regions.last_mut() {
         r.right = Action::Sh(c.cfg.commands.mixer.clone());
         r.scroll = Some(Scroll::Volume);
@@ -61,8 +61,8 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
                 p.regions.push(Region::new(r, 8.0, Action::StreamMute(s.index)).tip(if s.muted { "Unmute" } else { "Mute" }));
                 p.text(&s.app, 12.0, Weight::Medium, if s.muted { pal.muted } else { pal.fg }, PAD + 30.0, cy, label_w);
                 let x = PAD + 30.0 + label_w + 12.0;
-                slider(p, (x, y, PANEL_W - PAD - 40.0 - x, 26.0), s.volume, s.muted, Action::StreamVolume(s.index));
-                p.right(&format!("{}%", s.volume), 11.5, Weight::Medium, pal.muted, PANEL_W - PAD, cy);
+                slider(p, (x, y, p.w - PAD - 40.0 - x, 26.0), s.volume, s.muted, Action::StreamVolume(s.index));
+                p.right(&format!("{}%", s.volume), 11.5, Weight::Medium, pal.muted, p.w - PAD, cy);
                 y += 28.0;
             }
         }
@@ -87,8 +87,8 @@ fn devices(p: &mut Pen, title: &str, list: &[audio::Device], current: &str, sour
         let cy = y + 13.0;
         let on = d.name == current;
         p.fill((PAD + 9.0, cy - 6.0, 12.0, 12.0), 6.0, if on { pal.accent } else { pal.fg }, if on { 1.0 } else { 0.16 });
-        p.text(&d.label, 12.0, Weight::Medium, if on { pal.fg } else { pal.muted }, PAD + 30.0, cy, PANEL_W - 2.0 * PAD - 40.0);
-        p.regions.push(Region::new((PAD - 6.0, y, PANEL_W - 2.0 * PAD + 12.0, 26.0), 8.0, Action::AudioDevice { source, name: d.name.clone() }));
+        p.text(&d.label, 12.0, Weight::Medium, if on { pal.fg } else { pal.muted }, PAD + 30.0, cy, p.w - 2.0 * PAD - 40.0);
+        p.regions.push(Region::new((PAD - 6.0, y, p.w - 2.0 * PAD + 12.0, 26.0), 8.0, Action::AudioDevice { source, name: d.name.clone() }));
         y += 27.0;
     }
     y + 2.0

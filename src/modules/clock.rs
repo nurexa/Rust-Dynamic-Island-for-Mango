@@ -9,9 +9,13 @@ pub fn format(fmt: &str) -> String {
     s.unwrap_or_default().trim_start_matches('0').to_owned()
 }
 
+pub fn twelve_hour(fmt: &str) -> bool {
+    ["%I", "%l", "%r"].iter().any(|f| fmt.contains(f))
+}
+
 /// Hours and minutes for the rail, 12 or 24 hour as the clock's own format is.
 pub fn stacked(fmt: &str) -> (String, String) {
-    let twelve = ["%I", "%l", "%r"].iter().any(|f| fmt.contains(f));
+    let twelve = twelve_hour(fmt);
     let Ok(now) = pango::glib::DateTime::now_local() else { return Default::default() };
     let part = |f: &str| now.format(f).map(|s| s.to_string()).unwrap_or_default();
     (part(if twelve { "%I" } else { "%H" }), part("%M"))

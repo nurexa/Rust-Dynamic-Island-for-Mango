@@ -12,6 +12,9 @@ pub struct Canvas {
     pool: SlotPool,
     /// Each buffer with the bounds it last held: outside them it's already clear.
     buffers: Vec<(Buffer, Rect)>,
+    /// Which full drawing each buffer last got, and the newest one's number.
+    drawn: Vec<u64>,
+    newest: u64,
     size: (f64, f64),
     scale: i32,
     /// What's on screen now.
@@ -24,6 +27,10 @@ pub struct Frame {
     target: ImageSurface,
     index: usize,
     bounds: Rect,
+    /// All that changed on screen, when it's less than the bounds.
+    changed: Option<Rect>,
+    /// The only part of this buffer being redrawn, when it isn't the whole of it.
+    pub patch: Option<Rect>,
 }
 
 fn union(a: Rect, b: Rect) -> Rect {
@@ -35,7 +42,7 @@ impl Canvas {
     pub fn new(shm: &Shm, size: (f64, f64), scale: i32) -> Option<Self> {
         let bytes = (size.0 * size.1).max(1.0) as usize * 4 * scale.pow(2) as usize;
         let pool = SlotPool::new(bytes, shm).ok()?;
-        Some(Canvas { pool, buffers: Vec::new(), size, scale, shown: (0.0, 0.0, size.0, size.1) })
+        Some(Canvas { pool, buffers: Vec::new(), drawn: Vec::new(), newest: 0, size, scale, shown: (0.0, 0.0, size.0, size.1) })
     }
 
     pub fn scale(&self) -> i32 {
@@ -46,12 +53,24 @@ impl Canvas {
         if (size, scale) != (self.size, self.scale) {
             (self.size, self.scale) = (size, scale);
             self.buffers.clear();
+            self.drawn.clear();
             self.shown = (0.0, 0.0, size.0, size.1);
         }
     }
 
     /// A cleared buffer to draw `bounds` in; nothing outside them survives.
     pub fn begin(&mut self, bounds: Rect) -> Option<Frame> {
+        self.newest += 1;
+        self.draw(bounds, None)
+    }
+
+    /// The same picture as the last `begin`, but for what's in `changed`. A buffer
+    /// that has that picture repaints only there; one that's behind catches up whole.
+    pub fn begin_live(&mut self, bounds: Rect, changed: Rect) -> Option<Frame> {
+        self.draw(bounds, Some(changed))
+    }
+
+    fn draw(&mut self, bounds: Rect, changed: Option<Rect>) -> Option<Frame> {
         let s = self.scale as f64;
         let (bw, bh) = ((self.size.0 * s) as i32, (self.size.1 * s) as i32);
         let stride = bw * 4;
@@ -62,6 +81,7 @@ impl Canvas {
                 let (buffer, _) = self.pool.create_buffer(bw, bh, stride, wl_shm::Format::Argb8888).ok()?;
                 // A recycled slot can hold anything.
                 self.buffers.push((buffer, (0.0, 0.0, self.size.0, self.size.1)));
+                self.drawn.push(0);
                 self.buffers.len() - 1
             }
         };
@@ -74,20 +94,27 @@ impl Canvas {
         let target = unsafe { ImageSurface::create_for_data_unsafe(ptr, Format::ARgb32, bw, bh, stride) }.ok()?;
         target.set_device_scale(s, s);
         let cr = Context::new(&target).ok()?;
-        let (x, y, w, h) = union(bounds, stale);
-        cr.rectangle(x.floor(), y.floor(), (x + w).ceil() - x.floor(), (y + h).ceil() - y.floor());
+        let current = std::mem::replace(&mut self.drawn[index], self.newest) == self.newest;
+        let only = changed.filter(|_| current);
+        let (x, y, w, h) = only.unwrap_or_else(|| union(bounds, stale));
+        let (x, y, w, h) = (x.floor(), y.floor(), (x + w).ceil() - x.floor(), (y + h).ceil() - y.floor());
+        if only.is_some() {
+            cr.rectangle(x, y, w, h);
+            cr.clip();
+        }
+        cr.rectangle(x, y, w, h);
         cr.set_operator(cairo::Operator::Clear);
         let _ = cr.fill();
         cr.set_operator(cairo::Operator::Over);
-        Some(Frame { cr, target, index, bounds })
+        Some(Frame { cr, target, index, bounds, changed, patch: only.map(|_| (x, y, w, h)) })
     }
 
     /// Attach and damage. The caller commits, along with whatever else changed.
     pub fn present(&mut self, frame: Frame, surface: &WlSurface) {
-        let Frame { cr, target, index, bounds } = frame;
+        let Frame { cr, target, index, bounds, changed, .. } = frame;
         drop(cr);
         target.finish();
-        let (x, y, w, h) = union(bounds, self.shown);
+        let (x, y, w, h) = changed.unwrap_or_else(|| union(bounds, self.shown));
         self.shown = bounds;
         let s = self.scale as f64;
         surface.set_buffer_scale(self.scale);

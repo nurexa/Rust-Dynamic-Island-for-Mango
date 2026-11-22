@@ -28,6 +28,8 @@ smithay-client-toolkit = { version = "0.21", default-features = false, features 
 cairo-rs = { version = "0.22", default-features = false, features = ["png"] }
 pango = { version = "0.22", features = ["v1_50"] }
 pangocairo = "0.22"
+# Already here under pango; named for TimeZone::from_identifier.
+glib = { version = "0.22", features = ["v2_68"] }
 resvg = { version = "0.49", default-features = false }
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 serde = { version = "1", features = ["derive"] }
