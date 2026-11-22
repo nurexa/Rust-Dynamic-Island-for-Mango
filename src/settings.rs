@@ -1,5 +1,6 @@
 //! ~/.config/island/config.toml is hand-edited and optional. ~/.local/state/island/state
 //! is written by the island: where each pill sits, and pin and tuck.
+use crate::style::Style;
 use serde::Deserialize;
 use smithay_client_toolkit::seat::keyboard::Keysym;
 use std::{collections::HashMap, env, fs, path::PathBuf};
@@ -251,6 +252,8 @@ impl Default for Ui {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Config {
+    /// The island's shape. `island style` overrides it until this line changes.
+    pub style: Style,
     pub font: String,
     pub icon_font: String,
     pub icon_style: IconStyle,
@@ -288,6 +291,7 @@ impl Default for Config {
     fn default() -> Self {
         let list = |l: &[&str]| l.iter().map(|s| s.to_string()).collect();
         Config {
+            style: Style::Pill,
             font: "Adwaita Sans".into(),
             // Any Nerd Font has the icons, and this one is a sixth the size of Iosevka,
             // which cuts memory in half: HarfBuzz's tables scale with the font.
@@ -365,9 +369,19 @@ pub struct State {
     /// Night light on, and the warmth the slider last chose.
     pub night: bool,
     pub warmth: Option<u32>,
+    /// The style `island style` chose, and what config.toml said then.
+    pub style: Option<(Style, Style)>,
 }
 
 impl State {
+    /// The last word wins: the command's, until the config's line changes.
+    pub fn style(&self, configured: Style) -> Style {
+        match self.style {
+            Some((chosen, base)) if base == configured => chosen,
+            _ => configured,
+        }
+    }
+
     pub fn parse(src: &str) -> Self {
         let mut s = State::default();
         for line in src.lines() {
@@ -383,6 +397,7 @@ impl State {
                 ["dnd"] => s.dnd = true,
                 ["night"] => s.night = true,
                 ["warmth", k] => s.warmth = k.parse().ok(),
+                ["style", chosen, base] => s.style = Style::parse(chosen).zip(Style::parse(base)),
                 _ => {}
             }
         }
@@ -408,6 +423,9 @@ impl State {
         }
         if let Some(k) = self.warmth {
             out += &format!("warmth {k}\n");
+        }
+        if let Some((chosen, base)) = self.style {
+            out += &format!("style {} {}\n", chosen.name(), base.name());
         }
         out
     }
@@ -460,6 +478,17 @@ mod tests {
         assert_eq!(c.action(Keysym::Up, false, false, false), None, "empty turns it off");
         assert_eq!(c.action(Keysym::Escape, false, false, false), None, "bad chord is ignored");
         assert!(!Config::parse("[ui]\nhover_open = false").unwrap().ui.hover_open);
+    }
+
+    #[test]
+    fn the_last_choice_of_style_wins() {
+        let mut s = State::default();
+        assert_eq!(s.style(Style::Notch), Style::Notch);
+        s.style = Some((Style::Frame, Style::Pill));
+        assert_eq!(s.style(Style::Pill), Style::Frame, "the command holds");
+        assert_eq!(s.style(Style::Bar), Style::Bar, "until the config says something new");
+        assert_eq!(State::parse(&s.render()).style, s.style);
+        assert_eq!(Config::parse("style = \"notch\"").unwrap().style, Style::Notch);
     }
 
     #[test]

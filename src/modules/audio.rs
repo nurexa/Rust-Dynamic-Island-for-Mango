@@ -6,7 +6,7 @@ use crate::{
 };
 use pango::Weight;
 
-fn symbol(volume: u32, muted: bool) -> &'static str {
+pub(super) fn symbol(volume: u32, muted: bool) -> &'static str {
     match volume {
         _ if muted => "volume_off",
         0..=33 => "volume_mute",

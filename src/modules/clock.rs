@@ -9,6 +9,14 @@ pub fn format(fmt: &str) -> String {
     s.unwrap_or_default().trim_start_matches('0').to_owned()
 }
 
+/// Hours and minutes for the rail, 12 or 24 hour as the clock's own format is.
+pub fn stacked(fmt: &str) -> (String, String) {
+    let twelve = ["%I", "%l", "%r"].iter().any(|f| fmt.contains(f));
+    let Ok(now) = pango::glib::DateTime::now_local() else { return Default::default() };
+    let part = |f: &str| now.format(f).map(|s| s.to_string()).unwrap_or_default();
+    (part(if twelve { "%I" } else { "%H" }), part("%M"))
+}
+
 pub fn pill(p: &mut Pen, c: &Ctx, x: f64) -> f64 {
     let w = p.text(&format(&c.cfg.clock), 13.0, Weight::Semibold, p.pal.fg, x, PILL_H / 2.0, -1.0);
     x + w

@@ -7,6 +7,7 @@ use crate::{
     icons::Icons,
     pen::{Content, Pen, View},
     settings::Config,
+    style::{SPLIT_GAP, Style},
 };
 
 mod audio;
@@ -23,6 +24,7 @@ mod nightlight;
 mod notify;
 mod palette;
 mod privacy;
+mod rail;
 mod stats;
 mod status;
 mod timer;
@@ -33,6 +35,8 @@ pub const PILL_H: f64 = 32.0;
 pub const PANEL_W: f64 = 560.0;
 pub const MAX_PANEL_H: f64 = 680.0;
 pub const MAX_COMPACT_W: f64 = 680.0;
+/// The most the split style's bubble adds.
+pub const BUBBLE_W: f64 = 220.0;
 const MIN_COMPACT_W: f64 = 168.0;
 const PAD: f64 = 20.0;
 const PILL_PAD: (f64, f64) = (10.0, 16.0);
@@ -100,35 +104,74 @@ fn draw_panel(name: &str, p: &mut Pen, c: &Ctx, y: f64) -> f64 {
 }
 
 pub fn pill(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: i32, flash: bool) -> Option<Content> {
-    let (surf, mut p) = Pen::new(MAX_COMPACT_W, PILL_H, cfg, &m.pal, scale, icons)?;
+    let style = m.style;
+    let room = if style == Style::Split { MAX_COMPACT_W + BUBBLE_W } else { MAX_COMPACT_W };
+    let (surf, mut p) = Pen::new(room, PILL_H, cfg, &m.pal, scale, icons)?;
     let c = Ctx { m, cfg, mon, pinned: false, tucked: false };
     if flash {
         let w = if m.flash_power { battery::flash(&mut p, &c) } else { audio::flash(&mut p, &c) };
         if let Some(w) = w {
-            return Some(Content { surf, w, h: PILL_H, regions: Vec::new() });
+            return Some(Content { surf, w, h: PILL_H, regions: Vec::new(), split: None });
         }
     }
+    let (bubble, main): (Vec<&str>, Vec<&str>) = cfg.pill.iter().map(String::as_str)
+        .filter(|n| style.on_island(n)).partition(|n| style.in_bubble(n));
+    let min = if matches!(style, Style::Minimal | Style::Frame | Style::Bar) { PILL_H } else { MIN_COMPACT_W };
     // Laid out twice when short of the minimum width: the second pass pushes the
     // last module to the far end, which is where the clock belongs.
     let mut spare = 0.0;
-    let w = loop {
+    let (main_w, empty) = loop {
         let mut x = PILL_PAD.0;
-        for (i, name) in cfg.pill.iter().enumerate() {
-            if i + 1 == cfg.pill.len() {
+        for (i, name) in main.iter().enumerate() {
+            if i + 1 == main.len() {
                 x += spare;
             }
             let end = draw_pill(name, &mut p, &c, x);
             x = if end > x { end + PILL_GAP } else { x };
         }
-        let w = x - PILL_GAP + PILL_PAD.1;
-        if spare > 0.0 || w >= MIN_COMPACT_W {
-            break w.max(MIN_COMPACT_W);
+        if x == PILL_PAD.0 + spare {
+            break (min, true);
         }
-        spare = MIN_COMPACT_W - w;
+        let w = x - PILL_GAP + PILL_PAD.1;
+        if spare > 0.0 || w >= min {
+            break (w.max(min), false);
+        }
+        spare = min - w;
         p.clear();
     };
+    let (mut w, mut split) = (main_w, None);
+    if !bubble.is_empty() {
+        let at = main_w + SPLIT_GAP;
+        let mut x = at + PILL_PAD.0;
+        for name in &bubble {
+            let end = draw_pill(name, &mut p, &c, x);
+            x = if end > x { end + PILL_GAP } else { x };
+        }
+        if x > at + PILL_PAD.0 {
+            w = (x - PILL_GAP + PILL_PAD.0).max(at + PILL_H);
+            split = Some(at);
+        }
+    }
+    // Nothing to say, and somewhere to draw back into: no height at all.
+    let h = if empty && style == Style::Frame { 0.0 } else { PILL_H };
     let regions = std::mem::take(&mut p.regions);
-    Some(Content { surf, w, h: PILL_H, regions })
+    Some(Content { surf, w, h, regions, split })
+}
+
+/// The frame's rail, over the whole of its strip.
+pub fn rail(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64, f64), scale: i32) -> Option<Content> {
+    let (surf, mut p) = Pen::new(w, h, cfg, &m.pal, scale, icons)?;
+    rail::rail(&mut p, &Ctx { m, cfg, mon, pinned: false, tucked: false }, h);
+    let regions = std::mem::take(&mut p.regions);
+    Some(Content { surf, w, h, regions, split: None })
+}
+
+/// The bar's two ends.
+pub fn bar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64, f64), scale: i32) -> Option<Content> {
+    let (surf, mut p) = Pen::new(w, h, cfg, &m.pal, scale, icons)?;
+    rail::bar(&mut p, &Ctx { m, cfg, mon, pinned: false, tucked: false }, w);
+    let regions = std::mem::take(&mut p.regions);
+    Some(Content { surf, w, h, regions, split: None })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -143,5 +186,5 @@ pub fn panel(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, view: &View,
     };
     let regions = std::mem::take(&mut p.regions);
     let w = if *view == View::Toast { notify::TOAST_W } else { PANEL_W };
-    Some(Content { surf, w, h: h.min(MAX_PANEL_H), regions })
+    Some(Content { surf, w, h: h.min(MAX_PANEL_H), regions, split: None })
 }

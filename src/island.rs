@@ -5,21 +5,22 @@
 //! so the transparent rest of the surface never eats clicks.
 use crate::{
     Model,
+    canvas::Canvas,
     modules::{self, MAX_COMPACT_W, MAX_PANEL_H, PANEL_W, PILL_H},
-    pen::{Action, Content, Scroll, View},
+    pen::{Action, Content, Rect, Scroll, View},
     icons::Icons,
     settings::Config,
+    style::{self, Style},
 };
 use cairo::{Context, Format, ImageSurface};
 use smithay_client_toolkit::{
     compositor::{CompositorState, FrameCallbackData, Region},
     reexports::client::{QueueHandle, protocol::{wl_output, wl_surface::WlSurface}},
     shell::{WaylandSurface, wlr_layer::{KeyboardInteractivity, Layer, LayerSurface}},
-    shm::{Shm, slot::{Buffer, SlotPool}},
+    shm::Shm,
 };
 use std::time::{Duration, Instant};
 
-pub const DOCK_Y: f64 = 6.0;
 const SHADOW: f64 = 26.0;
 const PANEL_R: f64 = 30.0;
 const SNAP: f64 = 56.0; // release this close to home and the pill docks
@@ -130,10 +131,15 @@ pub struct Island {
     pub scale: i32,
     pub layer: LayerSurface,
     configured: bool,
-    pool: SlotPool,
-    /// Each buffer with the bounds it last held: outside them it's already clear.
-    buffers: Vec<(Buffer, Bounds)>,
+    canvas: Canvas,
     chrome: Option<Chrome>,
+    style: Style,
+    /// The frame's palette grows out of the bottom border, and goes back into it
+    /// before the island is home at the top again.
+    flipped: bool,
+    /// The split style's bubble: how far it has parted, and how wide it last was.
+    bud: Spring,
+    bud_w: f64,
     size: (f64, f64),
 
     /// Pill centre x and top y. None is docked at top centre.
@@ -179,16 +185,13 @@ pub struct Island {
 
     frame_pending: bool,
     dirty: bool,
-    prev_bounds: (f64, f64, f64, f64),
 }
-
-type Bounds = (f64, f64, f64, f64);
 
 /// The resting pill's shadow and background. The shadow strokes are the costliest
 /// part of a frame, and content-only redraws like a workspace switch keep them.
 /// ponytail: pill only; a pinned panel's chrome would hold megabytes for less gain.
 struct Chrome {
-    key: [f64; 8],
+    key: [f64; 9],
     surf: ImageSurface,
     at: (f64, f64),
 }
@@ -206,27 +209,30 @@ struct Shape {
 impl Island {
     #[allow(clippy::too_many_arguments)]
     pub fn new(output: wl_output::WlOutput, name: String, out: (f64, f64), scale: i32, layer: LayerSurface,
-               shm: &Shm, state_pos: Option<(f64, f64)>, pinned: bool, tucked: bool) -> Option<Self> {
-        let size = surface_size(out);
-        let pool = SlotPool::new((size.0 * size.1) as usize * 4 * scale.pow(2) as usize, shm).ok()?;
-        let home = (out.0 / 2.0, DOCK_Y);
+               shm: &Shm, style: Style, state_pos: Option<(f64, f64)>, pinned: bool, tucked: bool) -> Option<Self> {
+        let size = surface_size(out, style);
+        let canvas = Canvas::new(shm, size, scale)?;
+        // An attached style keeps where the pill was for when it's a pill again.
         let pos = state_pos.map(|p| clamp_pos(p, out, 200.0));
-        let at = pos.unwrap_or(home);
+        let at = pos.filter(|_| !style.attached()).unwrap_or(home(out, style));
+        // The frame starts drawn in, until there's something to show.
+        let retracted = tucked || style == Style::Frame;
         Some(Island {
-            output, name, out, scale, layer, configured: false, pool, buffers: Vec::new(), chrome: None, size, pos,
+            output, name, out, scale, layer, configured: false, canvas, chrome: None, size, pos,
+            style, flipped: false, bud: Spring::new(0.0, 0.44, 0.8, 0.002), bud_w: PILL_H,
             place: (Spring::new(at.0, 0.34, 0.82, 0.3), Spring::new(at.1, 0.34, 0.82, 0.3)),
             placed: None, input: None,
             t: Spring::new(if pinned { 1.0 } else { 0.0 }, 0.42, 0.78, 0.002),
             cw: Spring::new(200.0, 0.36, 0.86, 0.3),
             ph: Spring::new(320.0, 0.36, 0.86, 0.3),
             pw: Spring::new(PANEL_W, 0.36, 0.86, 0.3),
-            k: Spring::new(if tucked { 1.0 } else { 0.0 }, 0.34, 0.86, 0.002),
+            k: Spring::new(if retracted { 1.0 } else { 0.0 }, 0.34, 0.86, 0.002),
             last: None, time_scale: std::env::var("ISLAND_TIME_SCALE").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0),
             pinned, tucked, toast: false, typing: false, raised: false, hovered: false, open: false, suppress: false, press: None,
             dragging: false, sliding: false, pointer: (0.0, 0.0), hover: None, pin_at: None,
             open_at: None, close_at: None, flash_until: None, view: View::Main,
             compact: None, panel: None, compact_dirty: true, panel_dirty: true,
-            frame_pending: false, dirty: true, prev_bounds: (0.0, 0.0, 0.0, 0.0),
+            frame_pending: false, dirty: true,
         })
     }
 
@@ -266,6 +272,12 @@ impl Island {
     }
 
     pub fn open_palette(&mut self) {
+        if self.style == Style::Frame {
+            self.flipped = true;
+            self.t.snap(0.0);
+            self.panel = None;
+            self.place.1.snap(self.out.1 - style::BORDER - PILL_H);
+        }
         self.view = View::Palette;
         self.toast = false;
         self.raise(true, true);
@@ -277,7 +289,7 @@ impl Island {
         self.raise(false, false);
         // Toast with no toast is the closing state: the palette's last frame stays
         // up while the shape shrinks, and rebuild() settles it on Main.
-        self.view = if self.pinned || self.open { View::Main } else { View::Toast };
+        self.view = if (self.pinned || self.open) && !self.flipped { View::Main } else { View::Toast };
         self.panel_dirty = true;
         self.dirty = true;
     }
@@ -321,6 +333,11 @@ impl Island {
         self.wants_panel() || self.t.x > 0.001
     }
 
+    /// On its way back into the bottom border after the palette closed.
+    fn returning(&self) -> bool {
+        self.flipped && self.view != View::Palette
+    }
+
     fn panel_cx(&self, x: f64, w: f64) -> f64 {
         x.clamp(w / 2.0 + 8.0, (self.out.0 - w / 2.0 - 8.0).max(w / 2.0 + 8.0))
     }
@@ -335,6 +352,13 @@ impl Island {
     pub fn titles_changed(&mut self) {
         self.compact_dirty = true;
         self.panel_dirty = true;
+    }
+
+    /// Hold the panel for a tray menu asked for from the rail or the bar.
+    pub fn open_briefly(&mut self) {
+        self.open = true;
+        self.close_at = (!self.hovered).then(|| Instant::now() + Duration::from_secs(5));
+        self.dirty = true;
     }
 
     pub fn flash(&mut self) {
@@ -359,20 +383,22 @@ impl Island {
     pub fn set_output(&mut self, out: (f64, f64), scale: i32) {
         if scale != self.scale {
             self.scale = scale;
-            self.buffers.clear();
             self.chrome = None;
             self.compact_dirty = true;
             self.panel_dirty = true;
         }
-        let size = surface_size(out);
+        let size = surface_size(out, self.style);
         if size != self.size {
             self.size = size;
-            self.buffers.clear();
             self.layer.set_size(size.0 as u32, size.1 as u32);
         }
+        self.canvas.resize(size, scale);
         self.out = out;
         self.pos = self.pos.map(|p| clamp_pos(p, out, self.cw.target));
-        let at = self.pos.unwrap_or(self.home());
+        let mut at = self.pos.filter(|_| !self.style.attached()).unwrap_or(self.home());
+        if self.flipped {
+            at.1 = out.1 - style::BORDER - PILL_H;
+        }
         self.place.0.snap(at.0);
         self.place.1.snap(at.1);
         self.placed = None;
@@ -380,11 +406,11 @@ impl Island {
     }
 
     fn home(&self) -> (f64, f64) {
-        (self.out.0 / 2.0, DOCK_Y)
+        home(self.out, self.style)
     }
 
     fn opens_down(&self) -> bool {
-        self.place.1.x + PILL_H / 2.0 < self.out.1 / 2.0
+        if self.style.attached() { !self.flipped } else { self.place.1.x + PILL_H / 2.0 < self.out.1 / 2.0 }
     }
 
     /// Surface top-left on the output, keeping the whole panel on screen.
@@ -400,30 +426,54 @@ impl Island {
         let (px, py) = (self.place.0.x - sx, self.place.1.x - sy);
         let t = self.t.x;
         let k = self.k.x;
+        let attached = self.style.attached();
         // The panel slides sideways as it opens if the pill sits near an edge.
         let panel_cx = self.panel_cx(self.place.0.x, self.pw.x) - sx;
         let cx = lerp(px, panel_cx, t.clamp(0.0, 1.0));
-        let w = lerp(lerp(self.cw.x, TUCK_W, k), self.pw.x, t);
-        let h = lerp(lerp(PILL_H, TUCK_H, k), self.ph.x, t);
-        let top = lerp(py, if self.pos.is_none() { 2.0 } else { py }, k);
+        // Closed, an attached island draws back into its edge rather than into a sliver.
+        let (rest_w, rest_h) = match () {
+            _ if self.flipped => (self.pw.x * 0.6, 0.0),
+            _ if attached => (lerp(self.cw.x, self.cw.x * 0.6, k), lerp(PILL_H, 0.0, k)),
+            _ => (lerp(self.cw.x, TUCK_W, k), lerp(PILL_H, TUCK_H, k)),
+        };
+        let w = lerp(rest_w, self.pw.x, t);
+        let h = lerp(rest_h, self.ph.x, t).max(0.0);
+        let top = if attached { py } else { lerp(py, if self.pos.is_none() { 2.0 } else { py }, k) };
         let y = if self.opens_down() { top } else { py + PILL_H - h };
-        let r = lerp(PILL_H / 2.0, PANEL_R, t.clamp(0.0, 1.0)).min(h / 2.0);
+        let r = lerp(PILL_H / 2.0, PANEL_R, t.clamp(0.0, 1.0));
+        let r = if attached { r } else { r.min(h / 2.0) };
         Shape { x: cx - w / 2.0, y, w, h, r, cx }
     }
 
     /// Where the input region should sit at rest for the current target.
-    fn target_rect(&self) -> (f64, f64, f64, f64) {
+    fn target_rect(&self) -> Rect {
         let (sx, sy) = self.surface_pos();
         let (px, py) = (self.place.0.target - sx, self.place.1.target - sy);
-        if self.t.target > 0.5 {
+        let attached = self.style.attached();
+        if self.returning() {
+            (0.0, 0.0, 0.0, 0.0)
+        } else if self.t.target > 0.5 {
             let w = self.pw.target;
             let cx = self.panel_cx(self.place.0.target, w) - sx;
-            let y = if self.opens_down() { py } else { py + PILL_H - self.ph.target };
-            (cx - w / 2.0, y, w, self.ph.target)
+            let down = self.opens_down();
+            let y = if down { py } else { py + PILL_H - self.ph.target };
+            // An attached panel takes in its band, or crossing it would close the panel.
+            match (attached, down) {
+                (true, true) => (cx - w / 2.0, 0.0, w, y + self.ph.target),
+                (true, false) => (cx - w / 2.0, y, w, self.size.1 - y),
+                _ => (cx - w / 2.0, y, w, self.ph.target),
+            }
         } else if self.k.target > 0.5 {
+            if attached {
+                // All that's left is the band it drew back into: that's the way in.
+                let w = self.cw.target.max(240.0);
+                return (px - w / 2.0, 0.0, w, self.style.insets().top + 4.0);
+            }
             // A thin sliver is a hard target: keep a generous hot zone around it.
             let y = if self.pos.is_none() { 0.0 } else { py };
             (px - 70.0, y, 140.0, 12.0)
+        } else if attached {
+            (px - self.cw.target / 2.0, 0.0, self.cw.target, py + PILL_H)
         } else {
             (px - self.cw.target / 2.0, py, self.cw.target, PILL_H)
         }
@@ -454,18 +504,22 @@ impl Island {
     }
 
     fn update_targets(&mut self) {
-        let opening = self.wants_panel();
+        let opening = self.wants_panel() && !self.returning();
         if opening && self.t.target < 0.5 {
             self.t.tune(0.42, 0.74);
         } else if !opening && self.t.target > 0.5 {
             self.t.tune(0.34, 0.92);
         }
         self.t.target = if opening { 1.0 } else { 0.0 };
-        self.k.target = if self.tucked && !opening && !self.dragging { 1.0 } else { 0.0 };
+        // Content with no height is nothing to show: back into the edge.
+        let empty = self.compact.as_ref().is_some_and(|c| c.h == 0.0);
+        self.k.target = if (self.tucked || empty) && !opening && !self.dragging { 1.0 } else { 0.0 };
+        let parted = !opening && self.compact.as_ref().is_some_and(|c| c.split.is_some());
+        self.bud.target = if parted { 1.0 } else { 0.0 };
     }
 
     fn springs_settled(&self) -> bool {
-        [&self.t, &self.cw, &self.ph, &self.pw, &self.k, &self.place.0, &self.place.1].iter().all(|s| s.settled())
+        [&self.t, &self.cw, &self.ph, &self.pw, &self.k, &self.bud, &self.place.0, &self.place.1].iter().all(|s| s.settled())
     }
 
     fn rebuild(&mut self, m: &Model, icons: &mut Icons, cfg: &Config) {
@@ -477,17 +531,20 @@ impl Island {
                     self.cw.snap(c.w);
                 }
                 self.cw.target = c.w;
+                if let Some(at) = c.split {
+                    self.bud_w = c.w - at;
+                }
                 self.compact = Some(c);
             }
         }
         // A hover that outlives a toast carries on as the normal panel.
-        if self.view == View::Toast && !self.toast && (self.pinned || self.open) {
+        if self.view == View::Toast && !self.toast && (self.pinned || self.open) && !self.returning() {
             self.view = View::Main;
             self.panel_dirty = true;
         }
         if self.panel_visible() {
             // While closing, keep showing what was open rather than swapping it out.
-            if (self.panel_dirty && self.wants_panel()) || self.panel.is_none() {
+            if (self.panel_dirty && self.wants_panel() && !self.returning()) || self.panel.is_none() {
                 self.panel_dirty = false;
                 let first = self.panel.is_none();
                 if let Some(c) = modules::panel(m, icons, cfg, &self.name, &self.view, self.scale, self.pinned, self.tucked) {
@@ -519,16 +576,25 @@ impl Island {
     }
 
     fn render(&mut self, m: &Model, icons: &mut Icons, cfg: &Config, compositor: &CompositorState, qh: &QueueHandle<crate::App>) {
-        self.update_targets();
         self.rebuild(m, icons, cfg);
+        self.update_targets();
 
         let now = Instant::now();
         // The first frame after idle has no meaningful gap to integrate over.
         let dt = self.last.map_or(1.0 / 240.0, |l| (now - l).as_secs_f64()).min(1.0 / 30.0) * self.time_scale;
-        for s in [&mut self.t, &mut self.cw, &mut self.ph, &mut self.pw, &mut self.k, &mut self.place.0, &mut self.place.1] {
+        for s in [&mut self.t, &mut self.cw, &mut self.ph, &mut self.pw, &mut self.k, &mut self.bud, &mut self.place.0, &mut self.place.1] {
             s.step(dt);
         }
-        let animating = !self.springs_settled();
+        let mut animating = !self.springs_settled();
+        if self.returning() && self.t.settled() && self.t.target == 0.0 {
+            // All the way into the bottom border: carry on from the top one.
+            self.flipped = false;
+            self.panel = None;
+            self.panel_dirty = true;
+            let home = self.home();
+            self.place.1.snap(home.1);
+            animating = true;
+        }
         self.last = animating.then_some(now);
 
         self.apply_place();
@@ -538,59 +604,19 @@ impl Island {
             self.hover = self.hit(self.pointer);
         }
 
-        let s = self.scale as f64;
-        let (bw, bh) = ((self.size.0 * s) as i32, (self.size.1 * s) as i32);
-        let stride = bw * 4;
-        let free = self.buffers.iter().position(|(b, _)| b.canvas(&mut self.pool).is_some());
-        let index = match free {
-            Some(i) => i,
-            None => {
-                let format = smithay_client_toolkit::reexports::client::protocol::wl_shm::Format::Argb8888;
-                let Ok((buffer, _)) = self.pool.create_buffer(bw, bh, stride, format) else { return };
-                // A recycled slot can hold anything.
-                self.buffers.push((buffer, (0.0, 0.0, self.size.0, self.size.1)));
-                self.buffers.len() - 1
-            }
-        };
         let shape = self.shape();
-        let b = (shape.x - SHADOW, shape.y - SHADOW, shape.w + 2.0 * SHADOW, shape.h + 2.0 * SHADOW);
-        let stale = std::mem::replace(&mut self.buffers[index].1, b);
+        let bounds = (shape.x - SHADOW, shape.y - SHADOW, shape.w + 2.0 * SHADOW, shape.h + 2.0 * SHADOW);
         let resting = !animating && self.t.x == 0.0;
         if resting {
             self.cache_chrome(shape, &m.pal);
         } else {
             self.chrome = None;
         }
-        let Some(canvas) = self.buffers[index].0.canvas(&mut self.pool) else { return };
-        let (ptr, len) = (canvas.as_mut_ptr(), canvas.len());
-        debug_assert!(len >= (stride * bh) as usize);
-        // Safety: `canvas` is an exclusive view of the shm slot, valid until the
-        // buffer is attached below, and the cairo surface is finished before that.
-        let target = unsafe { ImageSurface::create_for_data_unsafe(ptr, Format::ARgb32, bw, bh, stride) };
-        let Ok(target) = target else { return };
-        target.set_device_scale(s, s);
-        if let Ok(cr) = Context::new(&target) {
-            let (x0, y0) = (b.0.min(stale.0), b.1.min(stale.1));
-            cr.rectangle(x0.floor(), y0.floor(), (b.0 + b.2).max(stale.0 + stale.2).ceil() - x0.floor(),
-                         (b.1 + b.3).max(stale.1 + stale.3).ceil() - y0.floor());
-            cr.set_operator(cairo::Operator::Clear);
-            let _ = cr.fill();
-            cr.set_operator(cairo::Operator::Over);
-            self.paint(&cr, shape, &m.pal, animating, cfg);
-        }
-        target.finish();
-
-        let (x0, y0) = (b.0.min(self.prev_bounds.0), b.1.min(self.prev_bounds.1));
-        let x1 = (b.0 + b.2).max(self.prev_bounds.0 + self.prev_bounds.2);
-        let y1 = (b.1 + b.3).max(self.prev_bounds.1 + self.prev_bounds.3);
-        self.prev_bounds = b;
+        let Some(frame) = self.canvas.begin(bounds) else { return };
+        self.paint(&frame.cr, shape, &m.pal, animating, cfg);
 
         let surface = self.layer.wl_surface();
-        surface.set_buffer_scale(self.scale);
-        let _ = self.buffers[index].0.attach_to(surface);
-        let surface = self.layer.wl_surface();
-        surface.damage_buffer((x0 * s).floor() as i32 - 2, (y0 * s).floor() as i32 - 2,
-                              ((x1 - x0) * s).ceil() as i32 + 4, ((y1 - y0) * s).ceil() as i32 + 4);
+        self.canvas.present(frame, surface);
         surface.frame(qh, FrameCallbackData(surface.clone()));
         self.layer.commit();
         self.frame_pending = true;
@@ -609,19 +635,37 @@ impl Island {
             None => self.paint_chrome(cr, sh, pal),
         }
 
-        let a_compact = (1.0 - smooth(t / 0.45)) * (1.0 - k);
+        let a_compact = if self.flipped { 0.0 } else { (1.0 - smooth(t / 0.45)) * (1.0 - k) };
         let a_panel = smooth((t - 0.32) / 0.68);
         let down = self.opens_down();
         let morphing = animating && (t > 0.0 && t < 1.0 || k > 0.0 && k < 1.0);
         if morphing {
             let _ = cr.save();
-            squircle(cr, sh.x, sh.y, sh.w, sh.h, sh.r, t);
+            self.outline(cr, sh, t);
             cr.clip();
         }
         if let (true, Some(c)) = (a_compact > 0.003, &self.compact) {
-            let (x, y) = (sh.cx - sh.w.min(c.w) / 2.0, if down { sh.y } else { sh.y + sh.h - PILL_H });
-            let x = if sh.w > c.w { sh.cx - c.w / 2.0 } else { x };
-            blit(cr, c, x, y, sh.w.min(c.w), PILL_H, a_compact);
+            let y = match () {
+                // Drawn back, it slides up into the edge with it.
+                _ if self.style.attached() => sh.y - (PILL_H * k),
+                _ if down => sh.y,
+                _ => sh.y + sh.h - PILL_H,
+            };
+            match (c.split, self.parted(sh, t)) {
+                // While they part, each half rides its own side of the shape.
+                (Some(at), Some((main_w, bubble))) => {
+                    blit(cr, c, sh.x, y, main_w.min(at - style::SPLIT_GAP), PILL_H, a_compact);
+                    let _ = cr.save();
+                    cr.rectangle(bubble, y, sh.x + sh.w - bubble, PILL_H);
+                    cr.clip();
+                    blit(cr, c, sh.x + sh.w - c.w, y, c.w, PILL_H, a_compact * smooth(self.bud.x));
+                    let _ = cr.restore();
+                }
+                _ => {
+                    let x = if sh.w > c.w { sh.cx - c.w / 2.0 } else { sh.x };
+                    blit(cr, c, x, y, sh.w.min(c.w), PILL_H, a_compact);
+                }
+            }
         }
         if let (true, Some(c)) = (a_panel > 0.003, &self.panel) {
             let y = if down { sh.y } else { sh.y + sh.h - c.h };
@@ -657,7 +701,7 @@ impl Island {
     }
 
     fn cache_chrome(&mut self, sh: Shape, pal: &crate::theme::Palette) {
-        let key = [sh.x, sh.y, sh.w, sh.h, self.k.x, pal.bg.0, pal.bg.1, pal.bg.2];
+        let key = [sh.x, sh.y, sh.w, sh.h, self.k.x, self.bud.x, pal.bg.0, pal.bg.1, pal.bg.2];
         if self.chrome.as_ref().is_some_and(|c| c.key == key) {
             return;
         }
@@ -676,9 +720,51 @@ impl Island {
         self.chrome = Some(Chrome { key, surf, at: (x, y) });
     }
 
+    fn outline(&self, cr: &Context, sh: Shape, t: f64) {
+        if !self.style.attached() {
+            return squircle(cr, sh.x, sh.y, sh.w, sh.h, sh.r, t);
+        }
+        let (band, end) = if self.flipped {
+            (style::BORDER, self.size.1 - sh.y)
+        } else {
+            (self.style.insets().top, sh.y + sh.h)
+        };
+        let _ = cr.save();
+        if self.flipped {
+            cr.translate(0.0, self.size.1);
+            cr.scale(1.0, -1.0);
+        }
+        style::tab(cr, (sh.x, sh.x + sh.w), band, end, style::FILLET, sh.r);
+        let _ = cr.restore();
+    }
+
+    /// While the split style has two bodies: the pill's width, and where the bubble starts.
+    fn parted(&self, sh: Shape, t: f64) -> Option<(f64, f64)> {
+        let b = self.bud.x * (1.0 - smooth(t / 0.35)) * (1.0 - self.k.x.clamp(0.0, 1.0));
+        if b < 0.002 {
+            return None;
+        }
+        let bubble = (sh.x + sh.w - self.bud_w.max(sh.h)).max(sh.x + sh.h);
+        let main = lerp(sh.w, bubble - style::SPLIT_GAP - sh.x, b).max(sh.h);
+        Some((main, bubble))
+    }
+
     fn paint_chrome(&self, cr: &Context, sh: Shape, pal: &crate::theme::Palette) {
         let t = self.t.x.clamp(0.0, 1.0);
         let k = self.k.x.clamp(0.0, 1.0);
+        let (r, g, b) = pal.bg;
+        if self.style.attached() {
+            // Solid and flat, exactly like the band it's joined to: that's what hides the seam.
+            self.outline(cr, sh, t);
+            cr.set_source_rgba(r, g, b, 1.0);
+            let _ = cr.fill();
+            return;
+        }
+        let parted = self.parted(sh, t);
+        let bodies = match parted {
+            Some((main, bubble)) => [Some((sh.x, main)), Some((bubble, sh.x + sh.w - bubble))],
+            None => [Some((sh.x, sh.w)), None],
+        };
         // Soft shadow as nested strokes: only the rim is touched, so a big panel
         // costs what a small one does, and no blur pass is needed.
         let lift = 1.0 - k;
@@ -686,16 +772,25 @@ impl Island {
             let depth = lerp(12.0, 24.0, t);
             for i in (1..=6).rev() {
                 let f = i as f64 / 6.0;
-                squircle(cr, sh.x, sh.y + 2.0, sh.w, sh.h, sh.r, t);
-                cr.set_line_width(2.0 * depth * f);
-                cr.set_source_rgba(0.0, 0.0, 0.0, 0.055 * lift * (1.0 - f * 0.7));
-                let _ = cr.stroke();
+                for &(x, w) in bodies.iter().flatten() {
+                    squircle(cr, x, sh.y + 2.0, w, sh.h, sh.r, t);
+                    cr.set_line_width(2.0 * depth * f);
+                    cr.set_source_rgba(0.0, 0.0, 0.0, 0.055 * lift * (1.0 - f * 0.7));
+                    let _ = cr.stroke();
+                }
             }
         }
-        squircle(cr, sh.x, sh.y, sh.w, sh.h, sh.r, t);
-        let (r, g, b) = pal.bg;
-        cr.set_source_rgba(r, g, b, lerp(0.97, 0.72, k));
-        let _ = cr.fill();
+        // Two bodies and the drop between them overlap, so those have to be solid.
+        cr.set_source_rgba(r, g, b, if parted.is_some() { 1.0 } else { lerp(0.97, 0.72, k) });
+        for &(x, w) in bodies.iter().flatten() {
+            squircle(cr, x, sh.y, w, sh.h, sh.r, t);
+            let _ = cr.fill();
+        }
+        if let Some((main, bubble)) = parted {
+            if style::neck(cr, (sh.x, sh.y, main, sh.h), bubble) {
+                let _ = cr.fill();
+            }
+        }
     }
 
     /// Window titles used to live in Waybar's tooltips. Here the panel's top
@@ -742,7 +837,9 @@ impl Island {
     fn active(&self) -> Option<(&Content, f64, f64)> {
         let (sx, sy) = self.surface_pos();
         let (px, py) = (self.place.0.target - sx, self.place.1.target - sy);
-        if self.t.target > 0.5 {
+        if self.returning() {
+            None
+        } else if self.t.target > 0.5 {
             let c = self.panel.as_ref()?;
             let cx = self.panel_cx(self.place.0.target, c.w) - sx;
             let y = if self.opens_down() { py } else { py + PILL_H - c.h };
@@ -817,7 +914,7 @@ impl Island {
         }
         if let Some(p) = &self.press {
             let moved = (at.0 - p.at.0).hypot(at.1 - p.at.1);
-            if p.button == BTN_LEFT && !self.dragging && moved > DRAG_START && self.view == View::Main {
+            if p.button == BTN_LEFT && !self.dragging && moved > DRAG_START && self.view == View::Main && !self.style.attached() {
                 self.start_drag();
             }
         }
@@ -996,10 +1093,17 @@ fn blit(cr: &Context, c: &Content, x: f64, y: f64, w: f64, h: f64, a: f64) {
 }
 
 /// Fits the tallest panel, so opening never needs a layer resize.
-fn surface_size(out: (f64, f64)) -> (f64, f64) {
-    let w = (PANEL_W.max(MAX_COMPACT_W) + 2.0 * SHADOW).min(out.0);
+fn surface_size(out: (f64, f64), style: Style) -> (f64, f64) {
+    let compact = if style == Style::Split { MAX_COMPACT_W + modules::BUBBLE_W } else { MAX_COMPACT_W };
+    let w = (PANEL_W.max(compact) + 2.0 * SHADOW).min(out.0);
     let h = (MAX_PANEL_H + SHADOW + 12.0).min(out.1);
     (w.floor(), h.floor())
+}
+
+/// Centred on the space the windows get, which the frame's rail pushes right.
+fn home(out: (f64, f64), style: Style) -> (f64, f64) {
+    let i = style.insets();
+    (((i.left + out.0 - i.right) / 2.0).round(), style.dock_y())
 }
 
 fn clamp_pos((x, y): (f64, f64), out: (f64, f64), pill_w: f64) -> (f64, f64) {

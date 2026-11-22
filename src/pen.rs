@@ -108,6 +108,8 @@ pub struct Content {
     pub w: f64,
     pub h: f64,
     pub regions: Vec<Region>,
+    /// Where the split style's bubble starts.
+    pub split: Option<f64>,
 }
 
 /// What a panel is showing: the system view, or a tray app's menu.
@@ -265,15 +267,7 @@ impl<'a> Pen<'a> {
     }
 
     pub fn pill(&self, x: f64, y: f64, w: f64, h: f64, r: f64) {
-        let cr = &self.cr;
-        let pi = std::f64::consts::PI;
-        let r = r.min(w / 2.0).min(h / 2.0);
-        cr.new_sub_path();
-        cr.arc(x + w - r, y + r, r, -pi / 2.0, 0.0);
-        cr.arc(x + w - r, y + h - r, r, 0.0, pi / 2.0);
-        cr.arc(x + r, y + h - r, r, pi / 2.0, pi);
-        cr.arc(x + r, y + r, r, pi, 1.5 * pi);
-        cr.close_path();
+        rounded_rect(&self.cr, x, y, w, h, r);
     }
 
     pub fn fill(&self, rect: Rect, r: f64, c: Rgb, a: f64) {
@@ -356,6 +350,17 @@ impl<'a> Pen<'a> {
         self.icon(symbol, on, size, rect.0 + (rect.2 - size) / 2.0, rect.1 + (rect.3 - size) / 2.0, c, 1.0);
         self.regions.push(region);
     }
+}
+
+pub fn rounded_rect(cr: &Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
+    let pi = std::f64::consts::PI;
+    let r = r.min(w / 2.0).min(h / 2.0);
+    cr.new_sub_path();
+    cr.arc(x + w - r, y + r, r, -pi / 2.0, 0.0);
+    cr.arc(x + w - r, y + h - r, r, 0.0, pi / 2.0);
+    cr.arc(x + r, y + h - r, r, pi / 2.0, pi);
+    cr.arc(x + r, y + r, r, pi, 1.5 * pi);
+    cr.close_path();
 }
 
 fn configure(l: &pango::Layout, s: &str, family: &str, size: f64, weight: Weight, max_w: f64) {

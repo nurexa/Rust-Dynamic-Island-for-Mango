@@ -3,9 +3,11 @@ mod audio;
 mod bluetooth;
 mod brightness;
 mod bus;
+mod canvas;
 mod claude;
 mod ddc;
 mod doctor;
+mod edges;
 mod icons;
 mod island;
 mod modules;
@@ -18,6 +20,7 @@ mod power;
 mod privacy;
 mod settings;
 mod symbols;
+mod style;
 mod sys;
 mod theme;
 mod timer;
@@ -25,6 +28,7 @@ mod tools;
 mod wm;
 
 use cairo::ImageSurface;
+use edges::Edges;
 use island::{Island, Outcome};
 use notify::Note;
 use palette::Palette;
@@ -119,6 +123,7 @@ pub struct Model {
     pub bluetooth: Option<bluetooth::State>,
     pub tray: Vec<(bus::TrayItem, Option<(ImageSurface, bool)>)>,
     pub pal: theme::Palette,
+    pub style: style::Style,
     pub palette: Option<Palette>,
     pub notes: notify::Center,
     pub wall: Option<modules::wallpaper::Wall>,
@@ -159,6 +164,8 @@ pub struct App {
     generation: u64,
 
     islands: Vec<Island>,
+    /// The frame's or bar's strips, for the styles that have any.
+    edges: Vec<Edges>,
     under_pointer: Option<wl_surface::WlSurface>,
     model: Model,
     icons: Icons,
@@ -211,13 +218,23 @@ impl App {
             let Some((w, h)) = size else { continue };
             let out = (w as f64, h as f64);
             let scale = info.scale_factor.max(1);
-            if let Some(i) = self.islands.iter_mut().find(|i| i.output == output) {
+            let style = self.model.style;
+            if let Some(n) = self.islands.iter().position(|i| i.output == output) {
+                let i = &mut self.islands[n];
+                let changed = i.out != out || i.scale != scale;
                 rescaled |= i.scale != scale;
-                if i.out != out || i.scale != scale {
-                    i.set_output(out, scale);
+                if !changed || style.insets() == Default::default() {
+                    if changed {
+                        i.set_output(out, scale);
+                    }
+                    continue;
                 }
-                continue;
+                // Strips fit one mode, and the island has to stay stacked over them: both start again.
+                self.islands.remove(n);
+                self.edges.retain(|e| e.output != output);
             }
+            let edges = Edges::new(&output, &name, out, scale, style, &self.shm, &self.layer_shell, &self.compositor, &qh);
+            self.edges.extend(edges);
             let surface = self.compositor.create_surface(&qh);
             let layer = self.layer_shell.create_layer_surface(&qh, surface, Layer::Top, Some(NAMESPACE), Some(&output));
             layer.set_anchor(Anchor::TOP | Anchor::LEFT);
@@ -225,7 +242,7 @@ impl App {
             // Mango gives zone-0 layers a rectangular drop shadow, decided at map
             // time. It would outline the whole transparent surface.
             layer.set_exclusive_zone(-1);
-            let island = Island::new(output.clone(), name.clone(), out, scale, layer, &self.shm,
+            let island = Island::new(output.clone(), name.clone(), out, scale, layer, &self.shm, style,
                                      self.state.pos.get(&name).copied(), self.state.pinned, self.state.tucked);
             if let Some(island) = island {
                 let size = island.surface_size();
@@ -238,6 +255,26 @@ impl App {
         if rescaled {
             self.set_art();
             self.set_tray();
+        }
+    }
+
+    fn set_style(&mut self, style: style::Style) {
+        if self.model.style == style {
+            return;
+        }
+        self.close_palette();
+        self.model.notes.cancel_reply(Instant::now());
+        self.save();
+        self.model.style = style;
+        // New surfaces, so the edges are always under the island.
+        self.under_pointer = None;
+        self.islands.clear();
+        self.edges.clear();
+        self.sync_outputs();
+        if let Some(critical) = self.model.notes.showing.as_ref().map(|t| t.note.urgency == 2) {
+            if let Some(i) = self.focused_island() {
+                self.islands[i].show_toast(critical);
+            }
         }
     }
 
@@ -405,6 +442,13 @@ impl App {
         for i in &mut self.islands {
             i.invalidate(compact, panel);
         }
+        if compact {
+            self.edges_changed();
+        }
+    }
+
+    fn edges_changed(&mut self) {
+        self.edges.iter_mut().for_each(Edges::invalidate);
     }
 
     fn save(&mut self) {
@@ -496,6 +540,7 @@ impl App {
                     for i in &mut self.islands {
                         i.flash();
                     }
+                    self.edges_changed();
                 }
                 self.all(dot, true);
             }
@@ -549,15 +594,18 @@ impl App {
                 let compact = (n == net::State::Offline) != (self.model.net == net::State::Offline);
                 self.model.net = n;
                 self.all(compact, true);
+                self.edges_changed();
             }
             Msg::Bluetooth(b) => {
                 self.model.bluetooth = b;
                 self.all(false, true);
+                self.edges_changed();
             }
             Msg::Tray(items) => {
                 self.tray_items = items;
                 self.set_tray();
                 self.all(false, true);
+                self.edges_changed();
             }
             Msg::Menu(index, entries) => {
                 let title = self.model.tray.get(index).map_or(String::new(), |(i, _)| i.title.clone());
@@ -585,8 +633,10 @@ impl App {
             "dnd" => self.act(Action::Dnd, 0.0, None),
             "open" => self.open_palette(None),
             "close" => self.close_palette(),
+            "style" => self.choose_style(self.model.style.next()),
             "reload" => {
                 self.cfg = Config::load();
+                self.set_style(self.state.style(self.cfg.style));
                 self.model.pal = theme::load(&self.cfg.palette);
                 self.model.brightness = brightness::read(&self.cfg.commands);
                 self.model.night.configure(&self.cfg.nightlight);
@@ -620,6 +670,10 @@ impl App {
             _ => match c.split_once(' ') {
                 Some(("open", tool)) => self.open_palette(Some(tool)),
                 Some(("timer", what)) => self.timer(what),
+                Some(("style", name)) => match style::Style::parse(name) {
+                    Some(s) => self.choose_style(s),
+                    None => eprintln!("island: no style called {name}"),
+                },
                 Some(("nightlight", arg)) => self.night_command(arg),
                 Some(("shot", kind)) => {
                     if let Some(task) = tools::shot_task(kind) {
@@ -629,6 +683,12 @@ impl App {
                 _ => eprintln!("island: unknown command {c}"),
             },
         }
+    }
+
+    fn choose_style(&mut self, style: style::Style) {
+        self.set_style(style);
+        self.state.style = Some((style, self.cfg.style));
+        self.save();
     }
 
     fn act(&mut self, action: Action, frac: f64, from: Option<usize>) {
@@ -1040,7 +1100,10 @@ impl App {
     }
 
     fn flush(&mut self) {
-        let App { islands, model, icons, cfg, compositor, qh, .. } = self;
+        let App { islands, edges, model, icons, cfg, compositor, qh, .. } = self;
+        for e in edges {
+            e.flush(model, icons, cfg, qh);
+        }
         for i in islands {
             i.flush(model, icons, cfg, compositor, qh);
         }
@@ -1048,6 +1111,67 @@ impl App {
 
     fn island_at(&self, surface: &wl_surface::WlSurface) -> Option<usize> {
         self.islands.iter().position(|i| i.surface() == surface)
+    }
+
+    fn edge_at(&self, surface: &wl_surface::WlSurface) -> Option<edges::At> {
+        self.edges.iter().enumerate().find_map(|(i, e)| e.find(surface, i))
+    }
+
+    fn scroll(&mut self, kind: Scroll, vertical: &smithay_client_toolkit::seat::pointer::AxisScroll) {
+        self.scroll += if vertical.value120 != 0 { vertical.value120 as f64 / 120.0 } else { vertical.absolute / 15.0 };
+        let notches = self.scroll.trunc();
+        self.scroll -= notches;
+        if notches == 0.0 {
+            return;
+        }
+        match kind {
+            Scroll::Volume => {
+                let sign = if notches > 0.0 { '-' } else { '+' };
+                spawn_sh(&format!("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ {}%{sign}", 5.0 * notches.abs()));
+            }
+            Scroll::Tags => self.wm.cycle(notches > 0.0),
+            Scroll::Palette => {
+                if let Some(p) = &mut self.model.palette {
+                    p.scroll(notches as isize);
+                    self.palette_redraw();
+                }
+            }
+        }
+    }
+
+    fn edge_pointer(&mut self, at: edges::At, e: &PointerEvent) {
+        match e.kind {
+            PointerEventKind::Enter { serial } => {
+                self.enter_serial = serial;
+                self.cursor = None;
+                self.edges[at.edges].motion(at, e.position);
+            }
+            PointerEventKind::Leave { .. } => return self.edges[at.edges].leave(at),
+            PointerEventKind::Motion { .. } => self.edges[at.edges].motion(at, e.position),
+            PointerEventKind::Press { .. } => {
+                self.edges[at.edges].motion(at, e.position);
+                self.edges[at.edges].press(at);
+            }
+            PointerEventKind::Release { button, .. } => {
+                let action = self.edges[at.edges].release(at, button);
+                let island = self.islands.iter().position(|i| i.name == self.edges[at.edges].name);
+                let menu = match action {
+                    Action::TrayRight(i) => self.model.tray.get(i).is_some_and(|(item, _)| item.menu.is_some()),
+                    Action::TrayClick(i) => self.model.tray.get(i).is_some_and(|(item, _)| item.is_menu && item.menu.is_some()),
+                    _ => false,
+                };
+                // A menu needs the island open to land in.
+                if let (true, Some(i)) = (menu, island) {
+                    self.islands[i].open_briefly();
+                }
+                self.act(action, 0.0, island);
+                // That can have switched the style, taking these edges with it.
+                return;
+            }
+            PointerEventKind::Axis { vertical, .. } => self.scroll(self.edges[at.edges].scroll_kind(at), &vertical),
+        }
+        let shape = if self.edges[at.edges].hovering_target(at) { Shape::Pointer } else { Shape::Default };
+        self.set_cursor(shape);
     }
 
     fn set_cursor(&mut self, shape: Shape) {
@@ -1084,6 +1208,7 @@ impl CompositorHandler for App {
         if let Some(i) = self.island_at(surface) {
             self.islands[i].frame_done();
         }
+        self.edges.iter_mut().for_each(|e| e.frame_done(surface));
     }
     fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
     fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
@@ -1103,6 +1228,7 @@ impl OutputHandler for App {
     fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, output: wl_output::WlOutput) {
         self.model.night.drop_output(&output);
         self.islands.retain(|i| i.output != output);
+        self.edges.retain(|e| e.output != output);
     }
 }
 
@@ -1114,6 +1240,7 @@ impl LayerShellHandler for App {
         if let Some(i) = self.islands.iter_mut().find(|i| &i.layer == layer) {
             i.configured();
         }
+        self.edges.iter_mut().for_each(|e| e.configured(layer));
     }
 }
 
@@ -1169,7 +1296,12 @@ impl KeyboardHandler for App {
 impl PointerHandler for App {
     fn pointer_frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
         for e in events {
-            let Some(idx) = self.island_at(&e.surface) else { continue };
+            let Some(idx) = self.island_at(&e.surface) else {
+                if let Some(at) = self.edge_at(&e.surface) {
+                    self.edge_pointer(at, e);
+                }
+                continue;
+            };
             match e.kind {
                 PointerEventKind::Enter { serial } => {
                     self.enter_serial = serial;
@@ -1197,27 +1329,11 @@ impl PointerHandler for App {
                     Outcome::None => {}
                 },
                 PointerEventKind::Axis { vertical, .. } => {
-                    self.scroll += if vertical.value120 != 0 { vertical.value120 as f64 / 120.0 } else { vertical.absolute / 15.0 };
-                    let notches = self.scroll.trunc();
-                    self.scroll -= notches;
-                    if notches != 0.0 {
-                        match self.islands[idx].scroll_kind() {
-                            Scroll::Volume => {
-                                let sign = if notches > 0.0 { '-' } else { '+' };
-                                spawn_sh(&format!("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ {}%{sign}", 5.0 * notches.abs()));
-                            }
-                            Scroll::Tags => self.wm.cycle(notches > 0.0),
-                            Scroll::Palette => {
-                                if let Some(p) = &mut self.model.palette {
-                                    p.scroll(notches as isize);
-                                    self.palette_redraw();
-                                }
-                            }
-                        }
-                    }
+                    self.scroll(self.islands[idx].scroll_kind(), &vertical);
                 }
             }
-            let isl = &self.islands[idx];
+            // An action can take the island away: a new style, or the output going.
+            let Some(isl) = self.islands.get(idx) else { continue };
             let shape = if isl.dragging() { Shape::Grabbing } else if isl.hovering_target() { Shape::Pointer } else { Shape::Default };
             self.set_cursor(shape);
         }
@@ -1403,10 +1519,14 @@ fn main() {
                 }
             }
             "doctor" => doctor::run(),
-            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" | "nightlight" => run_client(&args.join(" ")),
+            "style" if args.get(1).is_some_and(|a| style::Style::parse(a).is_none()) => {
+                eprintln!("island: styles are {}", style::Style::ALL.map(style::Style::name).join(", "));
+                std::process::exit(2);
+            }
+            "pin" | "toggle" | "tuck" | "reset" | "reload" | "wall" | "quit" | "dnd" | "open" | "close" | "shot" | "timer" | "audio" | "nightlight" | "style" => run_client(&args.join(" ")),
             _ => {}
         }
-        eprintln!("usage: island [pin|tuck|reset|reload|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|nightlight [on|off|toggle]|audio|doctor|claude-setup [--undo]|dmenu [-p prompt]]");
+        eprintln!("usage: island [pin|tuck|reset|reload|style [name]|wall|quit|dnd|close|open [tool]|shot <kind>|timer [start|toggle|stop|skip|<minutes>]|nightlight [on|off|toggle]|audio|doctor|claude-setup [--undo]|dmenu [-p prompt]]");
         std::process::exit(2);
     }
 
@@ -1457,10 +1577,11 @@ fn main() {
         palette_on: None,
         generation: 0,
         islands: Vec::new(),
+        edges: Vec::new(),
         under_pointer: None,
         model: Model { monitors: Vec::new(), clients: Vec::new(), custom: HashMap::new(), sys: sys::Snapshot::default(),
                        audio: None, brightness: brightness::read(&cfg.commands), media: None, art_small: None, art_large: None, net: net::State::Unknown, bluetooth: None,
-                       tray: Vec::new(), pal: theme::load(&cfg.palette), palette: None,
+                       tray: Vec::new(), pal: theme::load(&cfg.palette), style: state.style(cfg.style), palette: None,
                        notes: notify::Center::new(state.dnd),
                        wall: modules::wallpaper::load(), timer: None,
                        camera: Vec::new(), audio_open: false, battery: None, flash_power: false, battery_warned: 100,

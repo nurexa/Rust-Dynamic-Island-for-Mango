@@ -6,7 +6,7 @@ use crate::{
 };
 use pango::Weight;
 
-fn net_symbol(state: &net::State) -> &'static str {
+pub(super) fn net_symbol(state: &net::State) -> &'static str {
     match state {
         net::State::Wifi { strength, .. } => match strength {
             0..=19 => "signal_wifi_0_bar",
