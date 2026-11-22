@@ -282,7 +282,7 @@ baseline=$(check)
     echo "# Written by the island's install.sh: re-running it rewrites this file, --undo removes it."
     echo "# Put island binds of your own in your main config instead."
     grep -qE "^[[:space:]]*exec(_once)?[[:space:]]*=.*scripts/bar" "$CONF" || echo "exec_once=$BAR"
-    echo "layer_rule=no_animation:1,no_shadow:1,layer_name:island"
+    echo "layer_rule=no_animation:1,no_shadow:1,no_blur:1,layer_name:island"
     for o in "${OWN[@]}"; do c=${o%%|*}; [ "${keys[$c]}" = none ] || echo "bind=${keys[$c]},spawn,$BIN_DIR/island $c"; done
     for e in ${extra[@]+"${extra[@]}"}; do echo "bind=${e%%|*},spawn,$BIN_DIR/island ${e#*|}"; done
 } > "$ISL"
