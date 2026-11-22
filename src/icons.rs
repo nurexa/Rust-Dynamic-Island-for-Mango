@@ -1,7 +1,7 @@
 //! Real application icons: app id -> .desktop entry -> Icon= -> file -> raster.
 //! gdk-pixbuf would now route every decode through glycin's sandbox, so PNG goes
 //! through cairo, SVG through resvg and JPEG (album art) through zune-jpeg.
-use crate::symbols::{FILLED, SYMBOLS};
+use crate::symbols::SYMBOLS;
 use cairo::{Context, Filter, Format, ImageSurface, SurfacePattern};
 use std::{
     collections::HashMap,
@@ -12,15 +12,7 @@ use std::{
 
 const SIZES: [&str; 14] = ["scalable", "512x512", "256x256", "192x192", "128x128", "96x96", "72x72", "64x64",
     "48x48", "36x36", "32x32", "24x24", "22x22", "16x16"];
-/// Trimmed off each side of an icon's box.
-const MARGIN: i32 = 16;
 const RESCAN: Duration = Duration::from_secs(30);
-/// Line icons, which have nothing to fill, go from weight 500 to about 800.
-const LINE: u32 = 40;
-/// Filled ones only have their corners softened: more would close what's cut out of them.
-const SOFT: u32 = 12;
-/// How much of a level icon's empty part shows.
-const REST: f64 = 0.36;
 
 pub fn data_dirs() -> Vec<PathBuf> {
     let home = crate::settings::home();
@@ -46,64 +38,25 @@ pub fn builtin(name: &str) -> Option<&'static str> {
     entry(name).map(|e| e.0)
 }
 
-fn entry(name: &str) -> Option<&'static (&'static str, &'static str, &'static str)> {
+fn entry(name: &str) -> Option<&'static (&'static str, &'static str, &'static str, &'static str)> {
     SYMBOLS.binary_search_by(|(n, ..)| (*n).cmp(name)).ok().map(|i| &SYMBOLS[i])
 }
 
-fn builtin_svg(name: &str, fill: bool, margin: i32) -> Option<String> {
-    let (_, outline, _) = *entry(name)?;
-    let (x, y, w) = (margin, margin - 960, 960 - 2 * margin);
-    let svg = |body: String| format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {w} {w}">{body}</svg>"#);
-    if !fill {
-        return Some(svg(format!(r#"<path d="{outline}"/>"#)));
-    }
-    let path = |d: &str, width: u32, more: &str| {
-        format!(r##"<path d="{d}" stroke="#000" stroke-width="{width}" stroke-linejoin="round"{more}/>"##)
-    };
-    Some(svg(match level(name) {
-        // The whole body, dim, with what's in it at full strength on top.
-        Some((body, reach)) => {
-            let body = entry(body)?.1;
-            format!(r#"<clipPath id="l">{reach}</clipPath><g opacity="{REST}">{}</g>{}"#,
-                    path(body, SOFT, ""), path(body, SOFT, r##" clip-path="url(#l)""##))
-        }
-        None => match filled(name) {
-            Some(d) => path(d, SOFT, ""),
-            None => path(outline, LINE, ""),
-        },
-    }))
-}
+/// Phosphor's sidebar docks left; this one docks right.
+const MIRRORED: &[&str] = &["dock_to_right"];
 
-/// The filled path, where there's something to fill.
-fn filled(name: &str) -> Option<&'static str> {
-    if name == "wifi" {
-        // The wedge the signal levels are drawn in, full.
-        return entry("signal_wifi_4_bar").map(|e| e.1);
-    }
-    let ours = FILLED.iter().find(|(n, _)| *n == name).map(|f| f.1);
-    ours.or_else(|| entry(name).map(|e| e.2).filter(|d| !d.is_empty()))
-}
-
-/// An icon that says how much: the body it's a part of, and the part that's full.
-fn level(name: &str) -> Option<(&'static str, String)> {
-    let battery = |bars: i32| {
-        let h = 110 + bars * 100;
-        ("battery_full", format!(r#"<rect x="0" y="{}" width="960" height="{h}"/>"#, -60 - h))
+/// Solid is Phosphor's Fill; otherwise its Duotone, the line with its 20% tint behind it.
+fn builtin_svg(name: &str, fill: bool) -> Option<String> {
+    let (_, solid, line, tint) = *entry(name)?;
+    let body = if fill {
+        format!(r#"<path d="{solid}"/>"#)
+    } else if tint.is_empty() {
+        format!(r#"<path d="{line}"/>"#)
+    } else {
+        format!(r#"<path d="{tint}" opacity=".2"/><path d="{line}"/>"#)
     };
-    let wifi = |r: i32| ("signal_wifi_4_bar", format!(r#"<circle cx="480" cy="-140" r="{r}"/>"#));
-    Some(match name {
-        "battery_1_bar" => battery(1),
-        "battery_2_bar" => battery(2),
-        "battery_3_bar" => battery(3),
-        "battery_4_bar" => battery(4),
-        "battery_5_bar" => battery(5),
-        "battery_6_bar" => battery(6),
-        "signal_wifi_0_bar" => wifi(1),
-        "network_wifi_1_bar" => wifi(250),
-        "network_wifi_2_bar" => wifi(370),
-        "network_wifi_3_bar" => wifi(480),
-        _ => return None,
-    })
+    let flip = if MIRRORED.contains(&name) { r#" transform="matrix(-1 0 0 1 256 0)""# } else { "" };
+    Some(format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><g{flip}>{body}</g></svg>"#))
 }
 
 /// Map every name a window might use (file stem, its last dotted part,
@@ -335,7 +288,7 @@ impl Icons {
 
     /// One of the island's icons as a mask, for painting in any palette color.
     pub fn symbol(&mut self, name: &'static str, fill: bool, px: i32) -> Option<ImageSurface> {
-        self.symbols.entry((name, fill, px)).or_insert_with(|| render_svg(builtin_svg(name, fill, MARGIN)?.as_bytes(), px)).clone()
+        self.symbols.entry((name, fill, px)).or_insert_with(|| render_svg(builtin_svg(name, fill)?.as_bytes(), px)).clone()
     }
 
     /// Returns the raster, and whether it's a mask to paint in the theme color.
@@ -392,39 +345,64 @@ mod tests {
     #[test]
     fn every_builtin_icon_renders_both_ways_and_isnt_cropped() {
         assert!(SYMBOLS.windows(2).all(|w| w[0].0 < w[1].0), "lookup needs a sorted table");
-        let ink = |svg: String| -> u64 {
-            let mut s = render_svg(svg.as_bytes(), 384).expect("parses");
-            s.data().unwrap().chunks(4).map(|p| p[3] as u64).sum()
-        };
         for (name, ..) in SYMBOLS {
             for fill in [false, true] {
-                let full = ink(builtin_svg(name, fill, 0).unwrap());
-                assert!(full > 0, "{name} is blank");
-                // A smaller box draws it larger by this much; less means an edge cut it off.
-                let grown = (960.0 / (960 - 2 * MARGIN) as f64).powi(2);
-                let trimmed = ink(builtin_svg(name, fill, MARGIN).unwrap()) as f64;
-                assert!(trimmed >= full as f64 * grown * 0.97, "{name} is cropped");
+                let mut s = render_svg(builtin_svg(name, fill).unwrap().as_bytes(), 256).expect("parses");
+                let stride = s.stride() as usize;
+                let data = s.data().unwrap();
+                let alpha = |x: usize, y: usize| data[y * stride + x * 4 + 3];
+                let ink: u64 = (0..256).flat_map(|y| (0..256).map(move |x| (x, y))).map(|(x, y)| alpha(x, y) as u64).sum();
+                assert!(ink > 0, "{name} is blank");
+                // Phosphor leaves its edge empty, but for a battery's terminal; ink there means a path
+                // was cut off or mis-scaled.
+                let edge = (0..256).any(|i| [alpha(i, 0), alpha(i, 255), alpha(0, i), alpha(255, i)].iter().any(|&a| a > 0));
+                assert!(!edge || name.starts_with("battery"), "{name} is cropped");
             }
         }
         assert_eq!(builtin("keep"), Some("keep"));
         assert_eq!(builtin("\u{f0349}"), None, "a font glyph stays a glyph");
     }
 
-    /// Solid that only thickens an outline is how terminal, clipboard and window stayed hollow.
+    /// Solid must be a drawing of its own, not the outline again.
     #[test]
-    fn solid_means_filled() {
-        // Arrows, chevrons, ticks and marks: lines, or shapes that are already all ink.
-        const ALL_INK: &[&str] = &["arrow_back", "arrow_forward", "battery_full", "bluetooth", "bluetooth_disabled",
-            "bluetooth_searching", "check", "chevron_left", "chevron_right", "close", "close_fullscreen", "collapse_content",
-            "crop", "graphic_eq", "keyboard_arrow_down", "keyboard_arrow_left", "keyboard_arrow_right", "keyboard_arrow_up",
-            "music_note", "restart_alt", "signal_wifi_4_bar"];
-        for (name, outline, _) in SYMBOLS {
-            let solid = filled(name).is_some_and(|d| d != *outline);
-            assert!(solid || level(name).is_some() || ALL_INK.contains(name), "{name} is hollow when solid");
+    fn solid_is_not_the_outline() {
+        for (name, solid, line, _) in SYMBOLS {
+            assert!(!solid.is_empty() && !line.is_empty(), "{name} lacks a weight");
+            // A lone dot has no hollow to fill.
+            assert!(solid != line || *name == "signal_wifi_0_bar", "{name} is hollow when solid");
         }
-        for (name, _) in FILLED {
-            assert!(entry(name).is_some(), "{name} fills no icon");
+    }
+
+    /// Writes a contact sheet of every icon, Fill on top and Duotone under it, each at 40 and
+    /// 20 px, light on dark: `ICON_SHEET=/path/sheet.png cargo test --release -- --ignored contact_sheet`
+    #[test]
+    #[ignore]
+    fn contact_sheet() {
+        let out = env::var("ICON_SHEET").expect("ICON_SHEET names the png to write");
+        let (cell, cols) = (96, 12);
+        let rows = SYMBOLS.len().div_ceil(cols) as i32;
+        let sheet = ImageSurface::create(Format::ARgb32, cell * cols as i32, cell * rows).unwrap();
+        let cr = Context::new(&sheet).unwrap();
+        cr.set_source_rgb(0.09, 0.09, 0.11);
+        cr.paint().unwrap();
+        let mut icons = Icons::new();
+        for (i, (name, ..)) in SYMBOLS.iter().enumerate() {
+            let (cx, cy) = ((i % cols) as i32 * cell, (i / cols) as i32 * cell);
+            cr.set_source_rgb(0.92, 0.92, 0.95);
+            for (row, fill) in [(0, true), (1, false)] {
+                for (px, dx) in [(40, 6), (20, 56)] {
+                    let mask = icons.symbol(name, fill, px).unwrap();
+                    let y = cy + 4 + row * 46 + (40 - px) / 2;
+                    cr.mask_surface(&mask, (cx + dx) as f64, y as f64).unwrap();
+                }
+            }
+            cr.set_source_rgb(0.55, 0.55, 0.6);
+            cr.set_font_size(7.0);
+            cr.move_to((cx + 3) as f64, (cy + cell - 3) as f64);
+            cr.show_text(name).unwrap();
         }
+        drop(cr);
+        sheet.write_to_png(&mut fs::File::create(out).unwrap()).unwrap();
     }
 
     /// A name that isn't in the table draws nothing, silently: catch typos.
