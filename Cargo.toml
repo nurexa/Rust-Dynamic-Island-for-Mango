@@ -40,7 +40,7 @@ libc = "0.2"
 zune-jpeg = "0.5"
 
 [profile.release]
-opt-level = "s"
+opt-level = "z"           # half an MB less resident than "s", same CPU within noise
 lto = "fat"
 codegen-units = 1
 panic = "abort"
