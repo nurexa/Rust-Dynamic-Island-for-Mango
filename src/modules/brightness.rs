@@ -19,7 +19,7 @@ fn row(p: &mut Pen, label: &str, pct: u32, act: Action, y: f64) -> f64 {
     let pal = p.pal;
     let h = 30.0;
     let cy = y + h / 2.0;
-    p.symbol("display-brightness", 16.0, PAD, cy - 8.0, pal.fg);
+    p.symbol("light_mode", 16.0, PAD, cy - 8.0, pal.fg);
     p.text(label, 12.5, Weight::Medium, pal.fg, PAD + 30.0, cy, 168.0);
     let x = PAD + 30.0 + 168.0 + 12.0;
     let w = PANEL_W - PAD - 40.0 - x;

@@ -3,7 +3,7 @@
 //! frame loop just composites those. Nothing here runs per animation frame.
 use crate::{
     bus::MenuEntry,
-    icons::Icons,
+    icons::{self, Icons},
     settings::{Config, IconStyle},
     theme::{Palette, Rgb, mix},
 };
@@ -293,10 +293,28 @@ impl<'a> Pen<'a> {
     }
 
     pub fn symbol(&mut self, name: &'static str, size: f64, x: f64, y: f64, c: Rgb) {
-        let Some(mask) = self.icons.symbol(name, (size * self.scale as f64) as i32) else { return };
-        mask.set_device_scale(self.scale as f64, self.scale as f64);
-        self.set(c, 1.0);
-        let _ = self.cr.mask_surface(&mask, x, y);
+        self.icon(name, false, size, x, y, c, 1.0);
+    }
+
+    /// One of the island's own icons: an outline, or solid with `fill` for a state that's on.
+    #[allow(clippy::too_many_arguments)]
+    pub fn icon(&mut self, name: &'static str, fill: bool, size: f64, x: f64, y: f64, c: Rgb, a: f64) {
+        let s = self.scale as f64;
+        let Some(mask) = self.icons.symbol(name, fill, (size * s).round() as i32) else { return };
+        mask.set_device_scale(s, s);
+        self.set(c, a);
+        // On whole device pixels, or every stroke goes soft.
+        let _ = self.cr.mask_surface(&mask, (x * s).round() / s, (y * s).round() / s);
+    }
+
+    /// Whatever a config or a tool names as its icon: one of the island's own, by
+    /// name, or else a character from the icon font.
+    #[allow(clippy::too_many_arguments)]
+    pub fn mark(&mut self, what: &str, fill: bool, size: f64, x: f64, y: f64, c: Rgb, a: f64) {
+        match icons::builtin(what) {
+            Some(name) => self.icon(name, fill, size, x, y, c, a),
+            None => self.glyph(what, size, x, y, c, a),
+        }
     }
 
     /// One-color glyph from the icon font, centred in a `size` box.
@@ -312,7 +330,7 @@ impl<'a> Pen<'a> {
     /// shows the app's own icon, or a lettered tile when nothing on disk matches.
     pub fn app(&mut self, appid: &str, size: f64, x: f64, y: f64, c: Rgb, alpha: f64) {
         if self.cfg.icon_style == IconStyle::Glyph {
-            return self.glyph(glyph_for(self.cfg, appid), size, x, y, c, alpha);
+            return self.mark(glyph_for(self.cfg, appid), false, size, x, y, c, alpha);
         }
         if let Some(img) = self.icons.app(appid, (size * self.scale as f64) as i32) {
             return self.image(&img, x, y, size, alpha);
@@ -333,9 +351,9 @@ impl<'a> Pen<'a> {
         if on {
             self.fill(rect, rect.2 / 2.0, self.pal.accent, 0.22);
         }
-        let size = 16.0;
+        let size = 18.0;
         let c = if on { self.pal.accent } else { self.pal.fg };
-        self.symbol(symbol, size, rect.0 + (rect.2 - size) / 2.0, rect.1 + (rect.3 - size) / 2.0, c);
+        self.icon(symbol, on, size, rect.0 + (rect.2 - size) / 2.0, rect.1 + (rect.3 - size) / 2.0, c, 1.0);
         self.regions.push(region);
     }
 }

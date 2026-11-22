@@ -153,14 +153,14 @@ impl Palette {
         #[cfg(feature = "calc")]
         if let Some((shown, copy)) = crate::tools::calc::answer(q).filter(|_| self.calc) {
             let act = Act::Sh(format!("printf %s {} | wl-copy", quote(&copy)));
-            self.items.push(Item::new(shown, Icon::Glyph("\u{f00ec}".into()), act).sub(format!("{q} · Enter copies it")));
+            self.items.push(Item::new(shown, Icon::Glyph("calculate".into()), act).sub(format!("{q} · Enter copies it")));
             self.shown.insert(0, self.items.len() - 1);
             self.instant += 1;
         }
         if !self.web.is_empty() {
             let url = self.web.replace("{}", &url_encode(q));
             let act = Act::Sh(format!("xdg-open {}", quote(&url)));
-            self.items.push(Item::new(format!("Search the web for “{q}”"), Icon::Glyph("\u{f059f}".into()), act));
+            self.items.push(Item::new(format!("Search the web for “{q}”"), Icon::Glyph("language".into()), act));
             self.shown.push(self.items.len() - 1);
             self.instant += 1;
         }

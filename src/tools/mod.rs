@@ -136,25 +136,25 @@ pub struct Tool {
 
 pub const TOOLS: &[Tool] = &[
     #[cfg(feature = "apps")]
-    Tool { name: "apps", glyph: "\u{f003b}", hint: "Search apps", list: apps::list, typed: None, live: false },
+    Tool { name: "apps", glyph: "apps", hint: "Search apps", list: apps::list, typed: None, live: false },
     #[cfg(feature = "run")]
-    Tool { name: "run", glyph: "\u{f018d}", hint: "Run a command", list: run::list, typed: Some(run::typed), live: false },
+    Tool { name: "run", glyph: "terminal", hint: "Run a command", list: run::list, typed: Some(run::typed), live: false },
     #[cfg(feature = "files")]
-    Tool { name: "files", glyph: "\u{f0214}", hint: "Search files", list: files::list, typed: None, live: true },
+    Tool { name: "files", glyph: "description", hint: "Search files", list: files::list, typed: None, live: true },
     #[cfg(feature = "windows")]
-    Tool { name: "windows", glyph: "\u{f05b2}", hint: "Switch to a window", list: windows::list, typed: None, live: false },
+    Tool { name: "windows", glyph: "web_asset", hint: "Switch to a window", list: windows::list, typed: None, live: false },
     #[cfg(feature = "clipboard")]
-    Tool { name: "clipboard", glyph: "\u{f0192}", hint: "Search clipboard history", list: clipboard::list, typed: None, live: false },
+    Tool { name: "clipboard", glyph: "content_paste", hint: "Search clipboard history", list: clipboard::list, typed: None, live: false },
     #[cfg(feature = "screenshot")]
-    Tool { name: "screenshot", glyph: "\u{f0100}", hint: "Capture the screen", list: screenshot::list, typed: None, live: false },
+    Tool { name: "screenshot", glyph: "screenshot_monitor", hint: "Capture the screen", list: screenshot::list, typed: None, live: false },
     #[cfg(feature = "wifi")]
-    Tool { name: "wifi", glyph: "\u{f0928}", hint: "Choose a network", list: wifi::list, typed: None, live: false },
+    Tool { name: "wifi", glyph: "wifi", hint: "Choose a network", list: wifi::list, typed: None, live: false },
     #[cfg(feature = "bluetooth")]
-    Tool { name: "bluetooth", glyph: "\u{f00af}", hint: "Connect a Bluetooth device", list: bluetooth::list, typed: None, live: false },
+    Tool { name: "bluetooth", glyph: "bluetooth", hint: "Connect a Bluetooth device", list: bluetooth::list, typed: None, live: false },
     #[cfg(feature = "wallpaper")]
-    Tool { name: "wallpaper", glyph: "\u{f0e09}", hint: "Choose a wallpaper", list: wallpaper::list, typed: None, live: false },
+    Tool { name: "wallpaper", glyph: "image", hint: "Choose a wallpaper", list: wallpaper::list, typed: None, live: false },
     #[cfg(feature = "power")]
-    Tool { name: "power", glyph: "\u{f0425}", hint: "Lock, log out or shut down", list: power::list, typed: None, live: false },
+    Tool { name: "power", glyph: "power_settings_new", hint: "Lock, log out or shut down", list: power::list, typed: None, live: false },
 ];
 
 /// A tool in the palette: built in, or a pair of shell commands from `[[tool]]`.
@@ -179,7 +179,7 @@ impl Entry {
         match self {
             Entry::Builtin(i) => TOOLS[*i].glyph,
             Entry::Script(s) => &s.glyph,
-            Entry::Dmenu(_) => "\u{f0349}",
+            Entry::Dmenu(_) => "search",
         }
     }
 

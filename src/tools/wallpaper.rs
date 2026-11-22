@@ -16,8 +16,8 @@ fn extension(path: &Path) -> String {
 fn settings(ctx: &Ctx) -> Option<Item> {
     let base = &ctx.cfg.commands.wallpaper_opt;
     let wall = wallpaper::load().filter(|_| !base.is_empty())?;
-    let glyph = || Icon::Glyph("\u{f0493}".into());
-    let back = || Item::new("Back", Icon::Glyph("\u{f004d}".into()), Act::Back);
+    let glyph = || Icon::Glyph("settings".into());
+    let back = || Item::new("Back", Icon::Glyph("arrow_back".into()), Act::Back);
     let choice = |key: &str, text: &str, value: &str, on: bool| {
         let item = Item::new(text, Icon::None, Act::Sh(format!("{base} {key} {value}")));
         if on { item.sub("current") } else { item }
@@ -49,7 +49,7 @@ pub fn list(ctx: &Ctx) -> Vec<Item> {
         let icon = match thumb {
             Some(t) => Icon::Image(t),
             None if still => Icon::Image(path.clone()),
-            None => Icon::Glyph("\u{f0e09}".into()),
+            None => Icon::Glyph("image".into()),
         };
         let cmd = w.set.replace("{path}", &quote(&path.to_string_lossy()));
         Item::new(stem, icon, Act::Sh(cmd))

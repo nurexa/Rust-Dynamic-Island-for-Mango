@@ -35,7 +35,7 @@ pub fn list(ctx: &Ctx) -> Vec<Item> {
         let p = Path::new(path);
         let name = p.file_name().map_or(path.into(), |n| n.to_string_lossy().into_owned());
         let dir = p.parent().map_or(String::new(), |d| d.to_string_lossy().replacen(&mine, "~", 1));
-        let glyph = if p.is_dir() { "\u{f024b}" } else { "\u{f0214}" };
+        let glyph = if p.is_dir() { "folder" } else { "description" };
         Item::new(name, Icon::Glyph(glyph.into()), Act::Sh(format!("xdg-open {}", quote(path)))).sub(dir)
     }).collect()
 }

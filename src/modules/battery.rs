@@ -7,18 +7,16 @@ use crate::{
 use pango::Weight;
 
 pub fn symbol(pct: f64, charging: bool) -> &'static str {
-    let level = (pct / 10.0).round() as u32 * 10;
-    match (level, charging) {
-        (0, false) => "battery-level-0",
-        (10, false) => "battery-level-10",
-        (20, false) => "battery-level-20",
-        (30..=40, false) => "battery-level-40",
-        (50..=60, false) => "battery-level-60",
-        (70..=80, false) => "battery-level-80",
-        (_, false) => "battery-level-100",
-        (0..=20, true) => "battery-level-20-charging",
-        (30..=60, true) => "battery-level-50-charging",
-        (_, true) => "battery-level-80-charging",
+    match (pct as u32, charging) {
+        (_, true) => "battery_charging_full",
+        (0..=9, _) => "battery_alert",
+        (10..=24, _) => "battery_1_bar",
+        (25..=39, _) => "battery_2_bar",
+        (40..=54, _) => "battery_3_bar",
+        (55..=69, _) => "battery_4_bar",
+        (70..=84, _) => "battery_5_bar",
+        (85..=94, _) => "battery_6_bar",
+        _ => "battery_full",
     }
 }
 
@@ -29,7 +27,7 @@ fn tone(p: &Pen, b: &Battery) -> (f64, f64, f64) {
 pub fn pill(p: &mut Pen, c: &Ctx, x: f64) -> f64 {
     let Some(b) = &c.m.battery else { return x };
     let cy = PILL_H / 2.0;
-    p.symbol(symbol(b.pct, b.charging), 16.0, x, cy - 8.0, tone(p, b));
+    p.icon(symbol(b.pct, b.charging), b.charging, 16.0, x, cy - 8.0, tone(p, b), 1.0);
     let w = p.text(&format!("{:.0}%", b.pct), 12.5, Weight::Semibold, tone(p, b), x + 19.0, cy, -1.0);
     p.regions.push(Region::new((x - 4.0, 4.0, w + 27.0, PILL_H - 8.0), 10.0, Action::None)
         .tip(b.time().unwrap_or_else(|| if b.plugged { "Plugged in".into() } else { "On battery".into() })));

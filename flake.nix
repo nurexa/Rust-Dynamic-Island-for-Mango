@@ -22,11 +22,12 @@
             install -Dm755 install.sh $out/share/island/install.sh
             install -Dm644 README.md MODDING.md -t $out/share/doc/island
             install -Dm644 examples/config.toml $out/share/doc/island/config.toml
+            install -Dm644 LICENSE LICENSES/Apache-2.0.txt -t $out/share/licenses/island
           '';
           meta = {
             description = "All-in-one Wayland desktop shell in one Dynamic Island pill";
             homepage = "https://github.com/nurexa/Rust-Dynamic-Island";
-            license = pkgs.lib.licenses.gpl3Only;
+            license = with pkgs.lib.licenses; [ gpl3Only asl20 ];
             mainProgram = "island";
             platforms = pkgs.lib.platforms.linux;
           };

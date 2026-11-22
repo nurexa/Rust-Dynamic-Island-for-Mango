@@ -12,12 +12,12 @@ use pango::Weight;
 const ROW_H: f64 = 44.0;
 const LIST_TOP: f64 = 62.0;
 
-fn icon(p: &mut Pen, item: &Item, x: f64, cy: f64, tone: Rgb) {
+fn icon(p: &mut Pen, item: &Item, x: f64, cy: f64, tone: Rgb, selected: bool) {
     let size = 26.0;
     let px = (size * p.scale as f64) as i32;
     let picture = match &item.icon {
         Icon::None => None,
-        Icon::Glyph(g) => return p.glyph(g, 20.0, x + 3.0, cy - 10.0, tone, 1.0),
+        Icon::Glyph(g) => return p.mark(g, selected, 20.0, x + 3.0, cy - 10.0, tone, 1.0),
         Icon::Named(name) => p.icons.themed(name, px),
         Icon::Image(path) => p.icons.picture(path, px),
     };
@@ -40,7 +40,7 @@ fn search_row(p: &mut Pen, c: &Ctx, y: f64) {
     let pal = p.pal;
     let cy = y + 18.0;
     let entry = &v.entries[v.current];
-    p.glyph(entry.glyph(), 18.0, PAD, cy - 9.0, pal.accent, 1.0);
+    p.mark(entry.glyph(), true, 18.0, PAD, cy - 9.0, pal.accent, 1.0);
     let x = PAD + 30.0;
     let tabs = if v.ask.is_none() && v.dmenu.is_none() && v.entries.len() > 1 { v.entries.len() } else { 0 };
     let room = PANEL_W - PAD - x - tabs as f64 * 30.0 - 10.0;
@@ -63,7 +63,7 @@ fn search_row(p: &mut Pen, c: &Ctx, y: f64) {
         if on {
             p.fill(rect, 10.0, pal.fg, 0.1);
         }
-        p.glyph(e.glyph(), 16.0, tx + 6.0, cy - 8.0, if on { pal.fg } else { pal.muted }, 1.0);
+        p.mark(e.glyph(), on, 16.0, tx + 6.0, cy - 8.0, if on { pal.fg } else { pal.muted }, 1.0);
         p.regions.push(Region::new(rect, 10.0, Action::PaletteTool(i)).tip(e.hint()));
         tx += 30.0;
     }
@@ -102,7 +102,7 @@ pub fn view(p: &mut Pen, c: &Ctx) -> f64 {
         }
         let (fg, dim) = if selected { (pal.on_accent, pal.on_accent) } else { (pal.fg, pal.muted) };
         let cy = y + (ROW_H - 2.0) / 2.0;
-        icon(p, item, PAD, cy, fg);
+        icon(p, item, PAD, cy, fg, selected);
         let x = if item.icon == Icon::None { PAD + 4.0 } else { PAD + 38.0 };
         let w = PANEL_W - PAD - x - 4.0;
         if item.sub.is_empty() {

@@ -14,15 +14,15 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     if picker || !cmd.wallpaper_pick.is_empty() {
         let r = rect(3.0);
         let pick = if picker { Action::Open("wallpaper") } else { Action::Sh(cmd.wallpaper_pick.clone()) };
-        p.button("preferences-desktop-wallpaper", r, false, Region::new(r, 16.0, pick)
+        p.button("image", r, false, Region::new(r, 16.0, pick)
             .right(Action::Sh(cmd.wallpaper_next.clone()))
             .middle(Action::Sh(cmd.wallpaper_toggle.clone())).tip("Wallpaper: pick · right: random · middle: pause"));
     }
     let r = rect(2.0);
-    p.button("go-home", r, false, Region::new(r, 16.0, Action::Reset).tip("Back to top centre"));
+    p.button("home", r, false, Region::new(r, 16.0, Action::Reset).tip("Back to top centre"));
     let r = rect(1.0);
-    p.button("pan-up", r, c.tucked, Region::new(r, 16.0, Action::Tuck).tip("Tuck away"));
+    p.button(if c.tucked { "keyboard_arrow_down" } else { "keyboard_arrow_up" }, r, c.tucked, Region::new(r, 16.0, Action::Tuck).tip("Tuck away"));
     let r = rect(0.0);
-    p.button("view-pin", r, c.pinned, Region::new(r, 16.0, Action::Pin).tip("Keep open"));
+    p.button("keep", r, c.pinned, Region::new(r, 16.0, Action::Pin).tip("Keep open"));
     y + 32.0 + 14.0
 }

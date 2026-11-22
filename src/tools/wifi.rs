@@ -24,10 +24,10 @@ fn nmcli(args: &[&str]) -> Option<String> {
 
 fn signal_glyph(signal: u32) -> &'static str {
     match signal {
-        75.. => "\u{f0928}",
-        50.. => "\u{f0925}",
-        25.. => "\u{f0922}",
-        _ => "\u{f091f}",
+        75.. => "signal_wifi_4_bar",
+        50.. => "network_wifi_3_bar",
+        25.. => "network_wifi_2_bar",
+        _ => "network_wifi_1_bar",
     }
 }
 
@@ -61,13 +61,13 @@ fn parse(src: &str, saved: &HashSet<String>) -> Vec<Item> {
 
 pub fn list(_: &Ctx) -> Vec<Item> {
     if nmcli(&["-g", "WIFI", "radio"]).is_some_and(|s| s.trim() != "enabled") {
-        return vec![Item::new("Turn Wi-Fi on", Icon::Glyph("\u{f0928}".into()), Act::Task(Task::Wifi(Pick::Radio(true))))];
+        return vec![Item::new("Turn Wi-Fi on", Icon::Glyph("signal_wifi_4_bar".into()), Act::Task(Task::Wifi(Pick::Radio(true))))];
     }
     let saved = nmcli(&["-t", "-f", "NAME", "connection", "show"]).unwrap_or_default();
     let saved: HashSet<String> = saved.lines().map(str::to_owned).collect();
     let rows = nmcli(&["-t", "-f", "IN-USE,SIGNAL,SECURITY,SSID", "device", "wifi", "list", "--rescan", "auto"]);
     let mut items = parse(&rows.unwrap_or_default(), &saved);
-    items.push(Item::new("Turn Wi-Fi off", Icon::Glyph("\u{f092d}".into()), Act::Task(Task::Wifi(Pick::Radio(false)))));
+    items.push(Item::new("Turn Wi-Fi off", Icon::Glyph("wifi_off".into()), Act::Task(Task::Wifi(Pick::Radio(false)))));
     items
 }
 

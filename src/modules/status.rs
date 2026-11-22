@@ -9,15 +9,15 @@ use pango::Weight;
 fn net_symbol(state: &net::State) -> &'static str {
     match state {
         net::State::Wifi { strength, .. } => match strength {
-            0..=19 => "network-wireless-signal-none",
-            20..=39 => "network-wireless-signal-weak",
-            40..=59 => "network-wireless-signal-ok",
-            60..=79 => "network-wireless-signal-good",
-            _ => "network-wireless-signal-excellent",
+            0..=19 => "signal_wifi_0_bar",
+            20..=39 => "network_wifi_1_bar",
+            40..=59 => "network_wifi_2_bar",
+            60..=79 => "network_wifi_3_bar",
+            _ => "signal_wifi_4_bar",
         },
-        net::State::Wired { .. } => "network-wired",
-        net::State::Other { .. } => "network-transmit-receive",
-        net::State::Offline | net::State::Unknown => "network-offline",
+        net::State::Wired { .. } => "lan",
+        net::State::Other { .. } => "swap_vert",
+        net::State::Offline | net::State::Unknown => "wifi_off",
     }
 }
 
@@ -26,7 +26,7 @@ pub fn offline_pill(p: &mut Pen, c: &Ctx, x: f64) -> f64 {
     if c.m.net != net::State::Offline {
         return x;
     }
-    p.symbol("network-offline", 14.0, x, PILL_H / 2.0 - 7.0, p.pal.muted);
+    p.symbol("wifi_off", 14.0, x, PILL_H / 2.0 - 7.0, p.pal.muted);
     x + 14.0
 }
 
@@ -49,14 +49,7 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let upower = m.battery.as_ref();
     if let Some((pct, charging)) = upower.map(|b| (b.pct, b.charging)).or(m.sys.battery) {
         let x = PAD + 30.0 + w + 16.0;
-        let symbol = match (pct as u32 / 10 * 10, charging) {
-            (0..=19, false) => "battery-level-10",
-            (0..=39, false) => "battery-level-30",
-            (0..=69, false) => "battery-level-50",
-            (0..=89, false) => "battery-level-80",
-            (_, false) => "battery-level-100",
-            (_, true) => "battery-level-50-charging",
-        };
+        let symbol = super::battery::symbol(pct, charging);
         p.symbol(symbol, 16.0, x, cy - 8.0, pal.fg);
         let w = p.text(&format!("{pct:.0}%"), 12.5, Weight::Medium, pal.fg, x + 22.0, cy, -1.0);
         if let Some(t) = upower.and_then(|b| b.time()) {

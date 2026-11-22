@@ -17,7 +17,7 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let tw = p.text("Night light", 12.5, Weight::Medium, pal.fg, PAD + 30.0, cy, label_w);
     // The icon and its label are one toggle.
     let icon = (PAD - 6.0, y, 30.0, h);
-    p.button("night-light", icon, n.on, Region::new((icon.0, y, icon.2 + tw + 10.0, h), 15.0, Action::Night));
+    p.button("bedtime", icon, n.on, Region::new((icon.0, y, icon.2 + tw + 10.0, h), 15.0, Action::Night));
     let x = PAD + 30.0 + label_w + 12.0;
     let w = PANEL_W - PAD - 40.0 - x;
     p.fill((x, cy - 2.0, w, 4.0), 2.0, pal.fg, 0.14);

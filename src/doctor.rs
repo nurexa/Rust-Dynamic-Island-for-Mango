@@ -118,7 +118,6 @@ pub fn run() -> ! {
         let found = output("fc-list", &[font.as_str(), "family"]).is_some_and(|o| !o.trim().is_empty());
         r.check(found, &format!("{what}: {font}"), "Not installed, so another font stands in. Any Nerd Font works for icons (set icon_font).");
     }
-    r.check(crate::icons::adwaita_symbolic().is_some(), "Adwaita symbolic icons", "Install adwaita-icon-theme, or the panel's buttons draw blank.");
 
     println!();
     section("Features (each one only needs its own programs)");

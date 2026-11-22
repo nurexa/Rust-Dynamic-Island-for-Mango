@@ -99,7 +99,7 @@ fn scan(dir: &Path, seen: &mut HashSet<String>, counts: &HashMap<String, u32>, t
         }
         let Some(e) = fs::read_to_string(&path).ok().as_deref().and_then(parse) else { continue };
         let cmd = if e.terminal { format!("{terminal} -e {}", e.exec) } else { e.exec };
-        let icon = if e.icon.is_empty() { Icon::Glyph("\u{f003b}".into()) } else { Icon::Named(e.icon) };
+        let icon = if e.icon.is_empty() { Icon::Glyph("apps".into()) } else { Icon::Named(e.icon) };
         let launches = counts.get(&id).copied().unwrap_or(0);
         let mut item = Item::new(e.name, icon, Act::Launch { id, cmd }).sub(e.comment);
         // Capped, so a favourite can't outrank a much better match.

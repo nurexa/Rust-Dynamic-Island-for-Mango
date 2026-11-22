@@ -6,8 +6,8 @@ pkgrel=1
 pkgdesc="All-in-one Wayland desktop shell in one Dynamic Island pill: bar, launcher, notifications, clipboard, screenshots (git)"
 arch=(x86_64 aarch64)
 url="https://github.com/nurexa/Rust-Dynamic-Island"
-license=(GPL-3.0-only)
-depends=(cairo pango glib2 libxkbcommon gcc-libs glibc adwaita-icon-theme)
+license=('GPL-3.0-only AND Apache-2.0')
+depends=(cairo pango glib2 libxkbcommon gcc-libs glibc)
 makedepends=(cargo git)
 optdepends=(
   'pipewire-pulse: volume and per-app volume'
@@ -26,7 +26,8 @@ optdepends=(
   'fd: file search without an index'
   'xdg-utils: opening files and links'
   'libnotify: notify-send for scripts'
-  'ttf-jetbrains-mono-nerd: icon glyphs'
+  'adwaita-icon-theme: symbolic icons some tray apps ask for'
+  'ttf-jetbrains-mono-nerd: app glyphs on the workspaces'
 )
 provides=(island rust-dynamic-island)
 conflicts=(island rust-dynamic-island)
@@ -64,4 +65,5 @@ package() {
   install -Dm644 README.md MODDING.md -t "$pkgdir/usr/share/doc/island"
   install -Dm644 examples/config.toml "$pkgdir/usr/share/doc/island/config.toml"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 LICENSES/Apache-2.0.txt "$pkgdir/usr/share/licenses/$pkgname/Apache-2.0.txt"
 }

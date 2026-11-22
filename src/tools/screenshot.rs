@@ -36,14 +36,14 @@ pub fn list(_: &Ctx) -> Vec<Item> {
         Item::new(title, Icon::Glyph(glyph.into()), Act::Task(Task::Shot(kind))).sub(sub)
     };
     let mut items = vec![
-        row("Region", "Drag out an area", "\u{f0a6a}", Kind::Region),
-        row("Window", "The focused window", "\u{f05b2}", Kind::Window),
-        row("Screen", "Everything on this output", "\u{f0379}", Kind::Output),
+        row("Region", "Drag out an area", "crop", Kind::Region),
+        row("Window", "The focused window", "web_asset", Kind::Window),
+        row("Screen", "Everything on this output", "monitor", Kind::Output),
     ];
     if on_path("satty") {
-        items.push(row("Annotate", "Drag out an area, then draw on it", "\u{f03eb}", Kind::Annotate));
+        items.push(row("Annotate", "Drag out an area, then draw on it", "draw", Kind::Annotate));
     }
-    items.push(row("Pick a color", "Copy the color under the cursor", "\u{f0485}", Kind::Color));
+    items.push(row("Pick a color", "Copy the color under the cursor", "colorize", Kind::Color));
     items
 }
 

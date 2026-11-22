@@ -7,10 +7,10 @@ pub fn list(ctx: &Ctx) -> Vec<Item> {
     let sh = |s: &str| Act::Sh(s.to_owned());
     let row = |title, glyph: &str, act| Item::new(title, Icon::Glyph(glyph.into()), act);
     vec![
-        row("Lock", "\u{f033e}", Act::Sh(ctx.cfg.commands.lock.clone())),
-        row("Suspend", "\u{f04b2}", sh("systemctl suspend")),
-        row("Log out", "\u{f0343}", confirm("Press Enter again to log out", Act::Quit)),
-        row("Reboot", "\u{f0709}", confirm("Press Enter again to reboot", sh("systemctl reboot"))),
-        row("Shut down", "\u{f0425}", confirm("Press Enter again to shut down", sh("systemctl poweroff"))),
+        row("Lock", "lock", Act::Sh(ctx.cfg.commands.lock.clone())),
+        row("Suspend", "bedtime", sh("systemctl suspend")),
+        row("Log out", "logout", confirm("Press Enter again to log out", Act::Quit)),
+        row("Reboot", "restart_alt", confirm("Press Enter again to reboot", sh("systemctl reboot"))),
+        row("Shut down", "power_settings_new", confirm("Press Enter again to shut down", sh("systemctl poweroff"))),
     ]
 }

@@ -8,7 +8,7 @@ use crate::{
 use pango::Weight;
 use std::time::Instant;
 
-const SPARKLE: &str = "\u{f0674}";
+const SPARKLE: &str = "star_shine";
 
 pub fn pill(p: &mut Pen, c: &Ctx, x: f64) -> f64 {
     let now = Instant::now();
@@ -21,7 +21,7 @@ pub fn pill(p: &mut Pen, c: &Ctx, x: f64) -> f64 {
         _ => ("Done", pal.fg),
     };
     let cy = PILL_H / 2.0;
-    p.glyph(SPARKLE, 16.0, x, cy - 8.0, tone, 1.0);
+    p.icon(SPARKLE, top.state != State::Done, 16.0, x, cy - 8.0, tone, 1.0);
     let mut w = 20.0 + p.text(label, 12.5, Weight::Semibold, tone, x + 20.0, cy, -1.0);
     if live.len() > 1 {
         w += 6.0 + p.text(&format!("+{}", live.len() - 1), 11.5, Weight::Medium, pal.muted, x + w + 6.0, cy, -1.0);

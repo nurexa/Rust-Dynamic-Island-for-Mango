@@ -9,15 +9,15 @@ use pango::Weight;
 
 fn symbol(icon: &str) -> &'static str {
     match icon {
-        "audio-headset" => "audio-headset",
-        "audio-headphones" => "audio-headphones",
-        "audio-card" | "audio-speakers" => "audio-speakers",
-        "input-keyboard" => "input-keyboard",
-        "input-mouse" | "input-tablet" => "input-mouse",
-        "input-gaming" => "input-gaming",
+        "audio-headset" => "headset_mic",
+        "audio-headphones" => "headphones",
+        "audio-card" | "audio-speakers" => "speaker",
+        "input-keyboard" => "keyboard",
+        "input-mouse" | "input-tablet" => "mouse",
+        "input-gaming" => "sports_esports",
         "phone" => "phone",
         "computer" => "computer",
-        _ => "bluetooth-active",
+        _ => "bluetooth",
     }
 }
 
@@ -26,7 +26,7 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let pal = p.pal;
     let h = 30.0;
     let cy = y + h / 2.0;
-    p.symbol(if bt.powered { "bluetooth-active" } else { "bluetooth-disabled" }, 16.0, PAD + 1.0, cy - 8.0, pal.fg);
+    p.icon(if bt.powered { "bluetooth" } else { "bluetooth_disabled" }, bt.powered, 16.0, PAD + 1.0, cy - 8.0, pal.fg, 1.0);
     p.text("Bluetooth", 12.5, Weight::Medium, pal.fg, PAD + 30.0, cy, 168.0);
     let sw = (PANEL_W - PAD - 34.0, cy - 9.0, 34.0, 18.0);
     let (track, alpha, knob) = if bt.powered { (pal.accent, 1.0, pal.on_accent) } else { (pal.fg, 0.18, pal.fg) };

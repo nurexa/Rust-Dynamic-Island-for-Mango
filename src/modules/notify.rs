@@ -1,6 +1,7 @@
 //! Notifications on screen: the card the pill grows into, and the history in the panel.
 use super::{Ctx, PAD, PANEL_W};
 use crate::{
+    icons,
     notify::{INLINE_REPLY, Note, NoteImage},
     pen::{Action, Pen, Rect, Region},
 };
@@ -14,6 +15,13 @@ const EXPANDED: usize = 4;
 
 fn image(p: &mut Pen, note: &Note, x: f64, y: f64, size: f64) -> bool {
     let px = (size * p.scale as f64) as i32;
+    if let NoteImage::Named(name) = &note.image {
+        if let Some(name) = icons::builtin(name) {
+            p.fill((x, y, size, size), size * 0.3, p.pal.accent, 0.18);
+            p.icon(name, true, size * 0.55, x + size * 0.225, y + size * 0.225, p.pal.accent, 1.0);
+            return true;
+        }
+    }
     let img = match &note.image {
         NoteImage::None => None,
         NoteImage::Path(path) => p.icons.picture(path, px),
@@ -87,7 +95,7 @@ pub fn toast(p: &mut Pen, c: &Ctx) -> f64 {
     let default = note.actions.iter().any(|(k, _)| k == "default");
     let click = if default { Action::NoteAction(note.id, "default".into()) } else { Action::NoteDismiss(note.id) };
     p.regions.push(Region::new((0.0, 0.0, TOAST_W, y), 18.0, click).right(Action::NoteDismiss(note.id)));
-    p.symbol("window-close", 12.0, close.0 + 5.0, close.1 + 5.0, pal.muted);
+    p.symbol("close", 12.0, close.0 + 5.0, close.1 + 5.0, pal.muted);
     p.regions.push(Region::new(close, 11.0, Action::NoteDismiss(note.id)));
 
     if field(p, c, note, (pad, y, TOAST_W - 2.0 * pad, 34.0)) {
@@ -149,12 +157,12 @@ fn group(p: &mut Pen, c: &Ctx, app: &str, notes: &[&Note], mut y: f64) -> f64 {
         p.fill((x, cy - 8.0, bw, 16.0), 8.0, pal.accent, 0.2);
         p.text(&n, 10.5, Weight::Semibold, pal.accent, x + 6.0, cy, -1.0);
         x += bw + 4.0;
-        p.symbol(if open { "pan-up" } else { "pan-down" }, 12.0, x, cy - 6.0, pal.muted);
+        p.symbol(if open { "keyboard_arrow_up" } else { "keyboard_arrow_down" }, 12.0, x, cy - 6.0, pal.muted);
         x += 12.0;
         let tip = if open { "Show less" } else { "Show all" };
         p.regions.push(Region::new((PAD - 6.0, y, x - PAD + 12.0, 24.0), 8.0, Action::NoteGroup(app.into())).tip(tip));
     }
-    p.symbol("window-close", 12.0, end - 13.0, cy - 6.0, pal.muted);
+    p.symbol("close", 12.0, end - 13.0, cy - 6.0, pal.muted);
     p.regions.push(Region::new((end - 18.0, cy - 10.0, 22.0, 20.0), 10.0, Action::NoteClearApp(app.into())).tip("Clear"));
     y += 24.0;
     for note in notes.iter().take(if open { EXPANDED } else { 1 }) {

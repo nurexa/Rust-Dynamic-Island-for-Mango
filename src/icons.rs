@@ -1,6 +1,7 @@
 //! Real application icons: app id -> .desktop entry -> Icon= -> file -> raster.
 //! gdk-pixbuf would now route every decode through glycin's sandbox, so PNG goes
 //! through cairo, SVG through resvg and JPEG (album art) through zune-jpeg.
+use crate::symbols::SYMBOLS;
 use cairo::{Context, Filter, Format, ImageSurface, SurfacePattern};
 use std::{
     collections::HashMap,
@@ -11,6 +12,8 @@ use std::{
 
 const SIZES: [&str; 14] = ["scalable", "512x512", "256x256", "192x192", "128x128", "96x96", "72x72", "64x64",
     "48x48", "36x36", "32x32", "24x24", "22x22", "16x16"];
+/// Trimmed off each side of an icon's box.
+const MARGIN: i32 = 30;
 const RESCAN: Duration = Duration::from_secs(30);
 
 pub fn data_dirs() -> Vec<PathBuf> {
@@ -25,11 +28,27 @@ pub fn data_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Adwaita's symbolic icons, wherever this system keeps them: /usr/share on most
+/// Adwaita's symbolic icons, only a fallback for tray items that name one: /usr/share on most
 /// distros, somewhere under XDG_DATA_DIRS on NixOS.
 pub fn adwaita_symbolic() -> Option<PathBuf> {
     static ROOT: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     ROOT.get_or_init(|| data_dirs().into_iter().map(|d| d.join("icons/Adwaita/symbolic")).find(|p| p.is_dir())).clone()
+}
+
+/// The table's own copy of a name, if it's one of the island's icons.
+pub fn builtin(name: &str) -> Option<&'static str> {
+    entry(name).map(|e| e.0)
+}
+
+fn entry(name: &str) -> Option<&'static (&'static str, &'static str, &'static str)> {
+    SYMBOLS.binary_search_by(|(n, ..)| (*n).cmp(name)).ok().map(|i| &SYMBOLS[i])
+}
+
+fn builtin_svg(name: &str, fill: bool, margin: i32) -> Option<String> {
+    let (_, outline, solid) = *entry(name)?;
+    let d = if fill && !solid.is_empty() { solid } else { outline };
+    let (x, y, w) = (margin, margin - 960, 960 - 2 * margin);
+    Some(format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {w} {w}"><path d="{d}"/></svg>"#))
 }
 
 /// Map every name a window might use (file stem, its last dotted part,
@@ -135,7 +154,11 @@ fn fit(src: &ImageSurface, px: i32, cover: bool) -> Option<ImageSurface> {
 }
 
 fn load_svg(path: &Path, px: i32) -> Option<ImageSurface> {
-    let tree = resvg::usvg::Tree::from_data(&fs::read(path).ok()?, &Default::default()).ok()?;
+    render_svg(&fs::read(path).ok()?, px)
+}
+
+fn render_svg(svg: &[u8], px: i32) -> Option<ImageSurface> {
+    let tree = resvg::usvg::Tree::from_data(svg, &Default::default()).ok()?;
     let size = tree.size();
     let s = px as f32 / size.width().max(size.height());
     let (dx, dy) = ((px as f32 - size.width() * s) / 2.0, (px as f32 - size.height() * s) / 2.0);
@@ -180,7 +203,7 @@ pub struct Icons {
     apps: HashMap<(String, i32), Option<ImageSurface>>,
     /// Palette rows and notification images, by source. Emptied when the palette closes.
     files: HashMap<(String, i32), Option<ImageSurface>>,
-    symbols: HashMap<(&'static str, i32), Option<ImageSurface>>,
+    symbols: HashMap<(&'static str, bool, i32), Option<ImageSurface>>,
 }
 
 impl Icons {
@@ -255,14 +278,9 @@ impl Icons {
         self.files.clear();
     }
 
-    /// Adwaita symbolic icon as a mask, for painting in any palette color.
-    pub fn symbol(&mut self, name: &'static str, px: i32) -> Option<ImageSurface> {
-        self.symbols.entry((name, px)).or_insert_with(|| {
-            let root = adwaita_symbolic()?;
-            let file = format!("{name}-symbolic.svg");
-            let hit = fs::read_dir(root).ok()?.flatten().map(|d| d.path().join(&file)).find(|p| p.exists())?;
-            load_svg(&hit, px)
-        }).clone()
+    /// One of the island's icons as a mask, for painting in any palette color.
+    pub fn symbol(&mut self, name: &'static str, fill: bool, px: i32) -> Option<ImageSurface> {
+        self.symbols.entry((name, fill, px)).or_insert_with(|| render_svg(builtin_svg(name, fill, MARGIN)?.as_bytes(), px)).clone()
     }
 
     /// Returns the raster, and whether it's a mask to paint in the theme color.
@@ -314,5 +332,41 @@ mod tests {
         assert!(hit.ends_with("org.example.tool.fancy.png"), "{hit:?}");
         assert!(find_file("nothing", &dirs, &["hicolor".into()]).is_none());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn every_builtin_icon_renders_both_ways_and_isnt_cropped() {
+        assert!(SYMBOLS.windows(2).all(|w| w[0].0 < w[1].0), "lookup needs a sorted table");
+        let ink = |svg: String| -> u64 {
+            let mut s = render_svg(svg.as_bytes(), 384).expect("parses");
+            s.data().unwrap().chunks(4).map(|p| p[3] as u64).sum()
+        };
+        for (name, ..) in SYMBOLS {
+            for fill in [false, true] {
+                let full = ink(builtin_svg(name, fill, 0).unwrap());
+                assert!(full > 0, "{name} is blank");
+                // A smaller box draws it larger by this much; less means an edge cut it off.
+                let grown = (960.0 / (960 - 2 * MARGIN) as f64).powi(2);
+                let trimmed = ink(builtin_svg(name, fill, MARGIN).unwrap()) as f64;
+                assert!(trimmed >= full as f64 * grown * 0.97, "{name} is cropped");
+            }
+        }
+        assert_eq!(builtin("keep"), Some("keep"));
+        assert_eq!(builtin("\u{f0349}"), None, "a font glyph stays a glyph");
+    }
+
+    /// A name that isn't in the table draws nothing, silently: catch typos.
+    #[test]
+    fn icon_names_in_the_source_exist() {
+        let modules = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/modules");
+        for file in fs::read_dir(modules).unwrap().flatten() {
+            let src = fs::read_to_string(file.path()).unwrap();
+            for call in ["symbol(\"", "button(\"", "icon(\""] {
+                for rest in src.split(call).skip(1) {
+                    let name = rest.split('"').next().unwrap();
+                    assert!(builtin(name).is_some(), "{:?}: no icon called {name}", file.path());
+                }
+            }
+        }
     }
 }

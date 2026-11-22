@@ -6,8 +6,8 @@ use std::{
     process::{Command, Stdio},
 };
 
-const GLYPH: &str = "\u{f0192}";
-const IMAGE_GLYPH: &str = "\u{f02e9}";
+const GLYPH: &str = "content_paste";
+const IMAGE_GLYPH: &str = "image";
 
 /// `cliphist list` prints "<id>\t<preview>", newest first.
 fn item(line: &str) -> Option<Item> {

@@ -79,7 +79,7 @@ pub struct ScriptTool {
 }
 
 fn default_tool_glyph() -> String {
-    "\u{f0349}".into()
+    "search".into()
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]

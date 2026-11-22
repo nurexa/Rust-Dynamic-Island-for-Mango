@@ -8,10 +8,10 @@ use pango::Weight;
 
 fn symbol(volume: u32, muted: bool) -> &'static str {
     match volume {
-        _ if muted => "audio-volume-muted",
-        0..=33 => "audio-volume-low",
-        34..=66 => "audio-volume-medium",
-        _ => "audio-volume-high",
+        _ if muted => "volume_off",
+        0..=33 => "volume_mute",
+        34..=66 => "volume_down",
+        _ => "volume_up",
     }
 }
 
@@ -20,7 +20,7 @@ pub fn flash(p: &mut Pen, c: &Ctx) -> Option<f64> {
     let a = c.m.audio.as_ref()?;
     let pal = p.pal;
     let cy = PILL_H / 2.0;
-    p.symbol(symbol(a.volume, a.muted), 16.0, 16.0, cy - 8.0, pal.fg);
+    p.icon(symbol(a.volume, a.muted), a.muted, 16.0, 16.0, cy - 8.0, pal.fg, 1.0);
     let bar = (42.0, cy - 2.0, 104.0, 4.0);
     p.fill(bar, 2.0, pal.fg, 0.18);
     let on = if a.muted { pal.muted } else { pal.accent };
@@ -39,7 +39,7 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let label_w = 168.0;
     // The device name opens the list of outputs, apps and microphones.
     let w = p.text(&a.device, 12.5, Weight::Medium, pal.fg, PAD + 30.0, cy, label_w - 18.0);
-    p.symbol(if c.m.audio_open { "pan-up" } else { "pan-down" }, 12.0, PAD + 33.0 + w, cy - 6.0, pal.muted);
+    p.symbol(if c.m.audio_open { "keyboard_arrow_up" } else { "keyboard_arrow_down" }, 12.0, PAD + 33.0 + w, cy - 6.0, pal.muted);
     p.regions.push(Region::new((PAD + 24.0, y + 2.0, w + 30.0, h - 4.0), 8.0, Action::Cmd("audio".into()))
         .right(Action::Sh(c.cfg.commands.mixer.clone())).tip("Outputs, apps and microphones"));
     let x = PAD + 30.0 + label_w + 12.0;

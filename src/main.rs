@@ -17,6 +17,7 @@ mod pen;
 mod power;
 mod privacy;
 mod settings;
+mod symbols;
 mod sys;
 mod theme;
 mod timer;
@@ -513,7 +514,7 @@ impl App {
                 }
                 if let Some(at) = warn {
                     self.model.battery_warned = at;
-                    let mut note = Note::local("battery", &title, "Plug in soon", notify::NoteImage::Named("battery-caution-symbolic".into()));
+                    let mut note = Note::local("battery", &title, "Plug in soon", notify::NoteImage::Named("battery_alert".into()));
                     note.urgency = if at <= 10 { 2 } else { 1 };
                     self.handle(Msg::Notify(note));
                 }
@@ -959,7 +960,7 @@ impl App {
                     s => format!("{} minute timer", (s as f64 / 60.0).round()),
                 }),
             };
-            let note = notify::Note::local("timer", title, &body, notify::NoteImage::Named("alarm-symbolic".into()));
+            let note = notify::Note::local("timer", title, &body, notify::NoteImage::Named("timer".into()));
             self.model.timer = next.filter(|_| self.cfg.pomodoro.auto);
             self.handle(Msg::Notify(note));
         }
