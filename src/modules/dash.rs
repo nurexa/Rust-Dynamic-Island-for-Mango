@@ -4,19 +4,17 @@ use super::{Ctx, PAD, clock};
 use crate::{pen::Pen, sys};
 use pango::Weight;
 
-/// Hours over minutes, the minutes in the accent, and the day under them.
+/// Hours over minutes, the minutes in the accent; the header has the day.
 pub fn clock(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let pal = p.pal;
     let (h, m) = clock::stacked(&c.cfg.clock);
+    let h = if clock::twelve_hour(&c.cfg.clock) { h.trim_start_matches('0').to_owned() } else { h };
     let mid = p.w / 2.0;
     for (i, (s, tone)) in [(h, pal.fg), (m, pal.accent)].into_iter().enumerate() {
         let w = p.width(&s, 40.0, Weight::Bold);
         p.text(&s, 40.0, Weight::Bold, tone, mid - w / 2.0, y + 26.0 + i as f64 * 46.0, -1.0);
     }
-    let day = clock::format("%a %-e");
-    let w = p.width(&day, 12.0, Weight::Semibold);
-    p.text(&day, 12.0, Weight::Semibold, pal.muted, mid - w / 2.0, y + 112.0, -1.0);
-    y + 126.0
+    y + 98.0
 }
 
 pub fn weather(p: &mut Pen, c: &Ctx, y: f64) -> f64 {

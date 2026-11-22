@@ -5,9 +5,14 @@ use pango::Weight;
 
 pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let pal = p.pal;
-    // The time leads; the day is under it, out of the way of the buttons.
-    p.text(&clock::format(&c.cfg.clock), 28.0, Weight::Bold, pal.fg, PAD, y + 16.0, -1.0);
-    p.text(&clock::format("%A, %B %-e"), 12.0, Weight::Medium, pal.muted, PAD, y + 42.0, -1.0);
+    // The time leads, unless the clock tile has it; the day is under it.
+    if c.cfg.panel.iter().any(|n| n == "clock") {
+        p.text(&clock::format("%A"), 17.0, Weight::Bold, pal.fg, PAD, y + 18.0, -1.0);
+        p.text(&clock::format("%B %-e, %Y"), 12.0, Weight::Medium, pal.muted, PAD, y + 39.0, -1.0);
+    } else {
+        p.text(&clock::format(&c.cfg.clock), 28.0, Weight::Bold, pal.fg, PAD, y + 16.0, -1.0);
+        p.text(&clock::format("%A, %B %-e"), 12.0, Weight::Medium, pal.muted, PAD, y + 42.0, -1.0);
+    }
     let right = p.w - PAD + 6.0;
     let top = y + 4.0;
     let rect = |i: f64| (right - 2.0 - (i + 1.0) * 34.0, top + 4.0, 32.0, 32.0);
@@ -16,7 +21,7 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let pickable = picker || !cmd.wallpaper_pick.is_empty();
     let count = 3.0 + f64::from(u8::from(pickable)) + f64::from(u8::from(!c.cfg.sidebar.is_empty()));
     let bar = (right - count * 34.0 - 6.0, top, count * 34.0 + 6.0, 40.0);
-    p.surface(bar, 20.0, pal.card);
+    p.raised(bar, 20.0);
 
     // On its own and in words: it's how the rest of this gets changed.
     let w = p.width("Settings", 12.5, Weight::Semibold) + 44.0;

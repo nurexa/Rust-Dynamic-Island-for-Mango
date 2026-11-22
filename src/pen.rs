@@ -362,12 +362,12 @@ impl<'a> Pen<'a> {
     /// What can be pressed: a veil of ink over whatever it sits on, so it's the same
     /// step on the island, on a tile, through glass or in the light.
     pub fn raised(&self, rect: Rect, r: f64) {
-        self.fill(rect, r, self.pal.fg, if self.pal.dark { 0.09 } else { 0.07 });
+        self.fill(rect, r, self.pal.fg, if self.pal.dark { crate::theme::VEIL.0 } else { crate::theme::VEIL.1 });
     }
 
     /// A step down: tracks, fields and whatever holds a set of things.
     pub fn well(&self, rect: Rect, r: f64) {
-        self.fill(rect, r, self.pal.fg, if self.pal.dark { 0.1 } else { 0.08 });
+        self.fill(rect, r, self.pal.fg, if self.pal.dark { crate::theme::VEIL.0 + 0.01 } else { crate::theme::VEIL.1 + 0.01 });
     }
 
     /// A surface under what's already drawn, for a card that's as tall as what's on it.

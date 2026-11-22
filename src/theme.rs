@@ -1,10 +1,11 @@
 //! Colors come from one small file of tokens, re-read whenever it changes. Point
 //! `palette` at anything that writes one; matugen, in the setup this was built on.
 //!
-//! Depth is worked out from those few colors, so any of them will do. From the back:
-//! `well` (tracks, fields), `bg` (the island), `card` (a section), `raised` (what can be
-//! pressed) and `tint` (the section that leads). Each is a step of contrast from the
-//! last, not a fixed lightening, which vanishes on black and shouts on purple.
+//! Depth is worked out from those few colors, so any of them will do: `bg` (the island),
+//! `card` (a tile) and `tint` (the tile that leads), each a step of contrast from the
+//! last, not a fixed lightening, which vanishes on black and shouts on purple. What can be
+//! pressed and what's cut in are veils of ink over those (see `Pen::raised`), and `raised`
+//! is that veil over a card, kept here so text is checked against it.
 use std::path::PathBuf;
 
 pub type Rgb = (f64, f64, f64);
@@ -12,17 +13,17 @@ pub type Rgb = (f64, f64, f64);
 const BLACK: Rgb = (0.0, 0.0, 0.0);
 const WHITE: Rgb = (1.0, 1.0, 1.0);
 
-/// Above the island, as contrast against it: a card, the leading card, a control.
+/// Above the island, as contrast against it: a card, the leading card.
 const CARD: f64 = 1.22;
 const TINT: f64 = 1.4;
-const RAISED: f64 = 1.52;
+/// How much ink a control's veil carries, dark and light: `Pen::raised` draws it.
+pub const VEIL: (f64, f64) = (0.09, 0.07);
 /// A dark island no lighter than this leaves white text 7:1 on the highest step.
 const DARKEST_INK_BG: f64 = 0.04;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Palette {
     pub bg: Rgb,
-    pub well: Rgb,
     pub card: Rgb,
     pub tint: Rgb,
     pub raised: Rgb,
@@ -96,38 +97,41 @@ fn readable(c: Rgb, on: &[Rgb], ratio: f64) -> Rgb {
 
 fn build(surface: Rgb, fg: Rgb, muted: Rgb, accent: Rgb, on_accent: Rgb, error: Rgb) -> Palette {
     let dark = luminance(surface) < 0.5;
-    let (bg, well, card, tint, raised, edge);
+    let (bg, card, tint, edge);
     if dark {
         // Dark palettes sink most of the way to black: the island should read as
         // hardware, tinted just enough to belong to the wallpaper.
         bg = until(mix(surface, BLACK, 0.62), BLACK, |c| luminance(c) <= DARKEST_INK_BG);
         // The steps climb toward the accent's pale end, so they keep the palette's hue.
         let light = mix(accent, WHITE, 0.6);
-        well = mix(bg, BLACK, 0.45);
         card = step(bg, light, CARD);
         tint = step(bg, mix(accent, WHITE, 0.15), TINT);
-        raised = step(bg, light, RAISED);
         edge = step(bg, light, 2.6);
     } else {
         // In the light there's no room above paper white, so the island steps back instead.
         bg = step(surface, BLACK, 1.12);
-        well = step(bg, BLACK, 1.12);
         card = mix(surface, WHITE, 0.5);
         tint = step(card, mix(accent, BLACK, 0.2), 1.16);
-        raised = step(card, mix(accent, BLACK, 0.6), 1.22);
         edge = WHITE;
     }
-    let all = [bg, well, card, tint, raised];
+    // Text is checked on a control too, whose veil is the text's own ink: settled in two passes.
+    let veil = if dark { VEIL.0 } else { VEIL.1 };
+    let mut fg = readable(fg, &[bg, card, tint], 7.0);
+    let mut raised = mix(card, fg, veil);
+    for _ in 0..2 {
+        fg = readable(fg, &[bg, card, tint, raised], 7.0);
+        raised = mix(card, fg, veil);
+    }
+    let all = [bg, card, tint, raised];
     let accent = readable(accent, &all, 3.0);
     Palette {
         bg,
-        well,
         card,
         tint,
         raised,
         edge,
         dark,
-        fg: readable(fg, &all, 7.0),
+        fg,
         muted: readable(muted, &all, 3.8),
         accent,
         on_accent: readable(on_accent, &[accent], 4.5),
@@ -189,14 +193,14 @@ mod tests {
             for &accent in cube.iter().step_by(31).chain([&WHITE]) {
                 let p = build(surface, grey, grey, accent, grey, grey);
                 let at = format!("surface {surface:?}, accent {accent:?}");
-                for on in [p.bg, p.well, p.card, p.tint, p.raised] {
+                for on in [p.bg, p.card, p.tint, p.raised] {
                     assert!(contrast(p.fg, on) >= 6.9, "text, {at}");
                     assert!(contrast(p.muted, on) >= 3.7, "muted, {at}");
                     assert!(contrast(p.accent, on) >= 2.9, "accent, {at}");
                 }
                 assert!(contrast(p.on_accent, p.accent) >= 4.4, "on accent, {at}");
                 assert!(contrast(p.card, p.bg) >= 1.08, "a card vanished, {at}");
-                assert!(contrast(p.raised, p.card) >= 1.15, "a control vanished, {at}");
+                assert!(contrast(p.raised, p.card) >= 1.08, "a control vanished, {at}");
             }
         }
     }

@@ -150,7 +150,8 @@ pub fn about() -> &'static About {
             distro: os_name(&release),
             kernel: file("/proc/sys/kernel/osrelease"),
             user: std::env::var("USER").unwrap_or_default(),
-            host: file("/proc/sys/kernel/hostname"),
+            // $HOSTNAME first, so a screenshot can say something neutral.
+            host: std::env::var("HOSTNAME").unwrap_or_else(|_| file("/proc/sys/kernel/hostname")),
         }
     })
 }

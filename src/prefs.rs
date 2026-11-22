@@ -29,6 +29,8 @@ pub const PARTS: &[(&str, &str, bool)] = &[
     ("notifications", "Notifications", true),
     ("sidebar", "Sidebar", false),
     ("calendar", "Calendar", false),
+    ("weather", "Weather", false),
+    ("about", "System info", false),
     ("controls", "Quick controls", false),
     ("nightlight", "Night light", false),
     ("bluetooth", "Bluetooth", false),

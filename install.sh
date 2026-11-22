@@ -47,7 +47,7 @@ usage() { sed -n '2,16s/^# \{0,1\}//p' "$0"; exit 0; }
 mode=install manual=0 light=0 blur=0 build=${ISLAND_BUILD:-1} look=''
 STYLES='pill frame notch bar glass split minimal'
 # What --light leaves out: everything src/prefs.rs doesn't mark as a basic.
-LIGHT_OFF='title brightness stats media visualizer sidebar calendar controls nightlight bluetooth timer claude privacy wallpaper windows files clipboard screenshot wifi calc web'
+LIGHT_OFF='title brightness stats media visualizer sidebar calendar weather about controls nightlight bluetooth timer claude privacy wallpaper windows files clipboard screenshot wifi calc web'
 is_style() { [[ " $STYLES " == *" $1 "* ]]; }
 for a in "$@"; do
     case $a in
