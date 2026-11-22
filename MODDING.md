@@ -13,13 +13,15 @@ Leave a name out of a list and that part is gone.
 pill = ["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]
 panel = ["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "nightlight", "status", "bluetooth"]
 tools = ["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "bluetooth", "wallpaper", "power"]
+sidebar = ["media", "calendar", "controls", "notifications"]   # [] leaves it out
+visualizer = ["bars", "wave", "ring"]                           # [] is off
 notifications = true          # false keeps your own notification daemon
-disable = ["timer", "web"]    # or leave parts out wherever they appear ("calc" and "web" are the search's extras)
+disable = ["timer", "web"]    # or leave parts out wherever they appear (also "calc", "web", "sidebar", "visualizer")
 ```
 
 | Pill modules | Shows |
 |---|---|
-| `media` | Album art while something plays |
+| `media` | Album art while something plays, with the `bars` visualizer |
 | `workspaces` | Occupied workspaces and their windows |
 | `claude` | Claude Code sessions: working, needs you, done |
 | `timer` | The pomodoro's minutes left, while it runs |
@@ -30,19 +32,28 @@ disable = ["timer", "web"]    # or leave parts out wherever they appear ("calc" 
 
 | Panel modules | Shows |
 |---|---|
-| `header` | Time, date, and the home, tuck and pin buttons |
+| `header` | Time, date, and the sidebar, home, tuck and pin buttons |
 | `workspaces` | Every monitor and its workspaces |
-| `media` | Art, track, progress, playback buttons |
+| `media` | Art, track, progress, playback buttons, `wave` and `ring` |
+| `calendar` | The month, and events; off by default, the sidebar has it |
 | `timer` | Pomodoro: start, pause, skip, stop |
 | `notifications` | Recent notifications, do not disturb |
 | `stats` | CPU, GPU, RAM, network tiles |
 | `audio` | Volume slider; click the device for outputs, mics and per-app volume |
 | `brightness` | Brightness sliders: the backlight, and each monitor with ddcutil |
 | `nightlight` | Night light toggle and warmth slider; hidden when the compositor has no gamma control |
-| `wallpaper` | Wallpaper engine chips (fit, speed, fps, quality); off by default, the picker has them |
 | `status` | Network, battery, tray |
 | `bluetooth` | On/off switch, connected devices and their battery; hidden without an adapter |
 | `wallpaper` | Wallpaper fit, speed, fps, quality (needs `wallpaper_opt`) |
+
+| Sidebar sections | Shows |
+|---|---|
+| `media` | The player, with `wave` and `ring` |
+| `calendar` | The month, event dots, and what's next |
+| `controls` | Wi-Fi, Bluetooth, night light and do not disturb, with volume and brightness |
+| `notifications` | The whole history; the sidebar scrolls |
+
+A `custom:` module works in the sidebar too.
 
 | Tools | Does | Needs |
 |---|---|---|
@@ -79,19 +90,26 @@ island timer               # start or pause the pomodoro; stop, skip, or minutes
 island audio               # open the panel's list of outputs, mics and apps
 island doctor              # what works on this machine, and how to fix what doesn't
 island claude-setup        # add Claude Code's hooks (--undo takes them out)
+island style               # the next style; or pill, frame, notch, bar, split, minimal
+island sidebar             # open or close the sidebar
 ```
 
 ## 2. Change how it looks and behaves
 
 ```toml
+style = "pill"                # pill, frame, notch, bar, split or minimal
 icon_style = "glyph"          # or "color" for the apps' own icons
 icon_font = "JetBrainsMono Nerd Font Propo"
 terminal = "kitty"            # for apps that need one
 screenshot_dir = "~/Pictures"
 web_search = "https://duckduckgo.com/?q={}"   # the search's web row; empty hides it
 
-[icons]                       # app id = any glyph
-"org.gnome.nautilus" = "󰉋"
+[icons]                       # app id = any glyph, or an icon's name from src/symbols.rs
+"org.gnome.nautilus" = "folder"
+
+[calendar]
+dir = "~/.local/share/calendars"   # .ics files, searched four folders deep; empty is a plain month
+week_start = "monday"              # sunday (the default), monday or saturday
 
 [notify]                      # seconds on screen
 low = 3

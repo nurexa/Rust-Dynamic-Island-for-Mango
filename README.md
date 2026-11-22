@@ -1,20 +1,41 @@
 # Rust Dynamic Island for Mango
 
 A minimal, modular, all-in-one desktop tool for [MangoWC](https://mangowm.github.io),
-written in Rust. One pill replaces your bar, app launcher, notification daemon and
-power menu, and adds clipboard search, screenshots, Wi-Fi and Bluetooth. Use all of it,
-or only the parts you want.
+written in Rust. One island replaces your bar, app launcher, notification daemon and
+power menu, and adds a sidebar, calendar, music visualizers, clipboard search,
+screenshots, Wi-Fi and Bluetooth. It comes in six styles, from a floating pill to a
+border round the whole screen. Use all of it, or only the parts you want.
 
 **[Project page](https://nurexa.github.io/Rust-Dynamic-Island-for-Mango/)** ·
 [Modding guide](MODDING.md)
 
 ![The pill opens into a panel, searches apps, shows a notification and drags out of the way](docs/demo.gif)
 
+## Styles
+
+| | |
+|---|---|
+| ![Frame](docs/styles/frame.png) | ![Pill](docs/styles/pill.png) |
+| **frame**: a border with a rail; the island, palette and sidebar grow out of it | **pill** (the default): floats, drags anywhere |
+| ![Notch](docs/styles/notch.png) | ![Bar](docs/styles/bar.png) |
+| **notch**: hangs from the top edge | **bar**: full width, swells down into the panel |
+| ![Split](docs/styles/split.png) | ![Minimal](docs/styles/minimal.png) |
+| **split**: music, timers and Claude bud off into a bubble | **minimal**: the time, and what needs you |
+
+Switch live with `island style frame` (or plain `island style` for the next one), or set
+`style = "frame"` in the config; whichever you did last wins. Only frame and bar take
+space from your windows: 40 px on the left and 8 px on the other edges for frame, 32 px
+at the top for bar. The frame style is inspired by
+[Caelestia](https://github.com/caelestia-dots/shell); none of its code is used.
+
 ## What's in it
 
 | Part | Replaces | How you reach it |
 |---|---|---|
 | Bar | Waybar | Hover the pill |
+| Sidebar | eww and swaync control centres | `island sidebar`, `Super+Alt+S`, or the frame's right border |
+| Calendar | gsimplecal, calendar scripts | The sidebar, with events from local .ics files |
+| Music visualizers | cava widgets | The pill, panel and sidebar, while music plays |
 | App search | rofi `drun` | `island open apps` |
 | Run prompt | rofi `run` | `island open run` |
 | Window switcher | rofi `window` | `island open windows` |
@@ -89,6 +110,7 @@ cd Rust-Dynamic-Island-for-Mango
 ./install.sh             # everything
 ./install.sh --manual    # the same, but asks about each part and each key first
 ./install.sh --bar-only  # only replace the bar; launchers, dunst and your binds stay
+./install.sh --style=frame   # start in a style
 ./install.sh --undo      # put it all back
 ```
 
@@ -119,8 +141,9 @@ yours wins: the installer leaves that island key out and tells you which line ha
 dunst's service, because D-Bus would otherwise restart it on the next notification.
 
 A plain install keeps every extra this machine can run (the table above) and adds Claude
-Code's hooks if it's installed. `--manual` asks about each extra, a night light schedule
-and the web search engine, and writes only what you chose to `~/.config/island/config.toml`.
+Code's hooks if it's installed. `--manual` asks about the style, each extra, a folder of
+calendar files, a night light schedule and the web search engine, and writes only what
+you chose to `~/.config/island/config.toml`.
 Run `island doctor` afterwards to see what works here.
 
 It checks the result with Mango's own parser (`mango -p`). Warnings your config already
@@ -128,8 +151,8 @@ had don't block it, and if anything new goes wrong, or the island doesn't come u
 rolls back on its own. Nothing is uninstalled, so your old tools stay available.
 
 Builds need Rust, `cairo`, `pango` and `libxkbcommon`. At runtime the island uses
-`pactl`, `wpctl`, `playerctl` (with `playerctld`), `curl`, `adwaita-icon-theme` and any
-Nerd Font. Each tool lists what it needs in [MODDING.md](MODDING.md), and one whose
+`pactl` (and `parec` beside it, for visualizers), `wpctl`, `playerctl` (with
+`playerctld`), `curl` and, for app glyphs, any Nerd Font. Its own icons are built in. Each tool lists what it needs in [MODDING.md](MODDING.md), and one whose
 programs are missing simply doesn't appear.
 
 ## Using it
@@ -143,12 +166,28 @@ programs are missing simply doesn't appear.
 | Double-click the background, or `Super+Alt+I` | Send it home |
 | Middle-click the background, or `Super+Shift+I` | Tuck it into a thin sliver |
 | Scroll on the pill | Move through occupied workspaces |
+| `Super+Alt+S`, or `island sidebar` | Open or close the sidebar |
+| `island style` | Change its shape |
+
+Dragging is for the floating styles (pill, split, minimal); frame, notch and bar belong
+to their edge. In frame, hover the top border for the panel, the middle of the right
+border for the sidebar, and the palette rises from the bottom. The rail has search,
+workspaces, the tray, the clock (click it for the sidebar), status and power.
+
+The sidebar holds a player, the calendar, quick controls and every notification, and
+scrolls when that's too much. Point `dir` under `[calendar]` at a folder of .ics files
+(vdirsyncer keeps one) and days get dots, with what's next underneath. It reads them
+when you look and never goes on the network.
+
+Visualizers listen to what your speakers play, through `parec`, only while music plays
+and one is on screen. Paused, tucked away, under fullscreen or switched off with
+`visualizer = []`, nothing runs.
 
 In the palette, type to search, use the arrows or `Ctrl+N`/`Ctrl+P` to move (every palette key is rebindable under `[keys]` in the config), and press
 `Enter` to choose. `Tab` moves between tools, and `Esc` closes it. Reboot, shut down and
 log out ask for a second `Enter`.
 
-The island always floats over your windows and never moves them. It stays under
+In pill, split, minimal and notch the island floats over your windows and never moves them. It stays under
 fullscreen windows, apart from the palette and critical notifications. Keyboard focus
 is taken only while the palette is open, and goes straight back afterwards.
 
@@ -225,6 +264,7 @@ without a restart. [`examples/config.toml`](examples/config.toml) lists every op
 ```toml
 tools = ["apps", "clipboard", "projects"]   # the palette's tabs
 notifications = false                       # keep your own daemon
+style = "frame"                             # or pill, notch, bar, split, minimal
 icon_style = "glyph"                        # two-tone glyphs, or "color" for app icons
 
 [[tool]]                                    # a tool made of two shell commands
@@ -257,12 +297,19 @@ trait. [MODDING.md](MODDING.md) covers all of it, with worked examples.
 
 | Path | Job |
 |---|---|
-| `src/modules/` | One file per pill and panel module, and the list that orders them |
+| `src/modules/` | One file per pill, panel, rail and sidebar part, and the lists that order them |
 | `src/tools/` | One file per palette tool, and the list that registers them |
 | `src/wm/` | Compositor backends, and the trait they implement |
 | `src/palette.rs` | Search, ranking and keys for every tool |
 | `src/notify.rs` | The notification queue and history |
 | `src/island.rs` | One island per output: states, springs, frames, input |
+| `src/style.rs` | The styles, and the outlines they're made of |
+| `src/edges.rs` | The frame's and bar's strips, and the space they reserve |
+| `src/sidebar.rs` | The sidebar's surface, from opening to closed |
+| `src/canvas.rs` | The buffers every surface draws through |
+| `src/viz.rs` | Capture, the spectrum, and drawing the visualizers |
+| `src/calendar.rs` | Dates and .ics files, recurrences included |
+| `src/symbols.rs` | The island's own icons, as paths |
 | `src/pen.rs` | The drawing kit modules share, and the glyph table |
 | `src/bus.rs` | D-Bus: media, tray and the notification service |
 | `src/net.rs` `src/audio.rs` `src/sys.rs` | Network, audio devices and apps, hardware stats |
@@ -276,6 +323,13 @@ Why it doesn't use the obvious approach in a few places:
 - **The surface never resizes.** A layer surface resize takes a round trip per frame,
   so one fixed transparent surface holds the morph, and the input region follows the
   visible shape so clicks pass through the rest.
+- **There's no screen-sized surface.** The frame is four thin strips, under a megabyte at
+  1080p where one fullscreen buffer pair is 16. Four invisible pixels hold the space,
+  because a strip with corners on it is bigger than what it reserves.
+- **Joins are one shape.** An attached island draws the piece of band it hangs from, in
+  the same opaque color, so there's no seam to line up.
+- **Visualizers repaint a rectangle.** They're an overlay on cached content, so a frame
+  costs their own few pixels and nothing is laid out again.
 - **Rendering is CPU only.** Cairo draws into shared memory with no GL context. Content
   renders once into cached surfaces, so animation frames just composite those.
 - **Nothing runs while idle.** There are no animation loops, and Mango, audio, media,
@@ -319,6 +373,9 @@ Never start a test Mango with `DBUS_SESSION_BUS_ADDRESS` set: on exit it stops
   `warpcursor`, which is on by default.
 - GPU stats are NVIDIA only. Other GPUs simply have no GPU tile.
 - Each pill stays on its own monitor; it can't be dragged across to another.
+- One sidebar is open at a time, on the monitor you opened it from.
+- The calendar doesn't do hourly recurrences, `RDATE` or `BYWEEKNO`, and reads Windows
+  time zone names as local time.
 - Long tray menus are cut off at the panel's maximum height. They don't scroll.
 - Bluetooth pairing has no agent, so a device that asks for a PIN or a passkey confirmation
   won't pair from the island; pair it once with `bluetoothctl`, then connect from here.
@@ -329,4 +386,6 @@ Never start a test Mango with `DBUS_SESSION_BUS_ADDRESS` set: on exit it stops
 
 ## License
 
-GPL-3.0. See [LICENSE](LICENSE).
+GPL-3.0. See [LICENSE](LICENSE). The built-in icons are
+[Material Symbols](https://github.com/google/material-design-icons) Rounded by Google,
+under [Apache-2.0](LICENSES/Apache-2.0.txt).

@@ -82,6 +82,8 @@ pub type Tx = channel::Sender<Msg>;
 
 const STATS_EVERY: Duration = Duration::from_millis(1500);
 const NAMESPACE: &str = "island";
+/// parec dies with the audio server, which is back in a few seconds.
+const CAPTURE_RETRY: Duration = Duration::from_secs(5);
 /// Bounds a `dmenu` request, which is anything a local script cares to pipe in.
 const MAX_REQUEST: u64 = 8 << 20;
 
@@ -187,6 +189,8 @@ pub struct App {
     /// When an open sidebar's progress bar next moves.
     progress_at: Option<Instant>,
     capture: Option<viz::Capture>,
+    /// When to try again, after capture died under us.
+    capture_retry: Option<Instant>,
     had_panel: bool,
     /// The range the calendar's loading or showing.
     calendar_range: Option<(i64, i64)>,
@@ -393,6 +397,16 @@ impl App {
 
     /// Capture runs exactly while there's music and a visualizer someone can see.
     fn sync_capture(&mut self) {
+        let now = Instant::now();
+        if self.capture.as_mut().is_some_and(viz::Capture::ended) {
+            self.capture = None;
+            self.capture_retry = Some(now + CAPTURE_RETRY);
+            self.set_levels([0.0; viz::BANDS]);
+        }
+        if self.capture_retry.is_some_and(|t| t > now) {
+            return;
+        }
+        self.capture_retry = None;
         let m = &self.model;
         let covered = |name: &str| wm::covered(&m.clients, &m.monitors, name);
         let wanted = m.can_capture && m.media.as_ref().is_some_and(|t| t.playing)
@@ -1213,7 +1227,7 @@ impl App {
         let islands = self.islands.iter().filter_map(Island::next_deadline);
         let sidebar = self.sidebar.as_ref().and_then(Sidebar::next_deadline);
         let hovering = self.sidebar_at.as_ref().map(|s| s.0);
-        islands.chain(sidebar).chain(hovering).chain(self.progress_at).chain(self.next_stats).chain(self.timer_at).chain(self.claude_until).chain(self.model.notes.until).chain([self.next_clock]).min().unwrap_or(self.next_clock)
+        islands.chain(sidebar).chain(hovering).chain(self.capture_retry).chain(self.progress_at).chain(self.next_stats).chain(self.timer_at).chain(self.claude_until).chain(self.model.notes.until).chain([self.next_clock]).min().unwrap_or(self.next_clock)
     }
 
     fn tick(&mut self) {
@@ -1482,11 +1496,7 @@ fn rounded(src: ImageSurface, r: f64) -> ImageSurface {
     let (w, h) = (src.width() as f64, src.height() as f64);
     let Ok(out) = ImageSurface::create(cairo::Format::ARgb32, src.width(), src.height()) else { return src };
     let Ok(cr) = cairo::Context::new(&out) else { return src };
-    cr.arc(w - r, r, r, -1.57, 0.0);
-    cr.arc(w - r, h - r, r, 0.0, 1.57);
-    cr.arc(r, h - r, r, 1.57, 3.14);
-    cr.arc(r, r, r, 3.14, 4.71);
-    cr.close_path();
+    pen::rounded_rect(&cr, 0.0, 0.0, w, h, r);
     cr.clip();
     if cr.set_source_surface(&src, 0.0, 0.0).is_ok() {
         let _ = cr.paint();
@@ -1890,6 +1900,7 @@ fn main() {
         sidebar_at: None,
         progress_at: None,
         capture: None,
+        capture_retry: None,
         had_panel: false,
         calendar_range: None,
         under_pointer: None,

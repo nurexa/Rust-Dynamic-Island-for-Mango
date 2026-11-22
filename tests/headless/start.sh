@@ -11,5 +11,6 @@ for i in $(seq 50); do s=$(ls $R/mango-*.sock 2>/dev/null|head -1); [ -n "$s" ] 
 w=$(cd $R; ls wayland-? | head -1)
 cat > $R/env <<E
 export XDG_RUNTIME_DIR=$R WAYLAND_DISPLAY=$w MANGO_INSTANCE_SIGNATURE=$s
+export XDG_STATE_HOME=$R
 E
 echo up $w $s

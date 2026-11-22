@@ -184,6 +184,11 @@ impl Capture {
         });
         Some(Capture { child })
     }
+
+    /// The audio server went, or wasn't there.
+    pub fn ended(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(Some(_)) | Err(_))
+    }
 }
 
 impl Drop for Capture {

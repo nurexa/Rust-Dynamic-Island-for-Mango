@@ -3,6 +3,7 @@
 #
 #   ./install.sh             everything: bar, launcher, notifications, clipboard, screenshots
 #   ./install.sh --manual    the same, but asks about each part, each key and each extra first
+#   ./install.sh --style=frame   start in a style: pill, frame, notch, bar, split or minimal
 #   ./install.sh --bar-only  only replace the bar; launchers, notifications and binds stay as they are
 #   ./install.sh --undo      put it all back
 #
@@ -40,13 +41,18 @@ fail() {
     exit 1
 }
 
-usage() { sed -n '2,13s/^# \{0,1\}//p' "$0"; exit 0; }
-mode=install manual=0 build=${ISLAND_BUILD:-1}
+usage() { sed -n '2,14s/^# \{0,1\}//p' "$0"; exit 0; }
+mode=install manual=0 build=${ISLAND_BUILD:-1} look=''
+STYLES='pill frame notch bar split minimal'
+is_style() { [[ " $STYLES " == *" $1 "* ]]; }
 for a in "$@"; do
     case $a in
         --undo) mode=undo ;;
         --bar-only) mode=bar ;;
         --manual|-i) manual=1 ;;
+        --style=*)
+            look=${a#--style=}
+            is_style "$look" || { echo "No style '$look'. There's $STYLES." >&2; exit 2; } ;;
         --no-build) build=0 ;;
         -h|--help) usage ;;
         *) echo "Unknown option $a (see --help)" >&2; exit 2 ;;
@@ -184,6 +190,7 @@ OWN=(  # island command | what it does | default key
     "tuck|tuck the pill away|SUPER+SHIFT,i"
     "reset|send the pill home|SUPER+ALT,i"
     "open|open search|SUPER,space"
+    "sidebar|open the sidebar|SUPER+ALT,s"
 )
 NOTIFIERS='dunst|mako|swaync'
 # Extras: name in config.toml | what it is | how to tell this machine can (empty: any can).
@@ -197,9 +204,12 @@ EXTRAS=(
     "files|file search|command -v plocate || command -v fd"
     "calc|sums and unit conversion in the search|"
     "web|a web search row in the search|"
+    "sidebar|a sidebar: player, calendar, quick controls, notifications|"
+    "calendar|a calendar in the sidebar|"
+    "visualizer|music visualizers: bars, wave and ring|command -v parec"
 )
 declare -A extra_on=()
-declined=() night='' engine=''
+declined=() night='' engine='' caldir=''
 for e in "${EXTRAS[@]}"; do
     IFS='|' read -r n _ test <<< "$e"
     # ISLAND_EXTRAS="a b" says which are available, so the tests don't depend on this machine.
@@ -260,6 +270,12 @@ if [ $manual = 1 ]; then
         while [ "$k" != none ] && ! valid_key "$k"; do k=$(ask "Write it as MODS,key, like $def" "$def"); done
         keys[$c]=$k
     done
+    echo; info "Styles: pill floats and can be dragged; minimal is just the time and what needs you; split buds"
+    info "a bubble off for music and timers; notch hangs from the top edge; bar is full width; frame borders"
+    info "the screen with a rail down the left. Frame and bar take a little space from your windows."
+    s=$(ask "Style (${STYLES// /, }), or 'keep' for the one it's in (pill at first)" "${look:-keep}")
+    while [ "$s" != keep ] && ! is_style "$s"; do s=$(ask "One of ${STYLES// /, }, or 'keep'" keep); done
+    if [ "$s" = keep ]; then look=''; else look=$s; fi
     echo; info "Extras. Each is on when this machine can run it; say n to leave one out:"
     for e in "${EXTRAS[@]}"; do
         IFS='|' read -r n what _ <<< "$e"
@@ -275,6 +291,15 @@ if [ $manual = 1 ]; then
             night=$(ask "Write it as HH:MM-HH:MM, or 'none'" none)
         done
         [ "$night" = none ] && night=''
+    fi
+    # No sidebar, no key for it.
+    [[ " ${declined[*]-} " != *" sidebar "* ]] || keys[sidebar]=none
+    if [ "${extra_on[calendar]}" = 1 ]; then
+        caldir=$(ask "A folder of .ics files for the calendar's events (vdirsyncer's, or exports), or 'none'" none)
+        while [ "$caldir" != none ] && { [[ $caldir == *[\"\\]* ]] || [ ! -d "${caldir/#\~/$HOME}" ]; }; do
+            caldir=$(ask "That isn't a folder. Another, or 'none'" none)
+        done
+        [ "$caldir" = none ] && caldir=''
     fi
     if [ "${extra_on[web]}" = 1 ]; then
         e=$(ask "Web search with duckduckgo, google, brave, kagi, startpage, or a URL with {} for the words" duckduckgo)
@@ -295,7 +320,9 @@ if [ $manual = 1 ]; then
     [ "${take[notes]}" = 1 ] && info "show notifications in the island and stop your notification daemon autostarting"
     for e in ${extra[@]+"${extra[@]}"}; do info "bind ${e%%|*} to island ${e#*|}"; done
     for o in "${OWN[@]}"; do c=${o%%|*}; [ "${keys[$c]}" = none ] || info "bind ${keys[$c]} to island $c"; done
+    [ -z "$look" ] || info "switch to the $look style"
     [ ${#declined[@]} -eq 0 ] || info "leave out: ${declined[*]}"
+    [ -z "$caldir" ] || info "show events from $caldir"
     [ -z "$night" ] || info "turn the night light on $night"
     [ -z "$engine" ] || info "search the web with $engine"
     [ "${extra_on[claude]}" = 0 ] || info "add the island's hooks to Claude Code (~/.claude/settings.json)"
@@ -437,13 +464,13 @@ if [ ${#declined[@]} -gt 0 ]; then
     list=$(printf '"%s", ' "${declined[@]}"); lines+=("disable = [${list%, }]")
 fi
 [ -z "$engine" ] || lines+=("web_search = \"$engine\"")
-if [ ${#lines[@]} -gt 0 ] || [ -n "$night" ]; then
+if [ ${#lines[@]} -gt 0 ] || [ -n "$night" ] || [ -n "$caldir" ]; then
     step "Writing your choices to ${ICFG/#$HOME/\~}"
     mkdir -p "$(dirname "$ICFG")"; touch "$ICFG"
     "${SED[@]}" "/^$BEGIN\$/,/^$END\$/d" "$ICFG"
     # A key you'd set yourself is set aside, not lost: --undo puts it back.
     for key in disable web_search; do
-        if printf '%s\n' "${lines[@]}" | grep -q "^$key ="; then
+        if [ ${#lines[@]} -gt 0 ] && printf '%s\n' "${lines[@]}" | grep -q "^$key ="; then
             "${SED[@]}" -E "s/^($key[[:space:]]*=.*)\$/$OFF\1/" "$ICFG"
         fi
     done
@@ -458,6 +485,14 @@ if [ ${#lines[@]} -gt 0 ] || [ -n "$night" ]; then
         else
             printf '%s\n[nightlight]\nschedule = "%s"\n%s\n' "$BEGIN" "$night" "$END" >> "$ICFG"
             info "night light on $night"
+        fi
+    fi
+    if [ -n "$caldir" ]; then
+        if grep -q '^\[calendar\]' "$ICFG"; then
+            warn "Your config already has a [calendar] section: set dir = \"$caldir\" there yourself."
+        else
+            printf '%s\n[calendar]\ndir = "%s"\n%s\n' "$BEGIN" "$caldir" "$END" >> "$ICFG"
+            info "calendar events from $caldir"
         fi
     fi
 fi
@@ -479,9 +514,13 @@ if ! has_layer island; then
     undo >/dev/null
     fail "The island didn't come up, so everything was rolled back. Run $EXE by hand to see why."
 fi
+# The island remembers it, the same as when you run this yourself.
+if [ -n "$look" ]; then
+    if "$EXE" style "$look"; then info "style: $look"; else warn "Couldn't switch to the $look style: try island style $look."; fi
+fi
 
 search=$(sed -nE 's#^bind=([^,]*),([^,]*),spawn,.*/island open$#\1+\2#p' "$ISL" | head -1)
-printf '\n%s✓ Island is running.%s Hover the pill for the panel%s. Check this machine with: island doctor. Undo with: ./install.sh --undo\n' \
+printf '\n%s✓ Island is running.%s Hover the pill for the panel%s. Change its shape with: island style. Check this machine with: island doctor. Undo with: ./install.sh --undo\n' \
     "$G" "$N" "${search:+, $search opens search}"
 if [ ${#NOTES[@]} -gt 0 ]; then
     printf '%s  Worth a look:%s\n' "$Y" "$N"

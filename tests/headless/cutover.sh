@@ -142,13 +142,15 @@ ok "toml undo: waybar back" "$(layers)" "['waybar']"
 fresh
 printf 'tag_num=9\nbind=SUPER,d,spawn,rofi -show drun\nbind=SUPER,space,togglefloating\n' > $C/config.conf
 # Extras on offer: timer (yes), night light (no), sums (yes), web (yes, with Kagi).
-printf 'none\nnone\nnone\ny\nSUPER,r\n\nnone\nnone\n\ny\nn\ny\ny\nkagi\ny\nSUPER+ALT,space\n' | ISLAND_EXTRAS="timer nightlight calc web" ISLAND_BUILD=0 $H/../../install.sh --manual > $R/install.out 2>&1
+printf 'none\nnone\nnone\ny\nSUPER,r\n\nnone\nnone\n\n\nminimal\ny\nn\ny\ny\nkagi\ny\nSUPER+ALT,space\n' | ISLAND_EXTRAS="timer nightlight calc web" ISLAND_BUILD=0 $H/../../install.sh --manual > $R/install.out 2>&1
 sleep .5
 ok "manual: island comes up" "$(layers)" "['island']"
 ok "manual: answers land in island.conf" "$(grep -cE 'bind=SUPER,r,spawn,.*island open run$|bind=SUPER\+ALT,space,spawn,.*island open$|bind=SUPER,i,spawn,.*island pin$' $C/island.conf) $(grep -cE 'island (tuck|reset)$' $C/island.conf)" "3 0"
 ok "manual: launcher swapped" "$(grep -c '^bind=SUPER,d,spawn,.*/island open apps$' $C/config.conf)" 1
 ok "manual: the final message names the new search key" "$(grep -c 'SUPER+ALT+space opens search' $R/install.out)" 1
 ok "manual: a declined extra is left out in config.toml" "$(grep -c '^disable = \["nightlight"\]$' $XDG_CONFIG_HOME/island/config.toml)" 1
+ok "manual: the chosen style is on" "$(grep -c '^style minimal pill$' $R/island/state)" 1
+ok "manual: the sidebar has its key" "$(grep -c '^bind=SUPER+ALT,s,spawn,.*island sidebar$' $C/island.conf)" 1
 ok "manual: the chosen search engine is written" "$(grep -c '^web_search = "https://kagi.com/search?q={}"$' $XDG_CONFIG_HOME/island/config.toml)" 1
 ISLAND_BUILD=0 $H/../../install.sh --undo > /dev/null
 ok "manual undo: the island config it wrote is gone" "$(ls $XDG_CONFIG_HOME/island/config.toml 2>/dev/null | wc -l)" 0
@@ -162,5 +164,17 @@ hooks(){ grep -c 'claude-hook' $CLAUDE_CONFIG_DIR/settings.json; }
 ok "claude: hooks added on a machine with Claude Code" "$(hooks)" 7
 ok "claude: and nothing written to the island config" "$(ls $XDG_CONFIG_HOME/island/config.toml 2>/dev/null | wc -l)" 0
 ISLAND_BUILD=0 $H/../../install.sh --undo > /dev/null
+rm -f $R/island/state
 ok "claude: undo takes the hooks out and keeps the rest" "$(hooks) $(grep -c dark $CLAUDE_CONFIG_DIR/settings.json)" "0 1"
+kill_all
+
+# A style from the command line.
+fresh
+rm -f $R/island/state
+printf 'tag_num=9\n' > $C/config.conf
+ISLAND_BUILD=0 $H/../../install.sh --style=notch > $R/install.out 2>&1; sleep 1
+ok "--style: the island comes up in it" "$(grep -c '^style notch pill$' $R/island/state)" 1
+ok "--style: a wrong name stops before anything changes" "$(ISLAND_BUILD=0 $H/../../install.sh --style=blob >/dev/null 2>&1; echo $?)" 2
+ISLAND_BUILD=0 $H/../../install.sh --undo > /dev/null
+rm -f $R/island/state
 kill_all

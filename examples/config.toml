@@ -1,8 +1,11 @@
 # Copy to ~/.config/island/config.toml. Every key is optional; these are the
 # defaults. Run `island reload` after editing. MODDING.md explains the rest.
 
+# pill, frame, notch, bar, split or minimal. `island style <name>` switches live and
+# holds until this line changes. Only frame and bar take space from your windows.
+style = "pill"
 font = "Adwaita Sans"
-icon_font = "JetBrainsMono Nerd Font Propo"   # any Nerd Font; big ones cost real memory
+icon_font = "JetBrainsMono Nerd Font Propo"   # for app glyphs: any Nerd Font; big ones cost real memory
 icon_style = "glyph"              # "glyph" is two-tone, "color" uses each app's own icon
 clock = "%I:%M %p"                # strftime
 palette = "~/.config/theme/generated/colors.toml"
@@ -14,13 +17,20 @@ web_search = "https://duckduckgo.com/?q={}"   # the search's last row; empty hid
 pill = ["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]
 panel = ["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "nightlight", "status", "bluetooth"]
 tools = ["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "bluetooth", "wallpaper", "power"]
+sidebar = ["media", "calendar", "controls", "notifications"]   # [] leaves it out
+visualizer = ["bars", "wave", "ring"]   # run only while music plays and one is on screen; [] is off
 notifications = true              # false keeps your own notification daemon
-disable = []                      # parts to leave out wherever they appear, plus "calc" and "web"
+disable = []                      # parts to leave out wherever they appear, plus "calc", "web", "sidebar" and "visualizer"
 
 [ui]
 hover_open = true                 # false: the panel opens only on click or the pin key
 hover_open_ms = 130               # delay before hover opens it
 hover_close_ms = 280              # delay before leaving closes it
+hover_sidebar = true              # resting on the middle of the frame's right border opens the sidebar
+
+[calendar]
+dir = ""                          # a folder of .ics files (vdirsyncer's, or exports) for dots and what's next; never the network
+week_start = "sunday"             # or "monday", "saturday"
 
 # Palette keys. A list replaces the default, [] turns the action off.
 # Chords: ctrl+ alt+ shift+ then a letter or enter, escape, tab, space, backspace,
@@ -59,7 +69,8 @@ low = 3
 normal = 5
 
 [icons]
-# App id = glyph, added to the built-in table in src/pen.rs.
+# App id = a glyph, or the name of one of the island's own icons (src/symbols.rs).
+# Added to the built-in table in src/pen.rs.
 # "org.gnome.nautilus" = "󰉋"
 
 [commands]
@@ -85,7 +96,7 @@ on_change = ""                    # shell command on each new wallpaper; {image}
 # A palette tool made of two commands. Add its name to `tools`.
 # [[tool]]
 # name = "projects"
-# glyph = "󰉋"
+# glyph = "folder"                # an icon's name from src/symbols.rs, or any glyph
 # list = "ls ~/Projects"
 # run = "kitty -d ~/Projects/{}"
 

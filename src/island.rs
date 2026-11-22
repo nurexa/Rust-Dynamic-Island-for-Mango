@@ -1169,7 +1169,7 @@ pub(crate) fn live_bounds(live: &[Live], origin: (f64, f64)) -> Option<Rect> {
         (x0, y0) = (x0.min(x - 1.0), y0.min(y - 1.0));
         (x1, y1) = (x1.max(x + w + 1.0), y1.max(y + h + 1.0));
     }
-    (!live.is_empty()).then(|| (x0 + origin.0, y0 + origin.1, x1 - x0, y1 - y0))
+    (!live.is_empty()).then_some((x0 + origin.0, y0 + origin.1, x1 - x0, y1 - y0))
 }
 
 /// Fits the tallest panel, so opening never needs a layer resize.

@@ -181,7 +181,7 @@ mod tests {
     use cairo::{Format, ImageSurface};
 
     fn canvas() -> Context {
-        Context::new(&ImageSurface::create(Format::ARgb32, 8, 8).unwrap()).unwrap()
+        Context::new(ImageSurface::create(Format::ARgb32, 8, 8).unwrap()).unwrap()
     }
 
     fn inside(cr: &Context, x: f64, y: f64) -> bool {

@@ -222,6 +222,11 @@ fn zone(id: &str) -> Option<TimeZone> {
     } else {
         id.to_owned()
     };
+    // Only what a zone's name looks like: GLib also takes `:/any/path` and reads it.
+    let plain = id.starts_with(|c: char| c.is_ascii_alphabetic()) && id.chars().all(|c| c.is_ascii_alphanumeric() || "/_-+".contains(c));
+    if !plain {
+        return None;
+    }
     TimeZone::from_identifier(Some(&id))
 }
 
@@ -668,7 +673,10 @@ mod tests {
                      "DTSTART:20261101\r\nDURATION:P99999999999999W", "DTSTART;TZID=\"x:y\":20261101T100000"] {
             found(&event(body), a, b);
         }
-        assert!(zone("/../../etc/passwd").is_none() && zone("../../../etc/passwd").is_none());
+        for id in ["/../../etc/passwd", "../../../etc/passwd", ":/dev/zero", "/x/:/dev", "/a//:/dev/zero", "C:evil", ""] {
+            assert!(zone(id).is_none(), "{id} mustn't reach GLib");
+        }
+        assert!(zone("America/Argentina/Buenos_Aires").is_some() && zone("/mozilla.org/20070129_1/Europe/Paris").is_some());
         assert_eq!(unescape("Tea\\, then\\ncake\u{7}"), "Tea, then cake");
         assert_eq!(unfold("SUMMARY:Lo\r\n ng\r\nX:1"), ["SUMMARY:Long", "X:1"]);
     }
