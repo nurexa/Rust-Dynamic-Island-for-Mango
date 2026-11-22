@@ -1,5 +1,5 @@
 #!/bin/bash
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
 export ISLAND_BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)} DBUS_SESSION_BUS_ADDRESS=unix:path=$R/bus PATH=$H/shim:$PATH
 rm -f $R/island/state; $H/isl; sleep .5; P=$(cat $R/island.pid)
 m(){ echo "$1: anon=$(awk '/RssAnon/{print $2}' /proc/$P/status) rss=$(awk '/VmRSS/{print $2}' /proc/$P/status) fds=$(ls /proc/$P/fd | wc -l) threads=$(awk '/Threads/{print $2}' /proc/$P/status)"; }

@@ -1,5 +1,5 @@
 #!/bin/bash
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$R/bus
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 vol(){ python3 -c "import json;d=json.load(open('$R/sink'));print(d['vol'],d['mute'])"; }
@@ -11,19 +11,19 @@ $V click 1203 203; sleep .4; ok "media: next" "$(last)" "media: next"
 $V click 1160 203; sleep .4; ok "media: play-pause" "$(last)" "media: play-pause"
 sleep .4; grim $H/run/h1.png; magick $H/run/h1.png -crop 640x360+640+0 $H/run/h1s.png
 $V click 1160 203; sleep .5
-$V click 1045 341; sleep .5; ok "slider click sets volume" "$(vol)" "50 False"
-$V click 708 341; sleep .5; ok "mute button" "$(vol)" "50 True"
-$V click 708 341; sleep .5; ok "unmute" "$(vol)" "50 False"
-$V move 1100 341; sleep .15; $V scroll -1; sleep .5; ok "scroll on slider: +5" "$(vol)" "55 False"
+$V click 1045 491; sleep .5; ok "slider click sets volume" "$(vol)" "50 False"
+$V click 708 491; sleep .5; ok "mute button" "$(vol)" "50 True"
+$V click 708 491; sleep .5; ok "unmute" "$(vol)" "50 False"
+$V move 1100 491; sleep .15; $V scroll -1; sleep .5; ok "scroll on slider: +5" "$(vol)" "55 False"
 $V scroll 1; sleep .5; ok "scroll on slider: -5" "$(vol)" "50 False"
 # drag along the slider without moving the island
-$V move 1000 341; sleep .1; $V down; sleep .05; $V path 1000 341 1110 341 12 8; $V up; sleep .5
+$V move 1000 491; sleep .1; $V down; sleep .05; $V path 1000 491 1110 491 12 8; $V up; sleep .5
 echo "     slider drag -> $(vol), last cmd: $(tail -1 $R/audio.log)"
 ok "slider drag did not undock" "$(grep -c pos $R/island/state 2>/dev/null || echo 0)" 0
 # tray
-$V click 1205 399; sleep .4; ok "tray left: Activate" "$(last)" "tray: activate"
-$V click 1205 399 m; sleep .4; ok "tray middle: SecondaryActivate" "$(last)" "tray: secondary"
-$V click 1205 399 r; sleep .7; grim $H/run/h2.png; magick $H/run/h2.png -crop 640x300+640+0 $H/run/h2s.png
+$V click 1205 549; sleep .4; ok "tray left: Activate" "$(last)" "tray: activate"
+$V click 1205 549 m; sleep .4; ok "tray middle: SecondaryActivate" "$(last)" "tray: secondary"
+$V click 1205 549 r; sleep .7; grim $H/run/h2.png; magick $H/run/h2.png -crop 640x300+640+0 $H/run/h2s.png
 $V move 1000 200
 # menu: submenu, back, click (mock logs the event)
 $V click 900 117; sleep .6; grim $H/run/h3.png; magick $H/run/h3.png -crop 640x200+640+0 $H/run/h3s.png

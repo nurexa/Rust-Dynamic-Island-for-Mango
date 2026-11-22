@@ -1,7 +1,7 @@
 #!/bin/bash
 # Stands in for a compositor with no backend: Mango's IPC is hidden, so all the
 # island has is what any wlr-layer-shell compositor would give it.
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 px(){ python3 $H/px.py "$@"; }
 layers(){ mmsg get all-layers | python3 -c "import json,sys;print(sorted(l['name'] for l in json.load(sys.stdin)['layers']))"; }

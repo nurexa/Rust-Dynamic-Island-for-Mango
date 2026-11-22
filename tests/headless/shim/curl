@@ -1,0 +1,7 @@
+#!/bin/bash
+# The island must never reach the network from a test. It logs what it was asked for, and
+# answers a forecast from run/forecast.json when the test has put one there.
+H=$(dirname "$(readlink -f "$0")")/..
+echo "curl $*" >> $H/run/shim.log
+case "$*" in *open-meteo*) [ -f $H/run/forecast.json ] && exec cat $H/run/forecast.json;; esac
+exit 22

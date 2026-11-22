@@ -1,6 +1,6 @@
 #!/bin/bash
 # The notification daemon, tested with the real notify-send on a private bus.
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 px(){ python3 $H/px.py "$@"; }
 BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}
@@ -112,7 +112,8 @@ ok "groups: clearing one app leaves the others" "$(about $(($(height n17) - $(he
 ok "groups: each cleared note reports dismissed" "$(grep -cE '^NotificationClosed [234] 2$' $R/sigs)" 3
 id=$(ask "Dinner?" 0); sleep .6
 $V click 1196 87; sleep .5; grim $H/run/n21.png
-ok "history reply: the entry turns into a field" "$(px $H/run/n21.png 1100 134 | awk '{print ($1 < 14 ? "well" : "card")}')" well
+# Flat depth: the field is a veil over the card, not a darker well, so it's the card's own face it must differ from.
+ok "history reply: the entry turns into a field" "$([ "$(px $H/run/n21.png 1100 134)" != "$(px $H/run/n21.png 1100 205)" ] && echo field)" field
 $V type on my way; $V key Return; $V move 1500 900; sleep .6
 ok "history reply: Enter sends it" "$(grep "NotificationReplied $id " $R/sigs)" "NotificationReplied $id on my way"
 $BIN pin; $BIN dnd; kill $(cat $R/sigs.pid)

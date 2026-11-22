@@ -1,6 +1,6 @@
 #!/bin/bash
 # A laptop: a fake UPower on a private system bus. Plugging, unplugging, low warnings.
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; R=$XDG_RUNTIME_DIR
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; R=$XDG_RUNTIME_DIR
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$R/bus PATH=$H/shim:$PATH
 BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}

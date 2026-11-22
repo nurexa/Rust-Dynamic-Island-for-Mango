@@ -1,7 +1,7 @@
 #!/bin/bash
 # The sidebar, the calendar in it, and capture following playback and visibility.
 # parec is the shim's, so nothing is recorded. Needs fresh.sh 1 and full.sh.
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; R=$XDG_RUNTIME_DIR; V=$H/vp
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; R=$XDG_RUNTIME_DIR; V=$H/vp
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$R/bus PATH=$H/shim:$PATH
 BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
