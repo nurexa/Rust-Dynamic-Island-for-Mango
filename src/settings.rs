@@ -388,7 +388,7 @@ impl Default for Config {
             clock: "%I:%M %p".into(),
             palette: "~/.config/theme/generated/colors.toml".into(),
             pill: list(&["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]),
-            panel: list(&["header", "clock", "calendar", "stats", "weather", "about", "media", "timer", "notifications", "audio", "brightness", "nightlight", "status", "bluetooth"]),
+            panel: list(&["header", "clock", "calendar", "stats", "weather", "about", "timer", "media", "notifications", "audio", "brightness", "nightlight", "status", "bluetooth"]),
             sidebar: list(&["media", "calendar", "controls", "notifications"]),
             visualizer: vec![crate::viz::Look::Bars, crate::viz::Look::Wave, crate::viz::Look::Ring],
             calendar: Calendar::default(),

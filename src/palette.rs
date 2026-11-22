@@ -236,6 +236,12 @@ impl Palette {
             self.shown.insert(0, self.items.len() - 1);
             self.instant += 1;
         }
+        if q.eq_ignore_ascii_case("meow") {
+            let act = Act::Sh("printf %s '=^･ω･^=' | wl-copy".into());
+            self.items.push(Item::new("=^･ω･^=  mrrp!", Icon::Glyph("star_shine".into()), act).sub("There's a cat in here. Enter copies it"));
+            self.shown.insert(0, self.items.len() - 1);
+            self.instant += 1;
+        }
         if !self.web.is_empty() {
             let url = self.web.replace("{}", &url_encode(q));
             let act = Act::Sh(format!("xdg-open {}", quote(&url)));
