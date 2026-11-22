@@ -22,8 +22,6 @@ pub struct Ask {
 pub struct Palette {
     pub entries: Vec<Entry>,
     pub current: usize,
-    /// The row to land on when the list arrives.
-    pub hold: Option<(usize, usize)>,
     pub query: String,
     pub items: Vec<Item>,
     /// Indices into `items`, best match first.
@@ -44,6 +42,22 @@ pub struct Palette {
     pub calc: bool,
     /// Rows worked out from the query (a sum, a web search), kept at the end of `items`.
     instant: usize,
+    /// The row that opened each list in `back`: its title, its place, the first in view.
+    pub trail: Vec<(String, usize, usize)>,
+    /// The list as it was before a setting's field took its place.
+    typing_over: Option<(String, usize, usize)>,
+    /// Where to come back to once the list has been built again.
+    pub replay: Option<Place>,
+    /// How the last change went, and whether it did.
+    pub notice: Option<(String, bool)>,
+}
+
+/// Somewhere in nested lists, found again by name when they're rebuilt.
+pub struct Place {
+    trail: Vec<(String, usize, usize)>,
+    query: String,
+    selected: usize,
+    top: usize,
 }
 
 pub enum Outcome {
@@ -97,9 +111,9 @@ fn score_sub(query: &str, text: &str) -> Option<i32> {
 
 impl Palette {
     pub fn new(entries: Vec<Entry>, current: usize, generation: u64) -> Self {
-        Palette { entries, current, hold: None, query: String::new(), items: Vec::new(), shown: Vec::new(), selected: 0, top: 0,
+        Palette { entries, current, query: String::new(), items: Vec::new(), shown: Vec::new(), selected: 0, top: 0,
                   generation, loading: true, ask: None, confirming: None, dmenu: None, back: Vec::new(),
-                  web: String::new(), calc: true, instant: 0 }
+                  web: String::new(), calc: true, instant: 0, trail: Vec::new(), typing_over: None, replay: None, notice: None }
     }
 
     pub fn dmenu(prompt: String, password: bool, items: Vec<Item>, dmenu: Dmenu) -> Self {
@@ -119,18 +133,77 @@ impl Palette {
             self.items = items;
             self.instant = 0;
             self.loading = false;
-            self.refilter();
-            if let Some((selected, top)) = self.hold.take() {
-                self.selected = selected.min(self.shown.len().saturating_sub(1));
-                self.top = top.min(self.selected);
+            if let Some(place) = self.replay.take() {
+                return self.go_to(place);
             }
+            self.refilter();
         }
+    }
+
+    /// Where to come back to after a change that steps out of `up` pages.
+    pub fn place(&self, up: usize) -> Place {
+        let (query, selected, top) = self.typing_over.clone().unwrap_or((self.query.clone(), self.selected, self.top));
+        let mut place = Place { trail: self.trail.clone(), query, selected, top };
+        for _ in 0..up {
+            let Some((_, selected, top)) = place.trail.pop() else { break };
+            (place.selected, place.top) = (selected, top);
+            place.query.clear();
+        }
+        place
+    }
+
+    fn go_to(&mut self, place: Place) {
+        self.back.clear();
+        self.trail.clear();
+        self.ask = None;
+        self.typing_over = None;
+        let mut arrived = true;
+        for step in place.trail {
+            let found = self.items.iter().find_map(|i| match &i.act {
+                Act::Open(inner) if i.title == step.0 => Some(inner.clone()),
+                _ => None,
+            });
+            let Some(inner) = found else {
+                // That page is gone with the change: stay on the one it was in.
+                (self.selected, self.top) = (step.1, step.2);
+                arrived = false;
+                break;
+            };
+            self.back.push(std::mem::replace(&mut self.items, inner));
+            self.trail.push(step);
+        }
+        let (selected, top) = if arrived { (place.selected, place.top) } else { (self.selected, self.top) };
+        self.query = if arrived { place.query } else { String::new() };
+        self.refilter();
+        self.land(selected, top);
+    }
+
+    fn land(&mut self, selected: usize, top: usize) {
+        self.selected = selected.min(self.shown.len().saturating_sub(1));
+        self.top = top.min(self.selected);
+        if self.selected >= self.top + VISIBLE_ROWS {
+            self.top = self.selected + 1 - VISIBLE_ROWS;
+        }
+    }
+
+    /// Esc in a setting's field puts the list back as it was.
+    fn stop_typing(&mut self) -> Outcome {
+        let Some((query, selected, top)) = self.typing_over.take() else { return Outcome::Nothing };
+        self.ask = None;
+        self.notice = None;
+        self.query = query;
+        self.refilter();
+        self.land(selected, top);
+        Outcome::Redraw
     }
 
     fn refilter(&mut self) {
         self.items.truncate(self.items.len() - self.instant);
         self.instant = 0;
         let mut hits: Vec<(i32, usize)> = self.items.iter().enumerate().filter_map(|(i, it)| {
+            if it.deep && self.query.is_empty() {
+                return None;
+            }
             let title = score(&self.query, &it.title);
             // The subtitle counts for less, so "code" finds Code before a mention of it.
             let sub = (!self.query.is_empty()).then(|| score_sub(&self.query, &it.sub)).flatten();
@@ -222,8 +295,16 @@ impl Palette {
                 self.ask = Some(Ask { label, password, then: Some(then) });
                 Outcome::Redraw
             }
+            Act::Type { label, value, field } => {
+                self.typing_over = Some((std::mem::replace(&mut self.query, value), self.selected, self.top));
+                self.ask = Some(Ask { label, password: false, then: Some(Then::Setting(field)) });
+                self.notice = None;
+                Outcome::Redraw
+            }
             Act::Reply(text) => self.reply(text),
             Act::Open(items) => {
+                self.trail.push((self.items[index].title.clone(), self.selected, self.top));
+                self.notice = None;
                 self.back.push(std::mem::replace(&mut self.items, items));
                 self.query.clear();
                 self.refilter();
@@ -231,6 +312,7 @@ impl Palette {
             }
             Act::Back => self.pop(),
             Act::Load(list) => {
+                self.trail.push((self.items[index].title.clone(), self.selected, self.top));
                 self.back.push(std::mem::take(&mut self.items));
                 self.query.clear();
                 self.refilter();
@@ -250,7 +332,12 @@ impl Palette {
         self.generation += 1;
         self.loading = false;
         self.query.clear();
+        self.notice = None;
         self.refilter();
+        // Back on the row that led in.
+        if let Some((_, selected, top)) = self.trail.pop() {
+            self.land(selected, top);
+        }
         Outcome::Redraw
     }
 
@@ -268,8 +355,12 @@ impl Palette {
         self.current = to;
         self.query.clear();
         self.ask = None;
+        self.typing_over = None;
+        self.replay = None;
+        self.notice = None;
         self.items.clear();
         self.back.clear();
+        self.trail.clear();
         self.refilter();
         self.loading = true;
         self.generation += 1;
@@ -300,6 +391,7 @@ impl Palette {
             p.query.truncate(keep);
         };
         match keys.action(sym, mods.ctrl, mods.alt, mods.shift) {
+            Some(KeyAct::Close) if self.typing_over.is_some() && self.ask.is_some() => return self.stop_typing(),
             Some(KeyAct::Close) if !self.back.is_empty() => return self.pop(),
             Some(KeyAct::Close) => return Outcome::Close,
             Some(KeyAct::Accept) => return self.choose(),

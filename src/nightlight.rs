@@ -22,7 +22,7 @@ pub const MIN_K: u32 = 2500;
 pub const MAX_K: u32 = 6500;
 
 /// `[nightlight]` in config.toml.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Settings {
     /// "20:00-07:00" turns it on and off by itself. Empty is manual only.

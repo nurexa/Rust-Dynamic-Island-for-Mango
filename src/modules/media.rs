@@ -42,7 +42,7 @@ fn art(p: &mut Pen, c: &Ctx, (x, y, size, _): Rect, playing: bool) {
             let _ = p.cr.restore();
         }
         None => {
-            p.fill((ax, ay, d, d), r, pal.fg, 0.07);
+            p.well((ax, ay, d, d), r);
             let icon = (d * 0.42).round();
             p.icon("music_note", playing, icon, ax + (d - icon) / 2.0, ay + (d - icon) / 2.0, pal.muted, 1.0);
         }
@@ -57,8 +57,9 @@ pub fn player(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let Some(t) = &c.m.media else { return y };
     let pal = p.pal;
     let (size, width) = (124.0, p.w - 2.0 * PAD);
-    let card = (PAD, y, width, size + 16.0);
-    p.fill(card, 18.0, pal.fg, 0.055);
+    // As wide as the cards under it.
+    let card = (PAD - 12.0, y, width + 24.0, size + 16.0);
+    p.surface(card, 18.0, pal.tint);
     if t.playing && c.looks(Look::Wave) {
         p.live.push(Live { look: Look::Wave, rect: card });
     }
@@ -68,15 +69,14 @@ pub fn player(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     p.text(&t.title, 14.0, Weight::Semibold, pal.fg, x, y + 30.0, max);
     p.text(&t.artist, 12.0, Weight::Normal, pal.muted, x, y + 49.0, max);
     if t.length > 0.0 {
-        p.fill((x, y + 67.0, max, 3.0), 1.5, pal.fg, 0.14);
-        p.fill((x, y + 67.0, max * (t.now() / t.length).clamp(0.0, 1.0), 3.0), 1.5, pal.accent, 1.0);
+        p.meter((x, y + 66.0, max, 5.0), t.now() / t.length);
     }
     let (mid, cy) = (x + max / 2.0, y + 103.0);
     let cmd = |s: &str| Action::Sh(s.to_owned());
     let r = (mid - 58.0, cy - 17.0, 34.0, 34.0);
     p.button("skip_previous", r, false, Region::new(r, 17.0, cmd("playerctl previous")));
     let r = (mid - 21.0, cy - 21.0, 42.0, 42.0);
-    p.fill(r, 21.0, pal.accent, 1.0);
+    p.surface(r, 21.0, pal.accent);
     let play = if t.playing { "pause" } else { "play_arrow" };
     p.icon(play, true, 22.0, r.0 + 10.0, r.1 + 10.0, pal.on_accent, 1.0);
     p.regions.push(Region::new(r, 21.0, cmd("playerctl play-pause")));
@@ -103,9 +103,8 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     p.text(&t.title, 14.0, Weight::Semibold, pal.fg, x, y + 13.0, max);
     p.text(&t.artist, 12.0, Weight::Normal, pal.muted, x, y + 31.0, max);
     if t.length > 0.0 {
-        let bar = (x, y + 47.0, max, 3.0);
-        p.fill(bar, 1.5, pal.fg, 0.14);
-        p.fill((bar.0, bar.1, bar.2 * (t.now() / t.length).clamp(0.0, 1.0), bar.3), 1.5, pal.accent, 1.0);
+        let bar = (x, y + 46.0, max, 5.0);
+        p.meter(bar, t.now() / t.length);
     }
     let cy = y + size / 2.0;
     let end = p.w - PAD;
@@ -114,8 +113,8 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let r = (end - 118.0, cy - 17.0, 34.0, 34.0);
     p.button("skip_previous", r, false, Region::new(r, 17.0, cmd("playerctl previous")));
     let r = (end - 80.0, cy - 21.0, 42.0, 42.0);
-    p.fill(r, 21.0, pal.fg, 0.1);
-    p.icon(play, t.playing, 22.0, r.0 + 10.0, r.1 + 10.0, pal.fg, 1.0);
+    p.surface(r, 21.0, pal.accent);
+    p.icon(play, true, 22.0, r.0 + 10.0, r.1 + 10.0, pal.on_accent, 1.0);
     p.regions.push(Region::new(r, 21.0, cmd("playerctl play-pause")));
     let r = (end - 34.0, cy - 17.0, 34.0, 34.0);
     p.button("skip_next", r, false, Region::new(r, 17.0, cmd("playerctl next")));

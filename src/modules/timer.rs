@@ -43,7 +43,6 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     }
     // Progress under the row.
     let bar = p.w - 2.0 * PAD;
-    p.fill((PAD, y + h + 2.0, bar, 3.0), 1.5, pal.fg, 0.12);
-    p.fill((PAD, y + h + 2.0, bar * t.progress(now), 3.0), 1.5, pal.accent, 1.0);
+    p.meter((PAD, y + h + 1.0, bar, 5.0), t.progress(now));
     y + h + 14.0
 }

@@ -20,11 +20,9 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     p.button("bedtime", icon, n.on, Region::new((icon.0, y, icon.2 + tw + 10.0, h), 15.0, Action::Night));
     let x = PAD + 30.0 + label_w + 12.0;
     let w = p.w - PAD - 50.0 - x; // "3400K" is wider than a percentage
-    p.fill((x, cy - 2.0, w, 4.0), 2.0, pal.fg, 0.14);
     let frac = (MAX_K - n.warmth) as f64 / (MAX_K - MIN_K) as f64;
     let on = if n.on { pal.accent } else { pal.muted };
-    p.fill((x, cy - 2.0, w * frac, 4.0), 2.0, on, 1.0);
-    p.fill((x + w * frac - 6.0, cy - 6.0, 12.0, 12.0), 6.0, pal.fg, 1.0);
+    p.slider(x, cy, w, frac, on);
     p.right(&format!("{}K", n.warmth), 12.0, Weight::Medium, pal.muted, p.w - PAD, cy);
     p.regions.push(Region::new((x - 6.0, y, w + 12.0, h), 8.0, Action::Warmth));
     y + h + 2.0

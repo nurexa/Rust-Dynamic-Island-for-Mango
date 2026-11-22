@@ -1,12 +1,34 @@
 //! Colors come from one small file of tokens, re-read whenever it changes. Point
 //! `palette` at anything that writes one; matugen, in the setup this was built on.
+//!
+//! Depth is worked out from those few colors, so any of them will do. From the back:
+//! `well` (tracks, fields), `bg` (the island), `card` (a section), `raised` (what can be
+//! pressed) and `tint` (the section that leads). Each is a step of contrast from the
+//! last, not a fixed lightening, which vanishes on black and shouts on purple.
 use std::path::PathBuf;
 
 pub type Rgb = (f64, f64, f64);
 
+const BLACK: Rgb = (0.0, 0.0, 0.0);
+const WHITE: Rgb = (1.0, 1.0, 1.0);
+
+/// Above the island, as contrast against it: a card, the leading card, a control.
+const CARD: f64 = 1.22;
+const TINT: f64 = 1.4;
+const RAISED: f64 = 1.52;
+/// A dark island no lighter than this leaves white text 7:1 on the highest step.
+const DARKEST_INK_BG: f64 = 0.04;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Palette {
     pub bg: Rgb,
+    pub well: Rgb,
+    pub card: Rgb,
+    pub tint: Rgb,
+    pub raised: Rgb,
+    /// The lit rim that separates one step from the next.
+    pub edge: Rgb,
+    pub dark: bool,
     pub fg: Rgb,
     pub muted: Rgb,
     pub accent: Rgb,
@@ -47,28 +69,75 @@ pub fn mix(a: Rgb, b: Rgb, t: f64) -> Rgb {
     (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t)
 }
 
-/// Pull `c` toward black or white, whichever the background leaves room for,
-/// until it reads at `ratio`.
-fn readable(c: Rgb, bg: Rgb, ratio: f64) -> Rgb {
-    let to = if luminance(bg) < 0.5 { (1.0, 1.0, 1.0) } else { (0.0, 0.0, 0.0) };
-    (0..=20).map(|i| mix(c, to, i as f64 / 20.0)).find(|&c| contrast(c, bg) >= ratio).unwrap_or(to)
+/// The least mix of `from` toward `to` for which `far` holds, or all the way.
+fn until(from: Rgb, to: Rgb, far: impl Fn(Rgb) -> bool) -> Rgb {
+    if far(from) {
+        return from;
+    }
+    let (mut short, mut enough) = (0.0, 1.0);
+    for _ in 0..16 {
+        let t = (short + enough) / 2.0;
+        if far(mix(from, to, t)) { enough = t } else { short = t }
+    }
+    mix(from, to, enough)
+}
+
+fn step(from: Rgb, toward: Rgb, ratio: f64) -> Rgb {
+    until(from, toward, |c| contrast(c, from) >= ratio)
+}
+
+/// Pull `c` toward black or white, whichever all of `on` leaves room for, until it
+/// reads at `ratio` on every one of them.
+fn readable(c: Rgb, on: &[Rgb], ratio: f64) -> Rgb {
+    let worst = |c: Rgb| on.iter().map(|&bg| contrast(c, bg)).fold(f64::MAX, f64::min);
+    let to = if worst(WHITE) >= worst(BLACK) { WHITE } else { BLACK };
+    until(c, to, |c| worst(c) >= ratio)
+}
+
+fn build(surface: Rgb, fg: Rgb, muted: Rgb, accent: Rgb, on_accent: Rgb, error: Rgb) -> Palette {
+    let dark = luminance(surface) < 0.5;
+    let (bg, well, card, tint, raised, edge);
+    if dark {
+        // Dark palettes sink most of the way to black: the island should read as
+        // hardware, tinted just enough to belong to the wallpaper.
+        bg = until(mix(surface, BLACK, 0.62), BLACK, |c| luminance(c) <= DARKEST_INK_BG);
+        // The steps climb toward the accent's pale end, so they keep the palette's hue.
+        let light = mix(accent, WHITE, 0.6);
+        well = mix(bg, BLACK, 0.45);
+        card = step(bg, light, CARD);
+        tint = step(bg, mix(accent, WHITE, 0.15), TINT);
+        raised = step(bg, light, RAISED);
+        edge = step(bg, light, 2.6);
+    } else {
+        // In the light there's no room above paper white, so the island steps back instead.
+        bg = step(surface, BLACK, 1.12);
+        well = step(bg, BLACK, 1.12);
+        card = mix(surface, WHITE, 0.5);
+        tint = step(card, mix(accent, BLACK, 0.2), 1.16);
+        raised = step(card, mix(accent, BLACK, 0.6), 1.22);
+        edge = WHITE;
+    }
+    let all = [bg, well, card, tint, raised];
+    let accent = readable(accent, &all, 3.0);
+    Palette {
+        bg,
+        well,
+        card,
+        tint,
+        raised,
+        edge,
+        dark,
+        fg: readable(fg, &all, 7.0),
+        muted: readable(muted, &all, 3.8),
+        accent,
+        on_accent: readable(on_accent, &[accent], 4.5),
+        error: readable(error, &all, 3.0),
+    }
 }
 
 pub fn parse(src: &str) -> Option<Palette> {
-    let surface = token(src, "surface")?;
-    let dark = luminance(surface) < 0.5;
-    // Dark palettes sink most of the way to black: the island should read as
-    // hardware, tinted just enough to belong to the wallpaper.
-    let bg = if dark { mix(surface, (0.0, 0.0, 0.0), 0.62) } else { surface };
-    let accent = readable(token(src, "accent")?, bg, 3.0);
-    Some(Palette {
-        bg,
-        fg: readable(token(src, "on_surface")?, bg, 7.0),
-        muted: readable(token(src, "muted")?, bg, 3.5),
-        accent,
-        on_accent: readable(token(src, "on_accent")?, accent, 4.5),
-        error: readable(token(src, "error")?, bg, 3.0),
-    })
+    let t = |key| token(src, key);
+    Some(build(t("surface")?, t("on_surface")?, t("muted")?, t("accent")?, t("on_accent")?, t("error")?))
 }
 
 /// None on a file that doesn't parse, which is also what a read during a write
@@ -79,14 +148,9 @@ pub fn reload(path: &str) -> Option<Palette> {
 
 pub fn load(path: &str) -> Palette {
     let fallback = || parse(&std::fs::read_to_string(expand(path).parent()?.join("../tokens/colors.fallback.toml")).ok()?);
-    reload(path).or_else(fallback).unwrap_or(Palette {
-            bg: (0.0, 0.0, 0.0),
-            fg: (1.0, 1.0, 1.0),
-            muted: (0.6, 0.6, 0.6),
-            accent: (0.56, 0.81, 0.95),
-            on_accent: (0.0, 0.2, 0.3),
-            error: (1.0, 0.7, 0.67),
-        })
+    reload(path).or_else(fallback).unwrap_or_else(|| {
+        build(BLACK, WHITE, (0.6, 0.6, 0.6), (0.56, 0.81, 0.95), (0.0, 0.2, 0.3), (1.0, 0.7, 0.67))
+    })
 }
 
 #[cfg(test)]
@@ -113,6 +177,28 @@ mod tests {
         }
         assert!(luminance(pal(["#0f1417", "#dfe3e7", "#8fcff3"]).bg) < 0.01, "dark stays near black");
         assert!(luminance(pal(["#f6fafe", "#171c1f", "#0a6780"]).bg) > 0.8, "light palette stays light");
+    }
+
+    /// Any color anyone picks: 216 surfaces, each under 8 accents.
+    #[test]
+    fn every_color_keeps_its_layers_apart_and_its_text_readable() {
+        let level = |i: usize| (i % 6) as f64 / 5.0;
+        let cube: Vec<Rgb> = (0..216).map(|i| (level(i / 36), level(i / 6), level(i))).collect();
+        let grey = (0.5, 0.5, 0.5);
+        for &surface in &cube {
+            for &accent in cube.iter().step_by(31).chain([&WHITE]) {
+                let p = build(surface, grey, grey, accent, grey, grey);
+                let at = format!("surface {surface:?}, accent {accent:?}");
+                for on in [p.bg, p.well, p.card, p.tint, p.raised] {
+                    assert!(contrast(p.fg, on) >= 6.9, "text, {at}");
+                    assert!(contrast(p.muted, on) >= 3.7, "muted, {at}");
+                    assert!(contrast(p.accent, on) >= 2.9, "accent, {at}");
+                }
+                assert!(contrast(p.on_accent, p.accent) >= 4.4, "on accent, {at}");
+                assert!(contrast(p.card, p.bg) >= 1.08, "a card vanished, {at}");
+                assert!(contrast(p.raised, p.card) >= 1.15, "a control vanished, {at}");
+            }
+        }
     }
 
     #[test]

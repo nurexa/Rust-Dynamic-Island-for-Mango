@@ -25,7 +25,7 @@ mod clipboard;
 mod power;
 #[cfg(feature = "run")]
 mod run;
-mod settings;
+pub mod settings;
 #[cfg(feature = "screenshot")]
 pub mod screenshot;
 #[cfg(feature = "wallpaper")]
@@ -70,16 +70,57 @@ pub enum Act {
     /// Like `Open`, for a list that takes a while to build (a Bluetooth scan): it's
     /// built on a worker the way a tool's own list is, and shows loading meanwhile.
     Load(fn(&Ctx) -> Vec<Item>),
-    /// One of the island's settings commands. The list stays open, showing the change.
-    Setting(String),
+    /// A change to config.toml. The list stays open, showing it.
+    Edit(Edit),
+    /// A text field holding `value`, for a setting. Esc leaves it as it was.
+    Type { label: String, value: String, field: Field },
+}
+
+/// What a button in Settings saves.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Edit {
+    pub changes: Vec<crate::config_edit::Change>,
+    /// Pages to step back out of once it's saved.
+    pub up: usize,
+}
+
+/// Where typed text goes in config.toml, and what it has to be.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Field {
+    pub key: Vec<String>,
+    pub input: Input,
+    pub up: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Input {
+    Text,
+    Number { min: f64, max: f64, whole: bool },
+    /// A file that has to read as a palette.
+    Palette,
+    /// Keys, with commas between.
+    Chords,
+    /// `app id = icon`
+    Pair,
+    /// The name of a new `[[custom]]` or `[[tool]]`, which goes at this index.
+    New { at: usize },
+}
+
+/// What a row shows at its right end.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Tail {
+    None,
+    Switch(bool),
+    Value(String),
+    /// Opens a page.
+    More,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Then {
     #[cfg(feature = "wifi")]
     WifiPassword(String),
-    /// Exists so this enum isn't empty when every tool is compiled out.
-    Nothing,
+    Setting(Field),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -104,11 +145,24 @@ pub struct Item {
     pub act: Act,
     /// Added to the match score: how launch counts lift favourites.
     pub boost: i32,
+    pub tail: Tail,
+    /// From further in: only there once something's typed.
+    pub deep: bool,
 }
 
 impl Item {
     pub fn new(title: impl Into<String>, icon: Icon, act: Act) -> Self {
-        Item { title: title.into(), sub: String::new(), icon, act, boost: 0 }
+        Item { title: title.into(), sub: String::new(), icon, act, boost: 0, tail: Tail::None, deep: false }
+    }
+
+    pub fn tail(mut self, tail: Tail) -> Self {
+        self.tail = tail;
+        self
+    }
+
+    pub fn deep(mut self) -> Self {
+        self.deep = true;
+        self
     }
 
     pub fn sub(mut self, sub: impl Into<String>) -> Self {
@@ -221,10 +275,15 @@ pub fn builtin(name: &str) -> Option<Entry> {
 /// The palette's tabs, in the order config.toml gives. Tools compiled out or
 /// missing their dependencies simply don't appear.
 pub fn enabled(cfg: &Config) -> Vec<Entry> {
-    cfg.tools.iter().filter_map(|name| {
+    let mut tabs: Vec<Entry> = cfg.tools.iter().filter_map(|name| {
         let builtin = TOOLS.iter().position(|t| t.name == name).map(Entry::Builtin);
         builtin.or_else(|| cfg.tool.iter().find(|t| t.name == *name).cloned().map(Entry::Script))
-    }).filter(|e| usable(e, cfg)).collect()
+    }).filter(|e| usable(e, cfg)).collect();
+    // Wherever there are tabs, the last one is how to change them.
+    if !tabs.is_empty() && !tabs.iter().any(|e| e.name() == "settings") {
+        tabs.extend(builtin("settings"));
+    }
+    tabs
 }
 
 fn usable(entry: &Entry, cfg: &Config) -> bool {
@@ -313,13 +372,14 @@ pub fn run_task(task: Task, ctx: Ctx, tx: Tx) {
     let _ = tx;
 }
 
+#[cfg(feature = "wifi")]
 pub fn run_then(then: Then, text: String, tx: Tx) {
     match then {
         #[cfg(feature = "wifi")]
         Then::WifiPassword(ssid) => {
             thread::spawn(move || wifi::connect_with_password(&ssid, &text, &tx));
         }
-        Then::Nothing => drop((text, tx)),
+        Then::Setting(_) => drop((text, tx)), // saved on the UI thread, where the config is
     }
 }
 
@@ -350,6 +410,6 @@ mod tests {
         let mut cfg = Config::default();
         cfg.tools = vec!["power".into(), "nonsense".into(), "run".into()];
         let names: Vec<String> = enabled(&cfg).iter().map(|e| e.name().to_owned()).collect();
-        assert_eq!(names, ["power", "run"]);
+        assert_eq!(names, ["power", "run", "settings"], "and the way to change them comes last");
     }
 }

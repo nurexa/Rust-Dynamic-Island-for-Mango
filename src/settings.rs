@@ -17,7 +17,7 @@ fn state_path() -> PathBuf {
     state_dir().join("state")
 }
 
-#[derive(Deserialize, Clone, Copy, PartialEq, Debug)]
+#[derive(serde::Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum IconStyle {
     /// One-color Nerd Font glyphs in the theme's colors.
@@ -28,7 +28,7 @@ pub enum IconStyle {
 
 /// Shell commands behind the panel's controls. Empty means no action; an empty
 /// `wallpaper_pick` also hides the wallpaper button.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Commands {
     pub wifi: String,
@@ -56,7 +56,7 @@ impl Default for Commands {
 }
 
 /// A module made of a shell command: its first line of output is what shows.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, Deserialize, Clone, Debug)]
 pub struct Custom {
     pub name: String,
     pub exec: String,
@@ -69,7 +69,7 @@ pub struct Custom {
 
 /// A palette tab made of two shell commands. `list` prints one item per line, and
 /// `run` receives the chosen line wherever it says `{}`.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, Deserialize, Clone, Debug)]
 pub struct ScriptTool {
     pub name: String,
     #[serde(default = "default_tool_glyph")]
@@ -83,7 +83,7 @@ fn default_tool_glyph() -> String {
     "search".into()
 }
 
-#[derive(Deserialize, Clone, Debug, Default)]
+#[derive(serde::Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(default)]
 pub struct Wallpaper {
     /// Folder to list. Empty hides the tool.
@@ -97,7 +97,7 @@ pub struct Wallpaper {
     pub on_change: String,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct NotifyTimes {
     pub low: u64,
@@ -116,7 +116,7 @@ pub enum KeyAct { Up, Down, PageUp, PageDown, Accept, Close, NextTool, PrevTool,
 
 /// Palette keys, as lists of chords like `"ctrl+n"` or `"shift+tab"`. A list you set
 /// replaces the default; an empty list turns the action off.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Keys {
     pub up: Vec<String>,
@@ -162,6 +162,11 @@ fn chord_key(name: &str) -> Option<Keysym> {
     })
 }
 
+/// Whether a chord is one the palette understands.
+pub fn valid_chord(chord: &str) -> bool {
+    parse_chord(chord).is_some()
+}
+
 /// (ctrl, alt, shift, key) of a chord string.
 fn parse_chord(chord: &str) -> Option<(bool, bool, bool, Keysym)> {
     let lower = chord.to_lowercase();
@@ -200,7 +205,7 @@ impl Keys {
 }
 
 /// Minutes for each pomodoro phase, and a long break after `rounds` focus rounds.
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(default)]
 pub struct Pomodoro {
     pub focus: u64,
@@ -218,7 +223,7 @@ impl Default for Pomodoro {
 }
 
 /// Claude Code on the island (needs its hooks: ./install.sh --manual, or `island claude-setup`).
-#[derive(Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Claude {
     /// Permission prompts become Allow/Deny cards when you're not looking at that terminal.
@@ -234,7 +239,7 @@ impl Default for Claude {
 }
 
 /// The calendar, wherever it's placed.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Calendar {
     /// A folder of .ics files. Empty is a plain month.
@@ -242,7 +247,7 @@ pub struct Calendar {
     pub week_start: WeekStart,
 }
 
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(serde::Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum WeekStart {
     Monday,
@@ -267,7 +272,7 @@ impl Calendar {
     }
 }
 
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(serde::Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Blur {
     /// For the styles made for it: glass.
@@ -277,7 +282,7 @@ pub enum Blur {
 }
 
 /// Look and feel switches.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Ui {
     /// See-through, so a compositor that blurs layers has something to blur.
@@ -303,7 +308,7 @@ impl Default for Ui {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct Config {
     /// The island's shape. `island style` overrides it until this line changes.

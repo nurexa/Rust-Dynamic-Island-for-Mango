@@ -21,6 +21,11 @@ thread_local! {
 
 pub type Rect = (f64, f64, f64, f64);
 
+/// Shaped text is kept by what it says, not the font it was shaped in.
+pub fn fonts_changed() {
+    SHAPED.with_borrow_mut(|cache| cache.clear());
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     None,
@@ -175,7 +180,7 @@ pub enum View {
 /// App id -> glyph. The ids match what Mango reports, lowercased; a dotted id
 /// also matches on its last part, so `org.foo.kitty` finds `kitty`.
 const GLYPHS: &[(&str, &str)] = &[
-    ("alacritty", "󰆍"),
+    ("alacritty", "terminal"),
     ("blender", "󰂫"),
     ("brave-browser", "󰊯"),
     ("chromium", "󰊯"),
@@ -183,35 +188,38 @@ const GLYPHS: &[(&str, &str)] = &[
     ("code-oss", "󰨞"),
     ("com.obsproject.studio", "󰑋"),
     ("discord", "󰙯"),
-    ("dolphin", "󰉋"),
+    ("dolphin", "folder"),
     ("firefox", "󰈹"),
-    ("foot", "󰆍"),
-    ("ghostty", "󰆍"),
+    ("foot", "terminal"),
+    ("ghostty", "terminal"),
     ("google-chrome", "󰊯"),
-    ("kitty", "󰆍"),
-    ("konsole", "󰆍"),
+    ("kitty", "terminal"),
+    ("konsole", "terminal"),
     ("librewolf", "󰈹"),
     ("mpv", "󰐹"),
-    ("nyachan", "󰊴"),
-    ("obsidian", "󰠮"),
-    ("org.kde.dolphin", "󰉋"),
+    ("nautilus", "folder"),
+    ("nyachan", "sports_esports"),
+    ("obsidian", "description"),
+    ("org.kde.dolphin", "folder"),
     ("org.prismlauncher.prismlauncher", "󰍳"),
-    ("org.vinegarhq.sober", "󰊴"),
-    ("org.vinegarhq.vinegar", "󰊴"),
-    ("pavucontrol", "󰕾"),
+    ("org.vinegarhq.sober", "sports_esports"),
+    ("org.vinegarhq.vinegar", "sports_esports"),
+    ("pavucontrol", "volume_up"),
     ("resolve", "󰕧"),
     ("spotify", "󰓇"),
     ("steam", "󰓓"),
     ("thorium-browser", "󰊯"),
+    ("thunar", "folder"),
     ("vesktop", "󰙯"),
     ("vlc", "󰕼"),
-    ("wezterm", "󰆍"),
-    ("wootility", "󰌌"),
+    ("wezterm", "terminal"),
+    ("wootility", "keyboard"),
     ("zen", "󰈹"),
     ("zen-browser", "󰈹"),
 ];
-const GENERIC_GLYPH: &str = "󰣆";
-const GAME_GLYPH: &str = "󰊴";
+// The island's own rounded icons for kinds of app; the font only for brands' marks.
+const GENERIC_GLYPH: &str = "web_asset";
+const GAME_GLYPH: &str = "sports_esports";
 
 pub fn glyph_for<'a>(cfg: &'a Config, appid: &str) -> &'a str {
     let id = appid.to_lowercase();
@@ -238,6 +246,8 @@ pub struct Pen<'a> {
     pub live: Vec<Live>,
     pub icons: &'a mut Icons,
     pub regions: Vec<Region>,
+    /// How solid the steps above and below the island are: less where it's see-through.
+    pub solid: f64,
 }
 
 impl<'a> Pen<'a> {
@@ -247,7 +257,7 @@ impl<'a> Pen<'a> {
         surf.set_device_scale(s, s);
         let cr = Context::new(&surf).ok()?;
         let layout = pangocairo::functions::create_layout(&cr);
-        Some((surf, Pen { cr, layout, cfg, pal, scale: s, w, live: Vec::new(), icons, regions: Vec::new() }))
+        Some((surf, Pen { cr, layout, cfg, pal, scale: s, w, live: Vec::new(), icons, regions: Vec::new(), solid: 1.0 }))
     }
 
     pub fn clear(&mut self) {
@@ -332,6 +342,104 @@ impl<'a> Pen<'a> {
         let _ = self.cr.fill();
     }
 
+    /// A step up from what's under it: a soft drop, a face that catches a little light
+    /// at the top, and a lit rim. Cards, controls and chips are all this.
+    pub fn surface(&self, rect: Rect, r: f64, face: Rgb) {
+        let (x, y, w, h) = rect;
+        let pal = self.pal;
+        let solid = self.solid;
+        // Through glass a drop would show under the face as a dark smudge.
+        if solid >= 1.0 {
+            let drop = if pal.dark { 0.2 } else { 0.07 };
+            for (grow, a) in [(1.5, 0.45), (0.5, 1.0)] {
+                self.fill((x - grow / 2.0, y + 1.0, w + grow, h + grow), r + grow / 2.0, (0.0, 0.0, 0.0), drop * a);
+            }
+        }
+        let lit = mix(face, pal.edge, if pal.dark { 0.09 } else { 0.1 });
+        let shade = cairo::LinearGradient::new(0.0, y, 0.0, y + h);
+        shade.add_color_stop_rgba(0.0, lit.0, lit.1, lit.2, solid);
+        shade.add_color_stop_rgba(1.0, face.0, face.1, face.2, solid);
+        self.pill(x, y, w, h, r);
+        if self.cr.set_source(&shade).is_ok() {
+            let _ = self.cr.fill();
+        }
+        let rim = cairo::LinearGradient::new(0.0, y, 0.0, y + h);
+        let (er, eg, eb) = pal.edge;
+        rim.add_color_stop_rgba(0.0, er, eg, eb, if pal.dark { 0.42 } else { 0.9 });
+        rim.add_color_stop_rgba(1.0, er, eg, eb, 0.07);
+        self.pill(x + 0.5, y + 0.5, w - 1.0, h - 1.0, r - 0.5);
+        self.cr.set_line_width(1.0);
+        if self.cr.set_source(&rim).is_ok() {
+            let _ = self.cr.stroke();
+        }
+    }
+
+    /// What can be pressed.
+    pub fn raised(&self, rect: Rect, r: f64) {
+        self.surface(rect, r, self.pal.raised);
+    }
+
+    /// A step down: tracks, fields and whatever holds a set of things.
+    pub fn well(&self, rect: Rect, r: f64) {
+        let (x, y, w, h) = rect;
+        self.fill(rect, r, self.pal.well, self.solid);
+        let shade = cairo::LinearGradient::new(0.0, y, 0.0, y + h);
+        shade.add_color_stop_rgba(0.0, 0.0, 0.0, 0.0, if self.pal.dark { 0.4 } else { 0.14 });
+        shade.add_color_stop_rgba(0.6, 0.0, 0.0, 0.0, 0.0);
+        self.pill(x + 0.5, y + 0.5, w - 1.0, h - 1.0, r - 0.5);
+        self.cr.set_line_width(1.0);
+        if self.cr.set_source(&shade).is_ok() {
+            let _ = self.cr.stroke();
+        }
+    }
+
+    /// A surface under what's already drawn, for a card that's as tall as what's on it.
+    pub fn behind(&self, rect: Rect, r: f64, face: Rgb) {
+        let (x, y, w, h) = rect;
+        let _ = self.cr.save();
+        self.cr.rectangle(x - 3.0, y - 3.0, w + 6.0, h + 7.0);
+        self.cr.clip();
+        self.cr.push_group();
+        self.surface(rect, r, face);
+        if self.cr.pop_group_to_source().is_ok() {
+            self.cr.set_operator(cairo::Operator::DestOver);
+            let _ = self.cr.paint();
+        }
+        let _ = self.cr.restore();
+    }
+
+    /// A slider: a track cut in, what's full of it, and a knob that stands out.
+    pub fn slider(&self, x: f64, cy: f64, w: f64, frac: f64, tone: Rgb) {
+        let at = w * frac.clamp(0.0, 1.0);
+        self.well((x, cy - 4.0, w, 8.0), 4.0);
+        if at > 0.0 {
+            self.fill((x, cy - 4.0, at.max(8.0), 8.0), 4.0, tone, 1.0);
+        }
+        let knob = x + at.clamp(0.0, w);
+        self.fill((knob - 7.5, cy - 6.0, 15.0, 15.0), 7.5, (0.0, 0.0, 0.0), 0.22);
+        self.fill((knob - 7.0, cy - 7.0, 14.0, 14.0), 7.0, if self.pal.dark { self.pal.fg } else { tone }, 1.0);
+    }
+
+    /// How far along something is, nothing to drag.
+    pub fn meter(&self, (x, y, w, h): Rect, frac: f64) {
+        self.well((x, y, w, h), h / 2.0);
+        if frac > 0.0 {
+            self.fill((x, y, (w * frac.min(1.0)).max(h), h), h / 2.0, self.pal.accent, 1.0);
+        }
+    }
+
+    pub fn switch(&self, x: f64, cy: f64, on: bool) {
+        let track = (x, cy - 10.0, 36.0, 20.0);
+        let knob = if on {
+            self.surface(track, 10.0, self.pal.accent);
+            self.pal.on_accent
+        } else {
+            self.well(track, 10.0);
+            self.pal.muted
+        };
+        self.fill((if on { x + 19.0 } else { x + 3.0 }, cy - 7.0, 14.0, 14.0), 7.0, knob, 1.0);
+    }
+
     /// `size` is the logical edge: rasters can outlive a scale change, so their
     /// density comes from the raster itself rather than from this output.
     pub fn image(&self, img: &ImageSurface, x: f64, y: f64, size: f64, a: f64) {
@@ -400,10 +508,10 @@ impl<'a> Pen<'a> {
 
     pub fn button(&mut self, symbol: &'static str, rect: Rect, on: bool, region: Region) {
         if on {
-            self.fill(rect, rect.2 / 2.0, self.pal.accent, 0.22);
+            self.surface(rect, rect.2 / 2.0, self.pal.accent);
         }
         let size = 18.0;
-        let c = if on { self.pal.accent } else { self.pal.fg };
+        let c = if on { self.pal.on_accent } else { self.pal.fg };
         self.icon(symbol, on, size, rect.0 + (rect.2 - size) / 2.0, rect.1 + (rect.3 - size) / 2.0, c, 1.0);
         self.regions.push(region);
     }

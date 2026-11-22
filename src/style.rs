@@ -5,7 +5,7 @@ use crate::pen::Rect;
 use cairo::Context;
 use serde::Deserialize;
 
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(serde::Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Style {
     /// A floating pill you can drag anywhere.

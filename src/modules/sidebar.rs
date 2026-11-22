@@ -17,14 +17,26 @@ pub const SECTIONS: &[(&str, Section)] = &[
 pub fn draw(p: &mut Pen, c: &Ctx) -> f64 {
     let mut y = header(p, c, 18.0);
     for name in &c.cfg.sidebar {
-        let start = y;
-        if let Some(custom) = name.strip_prefix("custom:") {
-            y = super::custom::panel(p, c, custom, y);
+        // The player is a card already.
+        let carded = name != "media";
+        let top = if carded { y + super::CARD.1 } else { y };
+        let end = if let Some(custom) = name.strip_prefix("custom:") {
+            super::custom::panel(p, c, custom, top)
         } else if let Some((_, section)) = SECTIONS.iter().find(|(n, _)| n == name) {
-            y = section(p, c, y);
+            section(p, c, top)
+        } else {
+            top
+        };
+        if end <= top {
+            continue;
         }
-        if y > start {
-            y += 10.0;
+        if carded {
+            let spacing = if name == "controls" { 2.0 } else { super::seat(name).1 };
+            let h = end - spacing + super::CARD.1 - y;
+            p.behind((PAD - super::CARD.0, y, p.w - 2.0 * (PAD - super::CARD.0), h), super::CARD_R, p.pal.card);
+            y += h + super::CARD_GAP;
+        } else {
+            y = end + super::CARD_GAP;
         }
     }
     y + 8.0
@@ -36,7 +48,11 @@ fn header(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let w = p.text(&clock::format(&c.cfg.clock), 22.0, Weight::Semibold, pal.fg, PAD, cy, -1.0);
     p.text(&clock::format("%a, %b %-e"), 12.5, Weight::Medium, pal.muted, PAD + w + 10.0, cy + 3.0, -1.0);
     let r = (p.w - PAD - 26.0, y, 32.0, 32.0);
+    p.raised(r, 16.0);
     p.button("close", r, false, Region::new(r, 16.0, Action::Sidebar));
+    let r = (r.0 - 38.0, y, 32.0, 32.0);
+    p.raised(r, 16.0);
+    p.button("settings", r, false, Region::new(r, 16.0, Action::Open("settings")).tip("Settings"));
     y + 32.0 + 16.0
 }
 
@@ -53,10 +69,10 @@ impl Tile {
         let pal = p.pal;
         let (x, y, _, h) = rect;
         let tone = if self.on {
-            p.fill(rect, h / 2.0, pal.accent, 1.0);
+            p.surface(rect, h / 2.0, pal.accent);
             pal.on_accent
         } else {
-            p.fill(rect, 16.0, pal.fg, 0.07);
+            p.raised(rect, 16.0);
             pal.fg
         };
         p.icon(self.icon, self.on, 20.0, x + 16.0, y + h / 2.0 - 10.0, tone, 1.0);

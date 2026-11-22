@@ -41,7 +41,7 @@ fn image(p: &mut Pen, note: &Note, x: f64, y: f64, size: f64) -> bool {
 fn field(p: &mut Pen, c: &Ctx, note: &Note, rect: Rect) -> bool {
     let Some(r) = c.m.notes.replying.as_ref().filter(|r| r.id == note.id) else { return false };
     let pal = p.pal;
-    p.fill(rect, rect.3 / 2.0, pal.fg, 0.08);
+    p.well(rect, rect.3 / 2.0);
     let (x, cy, room) = (rect.0 + 14.0, rect.1 + rect.3 / 2.0, rect.2 - 28.0);
     let caret = |p: &Pen, at: f64| p.fill((at, cy - 8.0, 2.0, 16.0), 1.0, pal.accent, 1.0);
     if r.text.is_empty() {
@@ -106,7 +106,7 @@ pub fn toast(p: &mut Pen, c: &Ctx) -> f64 {
         for (key, label) in buttons {
             let w = p.width(label, 12.0, Weight::Medium) + 24.0;
             let rect = (bx, y, w, 28.0);
-            p.fill(rect, 14.0, pal.fg, 0.1);
+            p.raised(rect, 14.0);
             p.text(label, 12.0, Weight::Medium, pal.fg, bx + 12.0, y + 14.0, -1.0);
             let act = if key == INLINE_REPLY { Action::NoteReply(note.id) } else { Action::NoteAction(note.id, key.clone()) };
             p.regions.push(Region::new(rect, 14.0, act));
@@ -206,7 +206,7 @@ fn row(p: &mut Pen, c: &Ctx, note: &Note, y: f64) -> f64 {
     if let Some(label) = note.reply_label().filter(|_| !replying) {
         let bw = p.width(label, 11.0, Weight::Medium) + 20.0;
         let rect = (end - bw, y + 8.0, bw, 22.0);
-        p.fill(rect, 11.0, pal.fg, 0.1);
+        p.raised(rect, 11.0);
         p.text(label, 11.0, Weight::Medium, pal.fg, rect.0 + 10.0, rect.1 + 11.0, -1.0);
         p.regions.push(Region::new(rect, 11.0, Action::NoteReply(note.id)));
         w -= bw + 8.0;

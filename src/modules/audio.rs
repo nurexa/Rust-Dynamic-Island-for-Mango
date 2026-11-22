@@ -98,9 +98,7 @@ fn devices(p: &mut Pen, title: &str, list: &[audio::Device], current: &str, sour
 fn slider(p: &mut Pen, (x, y, w, h): (f64, f64, f64, f64), volume: u32, muted: bool, act: Action) {
     let pal = p.pal;
     let cy = y + h / 2.0;
-    p.fill((x, cy - 2.0, w, 4.0), 2.0, pal.fg, 0.14);
     let frac = volume.min(100) as f64 / 100.0;
-    p.fill((x, cy - 2.0, w * frac, 4.0), 2.0, if muted { pal.muted } else { pal.accent }, 1.0);
-    p.fill((x + w * frac - 6.0, cy - 6.0, 12.0, 12.0), 6.0, pal.fg, 1.0);
+    p.slider(x, cy, w, frac, if muted { pal.muted } else { pal.accent });
     p.regions.push(Region::new((x - 6.0, y, w + 12.0, h), 8.0, act));
 }

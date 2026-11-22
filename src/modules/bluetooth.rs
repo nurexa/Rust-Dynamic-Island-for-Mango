@@ -28,11 +28,8 @@ pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let cy = y + h / 2.0;
     p.icon(if bt.powered { "bluetooth" } else { "bluetooth_disabled" }, bt.powered, 16.0, PAD + 1.0, cy - 8.0, pal.fg, 1.0);
     p.text("Bluetooth", 12.5, Weight::Medium, pal.fg, PAD + 30.0, cy, 168.0);
-    let sw = (p.w - PAD - 34.0, cy - 9.0, 34.0, 18.0);
-    let (track, alpha, knob) = if bt.powered { (pal.accent, 1.0, pal.on_accent) } else { (pal.fg, 0.18, pal.fg) };
-    p.fill(sw, 9.0, track, alpha);
-    let kx = if bt.powered { sw.0 + sw.2 - 16.0 } else { sw.0 + 2.0 };
-    p.fill((kx, sw.1 + 2.0, 14.0, 14.0), 7.0, knob, 1.0);
+    let sw = (p.w - PAD - 36.0, cy - 10.0, 36.0, 20.0);
+    p.switch(sw.0, cy, bt.powered);
     if c.cfg.tools.iter().any(|t| t == "bluetooth") {
         p.regions.push(Region::new((PAD - 6.0, y, sw.0 - PAD - 6.0, h), 10.0, Action::Open("bluetooth")).tip("Devices"));
     }

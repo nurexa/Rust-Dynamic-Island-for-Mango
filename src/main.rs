@@ -5,6 +5,7 @@ mod brightness;
 mod bus;
 mod calendar;
 mod canvas;
+mod config_edit;
 mod claude;
 mod ddc;
 mod doctor;
@@ -347,6 +348,16 @@ impl App {
         if cfg.notifications != self.cfg.notifications && let Some(bus) = &self.bus {
             bus.set_notifications(cfg.notifications, &self.tx);
         }
+        if (&cfg.font, &cfg.icon_font) != (&self.cfg.font, &self.cfg.icon_font) {
+            pen::fonts_changed();
+        }
+        if cfg.palette != self.cfg.palette {
+            watch_theme(&cfg.palette, self.tx.clone());
+        }
+        // A new module starts now; one that changed, when the island next starts.
+        let new: Vec<_> = cfg.custom.iter().filter(|m| !m.exec.is_empty()
+            && !self.cfg.custom.iter().any(|o| o.name == m.name && !o.exec.is_empty())).cloned().collect();
+        modules::custom::spawn(&new, self.tx.clone());
         self.cfg = cfg;
         if remake {
             self.rebuild_surfaces(style);
@@ -375,17 +386,40 @@ impl App {
         self.save();
     }
 
-    /// A setting changed from its list: the same list again, with what's typed and where it was.
-    fn change_setting(&mut self, cmd: &str) {
-        let Some(p) = &self.model.palette else { return };
-        let place = if p.back.is_empty() { (p.query.clone(), p.selected, p.top) } else { Default::default() };
-        self.close_palette();
-        self.command(cmd);
-        self.open_palette(Some("settings"));
-        if let Some(p) = &mut self.model.palette {
-            p.query = place.0;
-            p.hold = Some((place.1, place.2));
+    /// A change from Settings: into config.toml, on screen, and back on the same page.
+    fn edit(&mut self, changes: &[config_edit::Change], up: usize) {
+        let Some(place) = self.model.palette.as_ref().map(|p| p.place(up)) else { return };
+        let saved = config_edit::write(changes);
+        if saved.is_ok() {
+            for (key, _) in changes {
+                if key.len() == 1 && key[0] == "style" {
+                    self.state.style = None;
+                }
+                // What the file now says wins over a choice saved over what it said before.
+                for chosen in tools::settings::overrides(key) {
+                    self.state.chosen.remove(chosen);
+                }
+            }
+            // Before the list is built again: it reads this.
+            self.save();
+            self.configure();
         }
+        // New surfaces closed it.
+        if self.model.palette.is_none() {
+            self.open_palette(Some("settings"));
+        }
+        let (ctx, notice) = (self.tool_ctx(), match saved {
+            Ok(()) => ("Saved to config.toml".to_owned(), true),
+            Err(e) => (e, false),
+        });
+        let Some(p) = &mut self.model.palette else { return };
+        p.notice = Some(notice);
+        p.replay = Some(place);
+        p.generation += 1;
+        if let Some(settings) = tools::builtin("settings") {
+            tools::load(&settings, p.generation, ctx, self.tx.clone());
+        }
+        self.palette_redraw();
     }
 
     fn rebuild_surfaces(&mut self, style: style::Style) {
@@ -601,11 +635,25 @@ impl App {
             O::Nothing => {}
             O::Redraw => self.palette_redraw(),
             O::Close => self.close_palette(),
-            O::Run(tools::Act::Setting(cmd)) => self.change_setting(&cmd),
+            O::Run(tools::Act::Edit(e)) => self.edit(&e.changes, e.up),
             O::Run(act) => {
                 self.close_palette();
                 self.run(act);
             }
+            O::Answer(tools::Then::Setting(field), text) => match field.changes(&text) {
+                Ok(changes) => self.edit(&changes, field.up),
+                Err(e) => {
+                    // Still in the field, with what was typed, to put right.
+                    if let Some(p) = &mut self.model.palette {
+                        let then = Some(tools::Then::Setting(field));
+                        p.ask = Some(palette::Ask { label: e.clone(), password: false, then });
+                        p.notice = Some((e, false));
+                        p.query = text;
+                    }
+                    self.palette_redraw();
+                }
+            },
+            #[cfg(feature = "wifi")] // the only other text field
             O::Answer(then, text) => {
                 self.close_palette();
                 tools::run_then(then, text, self.tx.clone());
@@ -639,7 +687,7 @@ impl App {
             A::Focus(window) => self.wm.focus(window),
             A::Quit => self.wm.quit(),
             A::Task(task) => tools::run_task(task, self.tool_ctx(), self.tx.clone()),
-            A::Setting(cmd) => self.command(&cmd),
+            A::Edit(_) | A::Type { .. } => {}
             A::Confirm(..) | A::Ask { .. } | A::Reply(_) | A::Open(_) | A::Back | A::Load(_) => {}
         }
     }

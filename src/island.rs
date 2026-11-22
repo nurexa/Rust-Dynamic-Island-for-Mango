@@ -209,7 +209,7 @@ pub struct Island {
 /// part of a frame, and content-only redraws like a workspace switch keep them.
 /// ponytail: pill only; a pinned panel's chrome would hold megabytes for less gain.
 struct Chrome {
-    key: [f64; 11],
+    key: [f64; 14],
     surf: ImageSurface,
     at: (f64, f64),
 }
@@ -844,7 +844,7 @@ impl Island {
     }
 
     fn cache_chrome(&mut self, sh: Shape, pal: &crate::theme::Palette) {
-        let key = [sh.x, sh.y, sh.w, sh.h, self.k.x, self.bud.x, pal.bg.0, pal.bg.1, pal.bg.2, self.alpha, f64::from(self.blurred)];
+        let key = [sh.x, sh.y, sh.w, sh.h, self.k.x, self.bud.x, pal.bg.0, pal.bg.1, pal.bg.2, pal.edge.0, pal.edge.1, pal.edge.2, self.alpha, f64::from(self.blurred)];
         if self.chrome.as_ref().is_some_and(|c| c.key == key) {
             return;
         }
@@ -954,7 +954,6 @@ impl Island {
                 }
             }
         }
-        // Two bodies and the drop between them overlap, so those have to be solid.
         // Two bodies and the drop between them overlap, so see-through ones are drawn solid, then thinned as one.
         let group = see_through && parted.is_some();
         if group {
@@ -972,6 +971,34 @@ impl Island {
         }
         if group && cr.pop_group_to_source().is_ok() {
             let _ = cr.paint_with_alpha(self.alpha);
+        }
+        // Lit from above: a faint sheen down the top and a rim that fades round the sides.
+        let shown = 1.0 - k;
+        if parted.is_none() && shown > 0.01 {
+            let (er, eg, eb) = pal.edge;
+            let reach = sh.h.min(120.0);
+            let sheen = cairo::LinearGradient::new(0.0, sh.y, 0.0, sh.y + reach);
+            sheen.add_color_stop_rgba(0.0, er, eg, eb, 0.09 * shown);
+            sheen.add_color_stop_rgba(1.0, er, eg, eb, 0.0);
+            squircle(cr, sh.x, sh.y, sh.w, sh.h, sh.r, t);
+            if cr.set_source(&sheen).is_ok() {
+                let _ = cr.fill();
+            }
+        }
+        if shown > 0.01 {
+            let (er, eg, eb) = pal.edge;
+            let rim = cairo::LinearGradient::new(0.0, sh.y, 0.0, sh.y + sh.h);
+            rim.add_color_stop_rgba(0.0, er, eg, eb, 0.5 * shown);
+            rim.add_color_stop_rgba(1.0, er, eg, eb, 0.12 * shown);
+            // Not while the drop between two bodies is there to cut across.
+            let joined = parted.is_some_and(|(main, bubble)| bubble - (sh.x + main) < style::SPLIT_GAP * 0.85);
+            if !joined && cr.set_source(&rim).is_ok() {
+                cr.set_line_width(1.0);
+                for &(x, w) in bodies.iter().flatten() {
+                    squircle(cr, x + 0.5, sh.y + 0.5, w - 1.0, sh.h - 1.0, sh.r - 0.5, t);
+                    let _ = cr.stroke();
+                }
+            }
         }
     }
 

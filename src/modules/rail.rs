@@ -119,11 +119,11 @@ fn tags(p: &mut Pen, c: &Ctx, top: f64, limit: f64) -> f64 {
     let Some(last) = rows.last() else { return top };
     let end = last.2 + last.3 + 4.0;
     let x = (RAIL - BUTTON) / 2.0;
-    p.fill((x - 2.0, top, BUTTON + 4.0, end - top), (BUTTON + 4.0) / 2.0, pal.fg, 0.07);
+    p.well((x - 2.0, top, BUTTON + 4.0, end - top), (BUTTON + 4.0) / 2.0);
     for (tag, windows, y, h) in rows {
         let rect = (x, y, BUTTON, h);
         if tag.is_active {
-            p.fill(rect, BUTTON / 2.0, pal.accent, 1.0);
+            p.surface(rect, BUTTON / 2.0, pal.accent);
         }
         let tone = match () {
             _ if tag.is_urgent => pal.error,
@@ -163,14 +163,17 @@ pub fn rail(p: &mut Pen, c: &Ctx, height: f64) {
     if has(&cfg.tools, "power") {
         end -= BUTTON;
         Button::new("power_settings_new", false, Action::Open("power")).draw(p, x, end);
-        end -= 8.0;
+        end -= 4.0;
     }
+    end -= BUTTON;
+    Button::new("settings", false, Action::Open("settings")).draw(p, x, end);
+    end -= 8.0;
     let state = state(c);
     let batt = c.m.battery.as_ref().filter(|_| has(&cfg.pill, "battery"));
     let group = state.len() as f64 * BUTTON + if batt.is_some() { 40.0 } else { 0.0 };
     if group > 0.0 {
         end -= group + 8.0;
-        p.fill((x - 2.0, end, BUTTON + 4.0, group + 8.0), (BUTTON + 4.0) / 2.0, pal.fg, 0.07);
+        p.surface((x - 2.0, end, BUTTON + 4.0, group + 8.0), (BUTTON + 4.0) / 2.0, pal.card);
         let mut y = end + 4.0;
         for b in &state {
             b.draw(p, x, y);
@@ -241,6 +244,8 @@ pub fn bar(p: &mut Pen, c: &Ctx, width: f64) {
         Button::new("power_settings_new", false, Action::Open("power")).draw(p, end, y);
         end -= BUTTON;
     }
+    Button::new("settings", false, Action::Open("settings")).draw(p, end, y);
+    end -= BUTTON;
     if cfg.sidebar.is_empty() {
         end += BUTTON;
     } else {
@@ -277,8 +282,8 @@ fn chip(p: &mut Pen, x: f64, icon: Option<&'static str>, words: &str, tint: Opti
     let gap = if icon.is_some() && words.is_empty() { -4.0 } else { 0.0 };
     let w = 8.0 + lead + gap + words_w + 8.0;
     match tint {
-        Some(c) => p.fill((x, y, w, CHIP), 8.0, c, 1.0),
-        None => p.fill((x, y, w, CHIP), 8.0, p.pal.fg, 0.08),
+        Some(c) => p.surface((x, y, w, CHIP), 8.0, c),
+        None => p.raised((x, y, w, CHIP), 8.0),
     }
     let tone = if tint.is_some() { p.pal.on_accent } else { p.pal.fg };
     if let Some(name) = icon {
@@ -311,7 +316,7 @@ pub fn glass(p: &mut Pen, c: &Ctx, width: f64) {
         let name = app_name(appid);
         let words = p.width(&name, 12.0, Weight::Semibold).min(150.0_f64.min(limit - x - 36.0));
         let w = 8.0 + 20.0 + words + 8.0;
-        p.fill((x, top, w, CHIP), 8.0, pal.fg, 0.08);
+        p.raised((x, top, w, CHIP), 8.0);
         p.app(appid, 16.0, x + 8.0, top + 4.0, pal.fg, 1.0);
         p.text(&name, 12.0, Weight::Semibold, pal.fg, x + 28.0, cy, words + 1.0);
         target(p, x, w, Action::Focus(win.id), Action::None);
@@ -335,6 +340,10 @@ pub fn glass(p: &mut Pen, c: &Ctx, width: f64) {
         target(p, end, w, Action::Open("power"), Action::Open("settings"));
         end -= GAP;
     }
+    end -= CHIP + 8.0;
+    let w = chip(p, end, Some("settings"), "", None, 0.0);
+    target(p, end, w, Action::Open("settings"), Action::None);
+    end -= GAP;
     if has(&cfg.pill, "clock") {
         let now = clock::format(&cfg.clock);
         let w = p.width(&now, 12.0, Weight::Semibold) + 16.0;
@@ -374,7 +383,7 @@ pub fn glass(p: &mut Pen, c: &Ctx, width: f64) {
     let count = m.tray.len().min(TRAY).min(((end - limit - 12.0) / BUTTON).max(0.0) as usize);
     if count > 0 && has(&cfg.panel, "status") {
         end -= GAP + count as f64 * BUTTON;
-        p.fill((end, top, count as f64 * BUTTON, CHIP), CHIP / 2.0, pal.fg, 0.08);
+        p.well((end, top, count as f64 * BUTTON, CHIP), CHIP / 2.0);
         for i in 0..count {
             tray(p, c, i, end + i as f64 * BUTTON, (bar - BUTTON) / 2.0);
         }

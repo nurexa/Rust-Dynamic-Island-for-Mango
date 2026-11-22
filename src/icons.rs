@@ -1,7 +1,7 @@
 //! Real application icons: app id -> .desktop entry -> Icon= -> file -> raster.
 //! gdk-pixbuf would now route every decode through glycin's sandbox, so PNG goes
 //! through cairo, SVG through resvg and JPEG (album art) through zune-jpeg.
-use crate::symbols::SYMBOLS;
+use crate::symbols::{FILLED, SYMBOLS};
 use cairo::{Context, Filter, Format, ImageSurface, SurfacePattern};
 use std::{
     collections::HashMap,
@@ -15,8 +15,12 @@ const SIZES: [&str; 14] = ["scalable", "512x512", "256x256", "192x192", "128x128
 /// Trimmed off each side of an icon's box.
 const MARGIN: i32 = 16;
 const RESCAN: Duration = Duration::from_secs(30);
-/// Weight 500 to about 700.
-const BOLD: &str = r##" stroke="#000" stroke-width="28" stroke-linejoin="round""##;
+/// Line icons, which have nothing to fill, go from weight 500 to about 800.
+const LINE: u32 = 40;
+/// Filled ones only have their corners softened: more would close what's cut out of them.
+const SOFT: u32 = 12;
+/// How much of a level icon's empty part shows.
+const REST: f64 = 0.36;
 
 pub fn data_dirs() -> Vec<PathBuf> {
     let home = crate::settings::home();
@@ -47,13 +51,59 @@ fn entry(name: &str) -> Option<&'static (&'static str, &'static str, &'static st
 }
 
 fn builtin_svg(name: &str, fill: bool, margin: i32) -> Option<String> {
-    let (_, outline, solid) = *entry(name)?;
-    let d = if fill && !solid.is_empty() { solid } else { outline };
+    let (_, outline, _) = *entry(name)?;
     let (x, y, w) = (margin, margin - 960, 960 - 2 * margin);
-    // Solid ones get a heavier edge as well, for the weight of the apps' bold glyphs:
-    // many, like arrows and Wi-Fi, have nothing to fill.
-    let bold = if fill { BOLD } else { "" };
-    Some(format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {w} {w}"><path d="{d}"{bold}/></svg>"#))
+    let svg = |body: String| format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {w} {w}">{body}</svg>"#);
+    if !fill {
+        return Some(svg(format!(r#"<path d="{outline}"/>"#)));
+    }
+    let path = |d: &str, width: u32, more: &str| {
+        format!(r##"<path d="{d}" stroke="#000" stroke-width="{width}" stroke-linejoin="round"{more}/>"##)
+    };
+    Some(svg(match level(name) {
+        // The whole body, dim, with what's in it at full strength on top.
+        Some((body, reach)) => {
+            let body = entry(body)?.1;
+            format!(r#"<clipPath id="l">{reach}</clipPath><g opacity="{REST}">{}</g>{}"#,
+                    path(body, SOFT, ""), path(body, SOFT, r##" clip-path="url(#l)""##))
+        }
+        None => match filled(name) {
+            Some(d) => path(d, SOFT, ""),
+            None => path(outline, LINE, ""),
+        },
+    }))
+}
+
+/// The filled path, where there's something to fill.
+fn filled(name: &str) -> Option<&'static str> {
+    if name == "wifi" {
+        // The wedge the signal levels are drawn in, full.
+        return entry("signal_wifi_4_bar").map(|e| e.1);
+    }
+    let ours = FILLED.iter().find(|(n, _)| *n == name).map(|f| f.1);
+    ours.or_else(|| entry(name).map(|e| e.2).filter(|d| !d.is_empty()))
+}
+
+/// An icon that says how much: the body it's a part of, and the part that's full.
+fn level(name: &str) -> Option<(&'static str, String)> {
+    let battery = |bars: i32| {
+        let h = 110 + bars * 100;
+        ("battery_full", format!(r#"<rect x="0" y="{}" width="960" height="{h}"/>"#, -60 - h))
+    };
+    let wifi = |r: i32| ("signal_wifi_4_bar", format!(r#"<circle cx="480" cy="-140" r="{r}"/>"#));
+    Some(match name {
+        "battery_1_bar" => battery(1),
+        "battery_2_bar" => battery(2),
+        "battery_3_bar" => battery(3),
+        "battery_4_bar" => battery(4),
+        "battery_5_bar" => battery(5),
+        "battery_6_bar" => battery(6),
+        "signal_wifi_0_bar" => wifi(1),
+        "network_wifi_1_bar" => wifi(250),
+        "network_wifi_2_bar" => wifi(370),
+        "network_wifi_3_bar" => wifi(480),
+        _ => return None,
+    })
 }
 
 /// Map every name a window might use (file stem, its last dotted part,
@@ -358,6 +408,23 @@ mod tests {
         }
         assert_eq!(builtin("keep"), Some("keep"));
         assert_eq!(builtin("\u{f0349}"), None, "a font glyph stays a glyph");
+    }
+
+    /// Solid that only thickens an outline is how terminal, clipboard and window stayed hollow.
+    #[test]
+    fn solid_means_filled() {
+        // Arrows, chevrons, ticks and marks: lines, or shapes that are already all ink.
+        const ALL_INK: &[&str] = &["arrow_back", "arrow_forward", "battery_full", "bluetooth", "bluetooth_disabled",
+            "bluetooth_searching", "check", "chevron_left", "chevron_right", "close", "close_fullscreen", "collapse_content",
+            "crop", "graphic_eq", "keyboard_arrow_down", "keyboard_arrow_left", "keyboard_arrow_right", "keyboard_arrow_up",
+            "music_note", "restart_alt", "signal_wifi_4_bar"];
+        for (name, outline, _) in SYMBOLS {
+            let solid = filled(name).is_some_and(|d| d != *outline);
+            assert!(solid || level(name).is_some() || ALL_INK.contains(name), "{name} is hollow when solid");
+        }
+        for (name, _) in FILLED {
+            assert!(entry(name).is_some(), "{name} fills no icon");
+        }
     }
 
     /// A name that isn't in the table draws nothing, silently: catch typos.

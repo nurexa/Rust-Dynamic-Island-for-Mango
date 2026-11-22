@@ -62,6 +62,11 @@ impl Ctx<'_> {
     }
 }
 
+/// How solid the layers on the island are: through glass they still show some of it.
+fn layered(cfg: &Config, style: Style) -> f64 {
+    0.4 + 0.6 * cfg.alpha(style)
+}
+
 /// The column labels take beside a slider.
 fn label_w(p: &Pen) -> f64 {
     if p.w < PANEL_W { 104.0 } else { 168.0 }
@@ -99,6 +104,84 @@ const PANEL: &[(&str, PanelModule)] = &[
     ("bluetooth", bluetooth::panel),
     ("wallpaper", wallpaper::panel),
 ];
+
+/// How far a card reaches past the text on it, across and down, and the air between two.
+const CARD: (f64, f64) = (12.0, 10.0);
+const CARD_GAP: f64 = 8.0;
+pub const CARD_R: f64 = 18.0;
+
+/// What a panel module sits on.
+#[derive(Clone, Copy, PartialEq)]
+enum Seat {
+    /// The island itself: the header, and tiles that are cards already.
+    Bare,
+    /// The card that leads: what's playing.
+    Lead,
+    Card,
+    /// Shares one card with its neighbours of the same kind.
+    Levels,
+    Links,
+}
+
+/// Where a module sits, and the spacing it leaves under itself, which a card takes back.
+fn seat(name: &str) -> (Seat, f64) {
+    match name {
+        "header" | "stats" => (Seat::Bare, 12.0),
+        "media" => (Seat::Lead, 16.0),
+        "workspaces" => (Seat::Card, 14.0),
+        "audio" | "brightness" | "nightlight" => (Seat::Levels, 2.0),
+        "status" | "bluetooth" => (Seat::Links, 12.0),
+        "timer" => (Seat::Card, 8.0),
+        "wallpaper" => (Seat::Card, 6.0),
+        "calendar" | "notifications" => (Seat::Card, 12.0),
+        _ => (Seat::Card, 4.0),
+    }
+}
+
+/// The panel's modules in their order, gathered onto cards.
+fn layers(p: &mut Pen, c: &Ctx, mut y: f64) -> f64 {
+    let pal = p.pal;
+    // The card being filled: what kind, its top, where its content ends.
+    let mut open: Option<(Seat, f64, f64)> = None;
+    let close = |p: &Pen, (seat, top, end): (Seat, f64, f64)| {
+        let face = if seat == Seat::Lead { pal.tint } else { pal.card };
+        let h = end + CARD.1 - top;
+        p.behind((PAD - CARD.0, top, p.w - 2.0 * (PAD - CARD.0), h), CARD_R, face);
+        top + h + CARD_GAP
+    };
+    for name in &c.cfg.panel {
+        let (seat, spacing) = seat(name);
+        let joins = matches!(seat, Seat::Levels | Seat::Links) && open.is_some_and(|o| o.0 == seat);
+        let at = match open {
+            Some((.., end)) if joins => end + 2.0,
+            Some((.., end)) => end + CARD.1 + CARD_GAP + if seat == Seat::Bare { 0.0 } else { CARD.1 },
+            None if seat == Seat::Bare => y,
+            None => y + CARD.1,
+        };
+        let next = draw_panel(name, p, c, at);
+        // Nothing to show takes no room, and no card.
+        if next <= at {
+            continue;
+        }
+        let end = next - spacing;
+        if joins {
+            open = open.map(|(s, top, _)| (s, top, end));
+            continue;
+        }
+        if let Some(card) = open.take() {
+            y = close(p, card);
+        }
+        if seat == Seat::Bare {
+            y = end + CARD_GAP;
+        } else {
+            open = Some((seat, y, end));
+        }
+    }
+    if let Some(card) = open {
+        y = close(p, card);
+    }
+    y + 2.0
+}
 
 /// Every built-in module name, pill then panel, for `island doctor`.
 pub fn names() -> (Vec<&'static str>, Vec<&'static str>, Vec<&'static str>) {
@@ -187,6 +270,7 @@ pub fn rail(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64,
 /// The sidebar at a scroll offset: what's in view, and the height of the whole of it.
 pub fn sidebar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, room): (f64, f64), scroll: f64, scale: crate::scale::Scale) -> Option<(Content, f64)> {
     let (surf, mut p) = Pen::new(w, room, cfg, &m.pal, scale, icons)?;
+    p.solid = layered(cfg, m.style);
     p.cr.translate(0.0, -scroll.round());
     let total = sidebar::draw(&mut p, &Ctx { m, cfg, mon, pinned: false, tucked: false });
     let h = total.min(room);
@@ -220,10 +304,11 @@ pub fn panel(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, view: &View,
     let room = room.floor();
     let by = scroll.round();
     let (surf, mut p) = Pen::new(PANEL_W, room, cfg, &m.pal, scale, icons)?;
+    p.solid = layered(cfg, m.style);
     p.cr.translate(0.0, -by);
     let c = Ctx { m, cfg, mon, pinned, tucked };
     let total = match view {
-        View::Main => cfg.panel.iter().fold(16.0, |y, name| draw_panel(name, &mut p, &c, y)),
+        View::Main => layers(&mut p, &c, 16.0),
         View::Menu { title, entries, .. } => menu::view(&mut p, title, entries),
         View::Palette => palette::view(&mut p, &c),
         View::Toast => notify::toast(&mut p, &c),

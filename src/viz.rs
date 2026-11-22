@@ -29,7 +29,7 @@ const RANGE_DB: f32 = 30.0;
 /// The auto gain doesn't chase anything quieter than this.
 const FLOOR_DB: f32 = -50.0;
 
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(serde::Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum Look {
     /// A few bars on the pill, by the album art.

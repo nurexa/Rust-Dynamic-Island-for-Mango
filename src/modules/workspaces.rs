@@ -38,7 +38,7 @@ pub fn pill(p: &mut Pen, c: &Ctx, mut x: f64) -> f64 {
         }
         let rect = (x, cy - 12.5, w, 25.0);
         if tag.is_active {
-            p.fill(rect, 12.5, pal.accent, 1.0);
+            p.surface(rect, 12.5, pal.accent);
         }
         let (digit_c, icon_c) = match () {
             _ if tag.is_urgent => (pal.error, pal.error),
@@ -88,11 +88,11 @@ fn chips(p: &mut Pen, c: &Ctx, mon: &wm::Monitor, mut y: f64) -> f64 {
         let rect = (x, y, w, h);
         let lead = tag.is_active && mon.active;
         if lead {
-            p.fill(rect, 13.0, pal.accent, 1.0);
+            p.surface(rect, 13.0, pal.accent);
         } else if tag.is_active {
-            p.fill(rect, 13.0, pal.accent, 0.22);
+            p.surface(rect, 13.0, pal.tint);
         } else if !windows.is_empty() {
-            p.fill(rect, 13.0, pal.fg, 0.07);
+            p.raised(rect, 13.0);
         }
         let (digit_c, icon_c) = match () {
             _ if tag.is_urgent => (pal.error, pal.error),
