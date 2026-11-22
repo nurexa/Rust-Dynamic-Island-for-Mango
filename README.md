@@ -15,11 +15,11 @@ border round the whole screen. Use all of it, or only the parts you want.
 
 | | |
 |---|---|
-| ![Frame](docs/styles/frame.png) | ![Pill](docs/styles/pill.png) |
+| ![Frame](docs/styles/frame.jpg) | ![Pill](docs/styles/pill.jpg) |
 | **frame**: a border with a rail; the island, palette and sidebar grow out of it | **pill** (the default): floats, drags anywhere |
-| ![Notch](docs/styles/notch.png) | ![Bar](docs/styles/bar.png) |
+| ![Notch](docs/styles/notch.jpg) | ![Bar](docs/styles/bar.jpg) |
 | **notch**: hangs from the top edge | **bar**: full width, swells down into the panel |
-| ![Split](docs/styles/split.png) | ![Minimal](docs/styles/minimal.png) |
+| ![Split](docs/styles/split.jpg) | ![Minimal](docs/styles/minimal.jpg) |
 | **split**: music, timers and Claude bud off into a bubble | **minimal**: the time, and what needs you |
 
 Switch live with `island style frame` (or plain `island style` for the next one), or set
