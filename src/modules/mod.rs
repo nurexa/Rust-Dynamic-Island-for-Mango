@@ -219,9 +219,14 @@ fn layers(p: &mut Pen, c: &Ctx, mut y: f64) -> f64 {
             for &t in &row {
                 let w = free * tiles[t].1 / total;
                 let marks = (p.regions.len(), p.live.len());
+                // Clipped first, so the group is the size of the tile's column, not the panel.
+                let _ = p.cr.save();
+                p.cr.rectangle(x, y, w, MAX_PANEL_H);
+                p.cr.clip();
                 p.cr.push_group();
                 let end = tile(&tiles[t].2, p, c, x + CARD.0, w - 2.0 * CARD.0, y + CARD.1);
                 let ink = p.cr.pop_group().ok();
+                let _ = p.cr.restore();
                 drawn.push((t, x, w, end, ink, marks, (p.regions.len(), p.live.len())));
                 x += w + CARD_GAP;
             }
