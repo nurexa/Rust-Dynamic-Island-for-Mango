@@ -87,7 +87,7 @@ pub struct Edges {
     style: Style,
     strips: Vec<Strip>,
     reserves: Vec<Reserve>,
-    pressed: Option<usize>,
+    pressed: Option<crate::pen::Region>,
 }
 
 /// Where an edge event landed.
@@ -209,7 +209,7 @@ impl Edges {
                 if cr.set_source_surface(&c.surf, 0.0, 0.0).is_ok() {
                     let _ = cr.paint();
                 }
-                if let Some(reg) = s.hover.and_then(|i| c.regions.get(i)) {
+                if let Some(reg) = s.hover.and_then(|i| c.regions.get(i)).filter(|r| !r.inert()) {
                     let (rx, ry, rw, rh) = reg.rect;
                     crate::pen::rounded_rect(cr, rx, ry, rw, rh, reg.radius);
                     let (r, g, b) = m.pal.fg;
@@ -229,9 +229,7 @@ impl Edges {
 
     pub fn motion(&mut self, at: At, (x, y): (f64, f64)) {
         let s = &mut self.strips[at.strip];
-        let hover = s.content.as_ref().and_then(|c| {
-            c.regions.iter().rposition(|r| x >= r.rect.0 && x < r.rect.0 + r.rect.2 && y >= r.rect.1 && y < r.rect.1 + r.rect.3)
-        });
+        let hover = s.content.as_ref().and_then(|c| c.hit((x, y)));
         if hover != s.hover {
             s.hover = hover;
             s.dirty = true;
@@ -247,13 +245,14 @@ impl Edges {
     }
 
     pub fn press(&mut self, at: At) {
-        self.pressed = self.strips[at.strip].hover;
+        let s = &self.strips[at.strip];
+        self.pressed = s.hover.and_then(|i| s.content.as_ref()?.regions.get(i).cloned());
     }
 
     pub fn release(&mut self, at: At, button: u32) -> Action {
         let s = &self.strips[at.strip];
-        let same = self.pressed.take().filter(|p| Some(*p) == s.hover);
-        let Some(r) = same.and_then(|i| s.content.as_ref()?.regions.get(i)) else { return Action::None };
+        let Some(pressed) = self.pressed.take() else { return Action::None };
+        let Some(r) = s.content.as_ref().and_then(|c| c.same(s.hover, &pressed)) else { return Action::None };
         match button {
             crate::island::BTN_LEFT => r.left.clone(),
             crate::island::BTN_RIGHT => r.right.clone(),
@@ -269,7 +268,8 @@ impl Edges {
     }
 
     pub fn hovering_target(&self, at: At) -> bool {
-        self.strips[at.strip].hover.is_some()
+        let s = &self.strips[at.strip];
+        s.hover.and_then(|i| s.content.as_ref()?.regions.get(i)).is_some_and(|r| !r.inert())
     }
 
     pub fn scroll_kind(&self, at: At) -> Scroll {

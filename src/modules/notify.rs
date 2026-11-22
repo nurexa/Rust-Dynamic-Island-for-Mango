@@ -94,15 +94,14 @@ pub fn toast(p: &mut Pen, c: &Ctx) -> f64 {
     let close = (TOAST_W - pad - 20.0, pad - 2.0, 22.0, 22.0);
     let default = note.actions.iter().any(|(k, _)| k == "default");
     let click = if default { Action::NoteAction(note.id, "default".into()) } else { Action::NoteDismiss(note.id) };
-    p.regions.push(Region::new((0.0, 0.0, TOAST_W, y), 18.0, click).right(Action::NoteDismiss(note.id)));
     p.symbol("close", 12.0, close.0 + 5.0, close.1 + 5.0, pal.muted);
     p.regions.push(Region::new(close, 11.0, Action::NoteDismiss(note.id)));
 
-    if field(p, c, note, (pad, y, TOAST_W - 2.0 * pad, 34.0)) {
-        return y + 34.0 + 14.0;
-    }
+    let replying = field(p, c, note, (pad, y, TOAST_W - 2.0 * pad, 34.0));
     let buttons: Vec<_> = note.actions.iter().filter(|(k, _)| k != "default").take(3).collect();
-    if !buttons.is_empty() {
+    if replying {
+        y += 34.0 + 12.0;
+    } else if !buttons.is_empty() {
         let mut bx = pad;
         for (key, label) in buttons {
             let w = p.width(label, 12.0, Weight::Medium) + 24.0;
@@ -115,7 +114,10 @@ pub fn toast(p: &mut Pen, c: &Ctx) -> f64 {
         }
         y += 28.0 + 12.0;
     }
-    y + 2.0
+    let h = y + 2.0;
+    // All of the card, beneath its buttons, and only known once they're laid out.
+    p.regions.insert(0, Region::new((0.0, 0.0, TOAST_W, h), 30.0, click).right(Action::NoteDismiss(note.id)));
+    h
 }
 
 /// History in the panel, one group per app. Takes no room while there's nothing in it.
@@ -179,9 +181,8 @@ fn group(p: &mut Pen, c: &Ctx, app: &str, notes: &[&Note], mut y: f64, expanded:
         p.text(&n, 10.5, Weight::Semibold, pal.accent, x + 6.0, cy, -1.0);
         x += bw + 4.0;
         p.symbol(if open { "keyboard_arrow_up" } else { "keyboard_arrow_down" }, 12.0, x, cy - 6.0, pal.muted);
-        x += 12.0;
         let tip = if open { "Show less" } else { "Show all" };
-        p.regions.push(Region::new((PAD - 6.0, y, x - PAD + 12.0, 24.0), 8.0, Action::NoteGroup(app.into())).tip(tip));
+        p.regions.push(Region::new((PAD - 6.0, y, end - 20.0 - (PAD - 6.0), 24.0), 8.0, Action::NoteGroup(app.into())).tip(tip));
     }
     p.symbol("close", 12.0, end - 13.0, cy - 6.0, pal.muted);
     p.regions.push(Region::new((end - 18.0, cy - 10.0, 22.0, 20.0), 10.0, Action::NoteClearApp(app.into())).tip("Clear"));
@@ -196,7 +197,8 @@ fn row(p: &mut Pen, c: &Ctx, note: &Note, y: f64) -> f64 {
     let pal = p.pal;
     let end = p.w - PAD;
     let h = 38.0;
-    p.regions.push(Region::new((PAD - 6.0, y, p.w - 2.0 * PAD + 12.0, h), 10.0, Action::NoteDismiss(note.id)).tip("Dismiss"));
+    // Down to the next row: a click in a gap between them would pin the panel.
+    p.regions.push(Region::new((PAD - 6.0, y, p.w - 2.0 * PAD + 12.0, h + 2.0), 10.0, Action::NoteDismiss(note.id)).tip("Dismiss"));
     let shown = image(p, note, PAD, y + 5.0, 28.0);
     let x = if shown { PAD + 38.0 } else { PAD };
     let mut w = end - x;

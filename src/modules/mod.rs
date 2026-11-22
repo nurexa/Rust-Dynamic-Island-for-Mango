@@ -36,7 +36,7 @@ mod workspaces;
 
 pub const PILL_H: f64 = 32.0;
 pub const PANEL_W: f64 = 560.0;
-pub const MAX_PANEL_H: f64 = 680.0;
+pub const MAX_PANEL_H: f64 = 900.0;
 pub const MAX_COMPACT_W: f64 = 680.0;
 /// The most the split style's bubble adds.
 pub const BUBBLE_W: f64 = 220.0;
@@ -187,13 +187,8 @@ pub fn sidebar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, room):
     let (surf, mut p) = Pen::new(w, room, cfg, &m.pal, scale, icons)?;
     p.cr.translate(0.0, -scroll.round());
     let total = sidebar::draw(&mut p, &Ctx { m, cfg, mon, pinned: false, tucked: false });
-    for r in &mut p.regions {
-        r.rect.1 -= scroll.round();
-    }
-    for l in &mut p.live {
-        l.rect.1 -= scroll.round();
-    }
     let h = total.min(room);
+    crate::pen::scrolled(&mut p.regions, &mut p.live, scroll.round(), h);
     let regions = std::mem::take(&mut p.regions);
     Some((Content { surf, w, h, regions, split: None, live: p.live }, total))
 }
@@ -206,17 +201,43 @@ pub fn bar(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, (w, h): (f64, 
     Some(Content { surf, w, h, regions, split: None, live: Vec::new() })
 }
 
+/// The panel at a scroll offset, in the room there is for it: what's in view, and
+/// the height of the whole of it.
 #[allow(clippy::too_many_arguments)]
-pub fn panel(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, view: &View, scale: i32, pinned: bool, tucked: bool) -> Option<Content> {
-    let (surf, mut p) = Pen::new(PANEL_W, MAX_PANEL_H, cfg, &m.pal, scale, icons)?;
+pub fn panel(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, view: &View, (room, scroll): (f64, f64), scale: i32, pinned: bool, tucked: bool) -> Option<(Content, f64)> {
+    let room = room.floor();
+    let by = scroll.round();
+    let (surf, mut p) = Pen::new(PANEL_W, room, cfg, &m.pal, scale, icons)?;
+    p.cr.translate(0.0, -by);
     let c = Ctx { m, cfg, mon, pinned, tucked };
-    let h = match view {
+    let total = match view {
         View::Main => cfg.panel.iter().fold(16.0, |y, name| draw_panel(name, &mut p, &c, y)),
         View::Menu { title, entries, .. } => menu::view(&mut p, title, entries),
         View::Palette => palette::view(&mut p, &c),
         View::Toast => notify::toast(&mut p, &c),
     };
-    let regions = std::mem::take(&mut p.regions);
+    let h = total.min(room);
     let w = if *view == View::Toast { notify::TOAST_W } else { PANEL_W };
-    Some(Content { surf, w, h: h.min(MAX_PANEL_H), regions, split: None, live: p.live })
+    if total > room {
+        p.cr.translate(0.0, by);
+        if total - room - by > 1.0 {
+            // More below fades out, rather than looking cut off.
+            let fade = cairo::LinearGradient::new(0.0, room - 36.0, 0.0, room);
+            fade.add_color_stop_rgba(0.0, 0.0, 0.0, 0.0, 0.0);
+            fade.add_color_stop_rgba(1.0, 0.0, 0.0, 0.0, 1.0);
+            p.cr.set_operator(cairo::Operator::DestOut);
+            p.cr.rectangle(0.0, room - 36.0, w, 36.0);
+            if p.cr.set_source(&fade).is_ok() {
+                let _ = p.cr.fill();
+            }
+            p.cr.set_operator(cairo::Operator::Over);
+        }
+        // The thumb, between the corners.
+        let track = room - 64.0;
+        let thumb = (track * room / total).max(24.0);
+        p.fill((w - 9.0, 32.0 + (track - thumb) * (by / (total - room)).min(1.0), 3.0, thumb), 1.5, p.pal.fg, 0.3);
+    }
+    crate::pen::scrolled(&mut p.regions, &mut p.live, by, h);
+    let regions = std::mem::take(&mut p.regions);
+    Some((Content { surf, w, h, regions, split: None, live: p.live }, total))
 }

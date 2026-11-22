@@ -19,4 +19,10 @@ $H/fresh.sh 1 >/dev/null; $H/full.sh; $H/bluetooth.sh
 $H/fresh.sh 1 >/dev/null; $H/full.sh; $H/styles.sh
 $H/fresh.sh 1 >/dev/null; $H/full.sh; $H/sidebar.sh
 $H/fresh.sh 1 >/dev/null; $H/full.sh; $H/isl stop; $H/cutover.sh
-for f in $H/run/*pid; do kill $(cat "$f") 2>/dev/null; done
+# Only what carries this runtime dir: a stale pid file can name someone else's process.
+for f in $H/run/*pid; do
+  [ -f "$f" ] || continue
+  for p in $(cat "$f"); do
+    grep -qzxF "XDG_RUNTIME_DIR=$H/run" "/proc/$p/environ" 2>/dev/null && kill "$p"
+  done
+done

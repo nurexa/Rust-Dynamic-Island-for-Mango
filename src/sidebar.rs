@@ -62,7 +62,7 @@ pub struct Sidebar {
     hovered: bool,
     hover: Option<usize>,
     pointer: (f64, f64),
-    press: Option<(u32, Option<usize>)>,
+    press: Option<(u32, crate::pen::Region)>,
     sliding: bool,
     close_at: Option<Instant>,
 }
@@ -217,9 +217,10 @@ impl Sidebar {
         ((W * t).min(self.size.0 - self.band), self.middle - h / 2.0, h)
     }
 
-    /// The content's top left once open.
+    /// The content's top left where it's drawn, which while it moves isn't where it's headed.
     fn origin(&self) -> (f64, f64) {
-        (self.size.0 - self.band - W, self.middle - self.h.target / 2.0)
+        let (out, y, _) = self.shape();
+        (self.size.0 - self.band - out, y)
     }
 
     pub fn flush(&mut self, m: &Model, icons: &mut Icons, cfg: &Config, compositor: &CompositorState, qh: &QueueHandle<crate::App>) {
@@ -298,14 +299,14 @@ impl Sidebar {
         visualize(true);
         blit(cr, c, x, y, out.min(W), h.min(c.h), alpha);
         visualize(false);
-        let _ = cr.restore();
-        if let Some(reg) = self.hover.and_then(|i| c.regions.get(i)) {
+        if let Some(reg) = self.hover.and_then(|i| c.regions.get(i)).filter(|r| !r.inert()) {
             let (rx, ry, rw, rh) = reg.rect;
             crate::pen::rounded_rect(cr, x + rx, y + ry, rw, rh, reg.radius);
             let (r, g, b) = m.pal.fg;
             cr.set_source_rgba(r, g, b, 0.1);
             let _ = cr.fill();
         }
+        let _ = cr.restore();
     }
 
     fn apply_input(&mut self, compositor: &CompositorState) {
@@ -330,13 +331,13 @@ impl Sidebar {
             return None;
         }
         let c = self.content.as_ref()?;
-        let (ox, oy) = self.origin();
-        let (x, y) = (self.pointer.0 - ox, self.pointer.1 - oy);
-        // Scrolled past the top or bottom is out of reach.
-        if y < 0.0 || y >= c.h {
+        let (_, y, h) = self.shape();
+        // Past what has swelled out so far is out of reach.
+        if self.pointer.1 >= y + h {
             return None;
         }
-        c.regions.iter().rposition(|r| x >= r.rect.0 && x < r.rect.0 + r.rect.2 && y >= r.rect.1 && y < r.rect.1 + r.rect.3)
+        let (ox, oy) = self.origin();
+        c.hit((self.pointer.0 - ox, self.pointer.1 - oy))
     }
 
     fn update_hover(&mut self) {
@@ -347,8 +348,8 @@ impl Sidebar {
         }
     }
 
-    fn slide(&self, i: usize) -> Option<(Action, f64)> {
-        let r = self.content.as_ref()?.regions.get(i)?;
+    fn slide(&self, held: &crate::pen::Region) -> Option<(Action, f64)> {
+        let r = self.content.as_ref()?.regions.iter().find(|r| r.left == held.left).unwrap_or(held);
         let x = self.pointer.0 - self.origin().0;
         Some((r.left.clone(), ((x - r.rect.0 - 6.0) / (r.rect.2 - 12.0)).clamp(0.0, 1.0)))
     }
@@ -375,7 +376,7 @@ impl Sidebar {
     pub fn motion(&mut self, at: (f64, f64)) -> Outcome {
         self.pointer = at;
         if self.sliding {
-            if let Some((action, frac)) = self.press.and_then(|p| p.1).and_then(|i| self.slide(i)) {
+            if let Some((action, frac)) = self.press.as_ref().and_then(|p| self.slide(&p.1)) {
                 return Outcome::Act(action, frac);
             }
         }
@@ -384,23 +385,24 @@ impl Sidebar {
     }
 
     pub fn press(&mut self, button: u32) -> Outcome {
-        let region = self.hit();
-        self.press = Some((button, region));
-        if let (BTN_LEFT, Some(i)) = (button, region) {
-            if let Some((action, frac)) = self.slide(i).filter(|(a, _)| is_slider(a)) {
-                self.sliding = true;
-                return Outcome::Act(action, frac);
-            }
+        self.press = None;
+        let Some(held) = self.hit().and_then(|i| self.content.as_ref()?.regions.get(i).cloned()) else { return Outcome::None };
+        let slid = if button == BTN_LEFT && is_slider(&held.left) { self.slide(&held) } else { None };
+        self.press = Some((button, held));
+        if let Some((action, frac)) = slid {
+            self.sliding = true;
+            return Outcome::Act(action, frac);
         }
         Outcome::None
     }
 
     pub fn release(&mut self) -> Outcome {
-        let Some((button, region)) = self.press.take() else { return Outcome::None };
-        if std::mem::take(&mut self.sliding) || self.hit() != region {
+        let Some((button, pressed)) = self.press.take() else { return Outcome::None };
+        if std::mem::take(&mut self.sliding) {
             return Outcome::None;
         }
-        let Some(r) = region.and_then(|i| self.content.as_ref()?.regions.get(i)) else { return Outcome::None };
+        let under = self.hit();
+        let Some(r) = self.content.as_ref().and_then(|c| c.same(under, &pressed)) else { return Outcome::None };
         let action = match button {
             BTN_LEFT => &r.left,
             BTN_RIGHT => &r.right,
@@ -411,7 +413,7 @@ impl Sidebar {
     }
 
     pub fn hovering_target(&self) -> bool {
-        self.hover.is_some()
+        self.hover.and_then(|i| self.content.as_ref()?.regions.get(i)).is_some_and(|r| !r.inert())
     }
 
     pub fn over_volume(&self) -> bool {

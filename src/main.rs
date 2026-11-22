@@ -1381,6 +1381,11 @@ impl App {
                 spawn_sh(&format!("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ {}%{sign}", 5.0 * notches.abs()));
             }
             Scroll::Tags => self.wm.cycle(notches > 0.0),
+            Scroll::Panel => {
+                if let Some(i) = self.under_pointer.clone().and_then(|s| self.island_at(&s)) {
+                    self.islands[i].scroll_by(notches);
+                }
+            }
             Scroll::Palette => {
                 if let Some(p) = &mut self.model.palette {
                     p.scroll(notches as isize);

@@ -11,7 +11,10 @@ env -u DBUS_SESSION_BUS_ADDRESS -u WAYLAND_DISPLAY -u DISPLAY -u HYPRLAND_INSTAN
   setsid mango -c $H/mango.conf >$R/mango.log 2>&1 &
 echo $! > $R/pid
 for i in $(seq 50); do s=$(ls $R/mango-*.sock 2>/dev/null|head -1); [ -n "$s" ] && [ -S "$R/wayland-0" -o -S "$R/wayland-1" ] && break; sleep 0.1; done
-w=$(cd $R; ls wayland-? | head -1)
+w=$(cd $R; ls wayland-? 2>/dev/null | head -1)
+if [ -z "$w" ] || ! kill -0 "$(cat $R/pid)" 2>/dev/null; then
+  echo "FAIL fixture: mango didn't start" >&2; tail -5 $R/mango.log >&2; exit 1
+fi
 cat > $R/env <<E
 export XDG_RUNTIME_DIR=$R WAYLAND_DISPLAY=$w MANGO_INSTANCE_SIGNATURE=$s
 export XDG_STATE_HOME=$R

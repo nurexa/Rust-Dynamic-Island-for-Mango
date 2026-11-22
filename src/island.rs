@@ -23,6 +23,11 @@ use smithay_client_toolkit::{
 use std::time::{Duration, Instant};
 
 const SHADOW: f64 = 26.0;
+/// Opening runs a little past the panel's height; that needs somewhere to go.
+const SLACK: f64 = 24.0;
+/// A panel stops this short of the screen's edge, and scrolls for the rest.
+const EDGE: f64 = 8.0;
+const SCROLL_STEP: f64 = 48.0;
 const PANEL_R: f64 = 30.0;
 const SNAP: f64 = 56.0; // release this close to home and the pill docks
 const DRAG_START: f64 = 5.0;
@@ -113,7 +118,7 @@ fn squircle(cr: &Context, x: f64, y: f64, w: f64, h: f64, r: f64, s: f64) {
 struct Press {
     button: u32,
     at: (f64, f64),
-    region: Option<usize>,
+    region: Option<crate::pen::Region>,
 }
 
 /// What a pointer event means to the app, once the island has digested it.
@@ -182,6 +187,10 @@ pub struct Island {
     pub view: View,
     compact: Option<Content>,
     panel: Option<Content>,
+    /// How far down the panel is scrolled, the height of the whole of it, and which view that's for.
+    scroll: f64,
+    total: f64,
+    scrolled_view: View,
     compact_dirty: bool,
     panel_dirty: bool,
 
@@ -236,7 +245,8 @@ impl Island {
             pinned, tucked, toast: false, typing: false, raised: false, hovered: false, open: false, suppress: false, press: None,
             dragging: false, sliding: false, pointer: (0.0, 0.0), hover: None, pin_at: None,
             open_at: None, close_at: None, flash_until: None, view: View::Main,
-            compact: None, panel: None, compact_dirty: true, panel_dirty: true,
+            compact: None, panel: None, scroll: 0.0, total: 0.0, scrolled_view: View::Main,
+            compact_dirty: true, panel_dirty: true,
             frame_pending: false, drawn_at: None, dirty: true, live_dirty: false,
         })
     }
@@ -445,6 +455,27 @@ impl Island {
         (x.round(), y.clamp(0.0, (self.out.1 - self.size.1).max(0.0)).round())
     }
 
+    /// The tallest the panel can be from where the island sits.
+    fn room(&self) -> f64 {
+        let py = self.place.1.target;
+        let space = if self.opens_down() { self.out.1 - py - EDGE } else { py + PILL_H - EDGE };
+        space.clamp(PILL_H, MAX_PANEL_H).floor()
+    }
+
+    fn overflows(&self) -> bool {
+        self.panel.as_ref().is_some_and(|c| self.total > c.h)
+    }
+
+    pub fn scroll_by(&mut self, notches: f64) {
+        let Some(shown) = self.panel.as_ref().map(|c| c.h) else { return };
+        let to = (self.scroll + notches * SCROLL_STEP).clamp(0.0, (self.total - shown).max(0.0));
+        if to != self.scroll {
+            self.scroll = to;
+            self.panel_dirty = true;
+            self.dirty = true;
+        }
+    }
+
     fn shape(&self) -> Shape {
         let (sx, sy) = self.surface_pos();
         let (px, py) = (self.place.0.x - sx, self.place.1.x - sy);
@@ -463,7 +494,10 @@ impl Island {
         let w = lerp(rest_w, self.pw.x, t);
         let h = lerp(rest_h, self.ph.x, t).max(0.0);
         let top = if attached { py } else { lerp(py, if self.pos.is_none() { 2.0 } else { py }, k) };
-        let y = if self.opens_down() { top } else { py + PILL_H - h };
+        // The spring's overshoot never runs off the surface.
+        let down = self.opens_down();
+        let h = h.min(if down { self.size.1 - top } else { py + PILL_H }).max(0.0);
+        let y = if down { top } else { py + PILL_H - h };
         let r = lerp(PILL_H / 2.0, PANEL_R, t.clamp(0.0, 1.0));
         let r = if attached { r } else { r.min(h / 2.0) };
         Shape { x: cx - w / 2.0, y, w, h, r, cx }
@@ -571,7 +605,23 @@ impl Island {
             if (self.panel_dirty && self.wants_panel() && !self.returning()) || self.panel.is_none() {
                 self.panel_dirty = false;
                 let first = self.panel.is_none();
-                if let Some(c) = modules::panel(m, icons, cfg, &self.name, &self.view, self.scale, self.pinned, self.tucked) {
+                if first || self.scrolled_view != self.view {
+                    self.scroll = 0.0;
+                    self.scrolled_view = self.view.clone();
+                }
+                let room = self.room();
+                let draw = |icons: &mut Icons, at: f64| {
+                    modules::panel(m, icons, cfg, &self.name, &self.view, (room, at), self.scale, self.pinned, self.tucked)
+                };
+                let mut drawn = draw(icons, self.scroll);
+                // What's shown got shorter under the scroll: come back up to its end.
+                let most = drawn.as_ref().map_or(0.0, |(c, total)| (total - c.h).max(0.0));
+                if self.scroll > most {
+                    drawn = draw(icons, most);
+                    self.scroll = most;
+                }
+                if let Some((c, total)) = drawn {
+                    self.total = total;
                     if first && self.t.x < 0.01 {
                         self.ph.snap(c.h);
                         self.pw.snap(c.w);
@@ -685,20 +735,16 @@ impl Island {
 
         let a_compact = if self.flipped { 0.0 } else { (1.0 - smooth(t / 0.45)) * (1.0 - k) };
         let a_panel = smooth((t - 0.32) / 0.68);
-        let down = self.opens_down();
         let morphing = animating && (t > 0.0 && t < 1.0 || k > 0.0 && k < 1.0);
-        if morphing {
+        // What scrolls runs under the rounded corners.
+        let clipped = morphing || (a_panel > 0.003 && self.overflows());
+        if clipped {
             let _ = cr.save();
             self.outline(cr, sh, t);
             cr.clip();
         }
         if let (true, Some(c)) = (a_compact > 0.003, &self.compact) {
-            let y = match () {
-                // Drawn back, it slides up into the edge with it.
-                _ if self.style.attached() => sh.y - (PILL_H * k),
-                _ if down => sh.y,
-                _ => sh.y + sh.h - PILL_H,
-            };
+            let (at_x, y) = self.compact_at(sh, c);
             match (c.split, self.parted(sh, t)) {
                 // While they part, each half rides its own side of the shape.
                 (Some(at), Some((main_w, bubble))) => {
@@ -714,7 +760,7 @@ impl Island {
                     let _ = cr.restore();
                 }
                 _ => {
-                    let x = if sh.w > c.w { sh.cx - c.w / 2.0 } else { sh.x };
+                    let x = at_x;
                     blit(cr, c, x, y, sh.w.min(c.w), PILL_H, a_compact);
                     for l in &c.live {
                         // Not until the shape has grown out to it.
@@ -726,8 +772,7 @@ impl Island {
             }
         }
         if let (true, Some(c)) = (a_panel > 0.003, &self.panel) {
-            let y = if down { sh.y } else { sh.y + sh.h - c.h };
-            let x = sh.cx - c.w / 2.0;
+            let (x, y) = self.panel_at(sh, c);
             let visualize = |under: bool| {
                 for l in c.live.iter().filter(|l| l.look.under() == under) {
                     if l.rect.1 + l.rect.3 <= sh.h + 8.0 {
@@ -739,7 +784,7 @@ impl Island {
             blit(cr, c, x, y, c.w, c.h.min(sh.h + 8.0), a_panel);
             visualize(false);
         }
-        if morphing {
+        if clipped {
             let _ = cr.restore();
         }
 
@@ -749,10 +794,21 @@ impl Island {
             if let Some((c, ox, oy)) = self.active() {
                 if let Some(reg) = c.regions.get(i) {
                     let (x, y, w, h) = reg.rect;
-                    squircle(cr, ox + x, oy + y, w, h, reg.radius, 0.0);
-                    let (fr, fg, fb) = pal.fg;
-                    cr.set_source_rgba(fr, fg, fb, 0.1);
-                    let _ = cr.fill();
+                    if !reg.inert() {
+                        let _ = cr.save();
+                        self.outline(cr, sh, t);
+                        cr.clip();
+                        // A whole card lights as it's shaped, tab and all.
+                        if (x, y, w, h) == (0.0, 0.0, c.w, c.h) {
+                            self.outline(cr, sh, t);
+                        } else {
+                            squircle(cr, ox + x, oy + y, w, h, reg.radius, 0.0);
+                        }
+                        let (fr, fg, fb) = pal.fg;
+                        cr.set_source_rgba(fr, fg, fb, 0.1);
+                        let _ = cr.fill();
+                        let _ = cr.restore();
+                    }
                     if let (Some(tip), true) = (&reg.tip, self.t.target > 0.5 && !tip_is_empty(reg.tip.as_deref())) {
                         if matches!(reg.left, Action::PaletteTool(_)) {
                             // The tool tabs live in the search row, so their tip goes beside them, not over the results.
@@ -760,7 +816,7 @@ impl Island {
                                 .map(|r| r.rect.0).fold(f64::MAX, f64::min);
                             self.paint_row_tip(cr, tip, (ox + left - 8.0, oy + y + h / 2.0), pal, cfg);
                         } else {
-                            self.paint_tip(cr, tip, sh, pal, cfg);
+                            self.paint_tip(cr, tip, (ox + x, oy + y, w, h), sh, pal, cfg);
                         }
                     }
                 }
@@ -861,22 +917,36 @@ impl Island {
         }
     }
 
-    /// Window titles used to live in Waybar's tooltips. Here the panel's top
-    /// right corner of the monitor heading carries them.
-    fn paint_tip(&self, cr: &Context, tip: &str, sh: Shape, pal: &crate::theme::Palette, cfg: &Config) {
+    /// What the pointer is on, said beside it: under the target, or over it where
+    /// there's no room. A wide row's tip keeps to its right, clear of the next row's text.
+    fn paint_tip(&self, cr: &Context, tip: &str, of: Rect, sh: Shape, pal: &crate::theme::Palette, cfg: &Config) {
+        const MOST: f64 = 300.0;
         let layout = pangocairo::functions::create_layout(cr);
         let mut d = pango::FontDescription::new();
         d.set_family(&cfg.font);
         d.set_weight(pango::Weight::Medium);
         d.set_absolute_size(11.0 * pango::SCALE as f64);
         layout.set_font_description(Some(&d));
-        layout.set_width((300.0 * pango::SCALE as f64) as i32);
-        layout.set_ellipsize(pango::EllipsizeMode::End);
-        layout.set_alignment(pango::Alignment::Right);
         layout.set_text(tip);
-        cr.move_to(sh.x + sh.w - 20.0 - 300.0, sh.y + 55.0);
+        if f64::from(layout.pixel_size().0) > MOST {
+            layout.set_width((MOST * pango::SCALE as f64) as i32);
+            layout.set_ellipsize(pango::EllipsizeMode::End);
+        }
+        let (tw, th) = layout.pixel_size();
+        let (w, h) = (f64::from(tw) + 16.0, f64::from(th) + 8.0);
+        let (x, y, rw, rh) = of;
+        let at = if rw > MOST { x + rw - w } else { x + (rw - w) / 2.0 };
+        let left = sh.x + EDGE;
+        let x = at.clamp(left, (sh.x + sh.w - EDGE - w).max(left));
+        let under = y + rh + 3.0;
+        let y = if under + h <= sh.y + sh.h - 4.0 { under } else { y - h - 3.0 };
+        squircle(cr, x, y, w, h, 9.0, 0.0);
+        let (r, g, b) = crate::theme::mix(pal.bg, pal.fg, 0.14);
+        cr.set_source_rgba(r, g, b, 1.0);
+        let _ = cr.fill();
+        cr.move_to(x + 8.0, y + 4.0);
         let (r, g, b) = pal.fg;
-        cr.set_source_rgba(r, g, b, 0.75);
+        cr.set_source_rgba(r, g, b, 0.9);
         pangocairo::functions::show_layout(cr, &layout);
     }
 
@@ -903,33 +973,55 @@ impl Island {
 
     /// The content the pointer can currently reach, and its origin in surface coordinates.
     fn active(&self) -> Option<(&Content, f64, f64)> {
-        let (sx, sy) = self.surface_pos();
-        let (px, py) = (self.place.0.target - sx, self.place.1.target - sy);
+        // Where it's drawn this frame, not where it's headed: that's what's being pointed at.
+        let sh = self.shape();
         if self.returning() {
             None
         } else if self.t.target > 0.5 {
             let c = self.panel.as_ref()?;
-            let cx = self.panel_cx(self.place.0.target, c.w) - sx;
-            let y = if self.opens_down() { py } else { py + PILL_H - c.h };
-            Some((c, cx - c.w / 2.0, y))
+            let (x, y) = self.panel_at(sh, c);
+            Some((c, x, y))
         } else if self.k.target > 0.5 {
             None
         } else {
             let c = self.compact.as_ref()?;
-            Some((c, px - c.w / 2.0, py))
+            let (x, y) = self.compact_at(sh, c);
+            Some((c, x, y))
         }
     }
 
-    fn hit(&self, (x, y): (f64, f64)) -> Option<usize> {
-        let (c, ox, oy) = self.active()?;
-        let (x, y) = (x - ox, y - oy);
-        // Icons are pushed after their chip, so search top-most first.
-        c.regions.iter().rposition(|r| x >= r.rect.0 && x < r.rect.0 + r.rect.2 && y >= r.rect.1 && y < r.rect.1 + r.rect.3)
+    fn panel_at(&self, sh: Shape, c: &Content) -> (f64, f64) {
+        (sh.cx - c.w / 2.0, if self.opens_down() { sh.y } else { sh.y + sh.h - c.h })
     }
 
-    fn slider_frac(&self, region: usize) -> f64 {
+    fn compact_at(&self, sh: Shape, c: &Content) -> (f64, f64) {
+        let x = if sh.w > c.w { sh.cx - c.w / 2.0 } else { sh.x };
+        let y = match () {
+            // Drawn back, it slides up into the edge with it.
+            _ if self.style.attached() => sh.y - PILL_H * self.k.x.clamp(0.0, 1.0),
+            _ if self.opens_down() => sh.y,
+            _ => sh.y + sh.h - PILL_H,
+        };
+        (x, y)
+    }
+
+    fn hit(&self, (x, y): (f64, f64)) -> Option<usize> {
+        let sh = self.shape();
+        if x < sh.x || x >= sh.x + sh.w || y < sh.y || y >= sh.y + sh.h {
+            return None;
+        }
+        // Not until it has faded in far enough to see.
+        if self.t.target > 0.5 && self.t.x < 0.5 {
+            return None;
+        }
+        let (c, ox, oy) = self.active()?;
+        c.hit((x - ox, y - oy))
+    }
+
+    fn slider_frac(&self, held: &crate::pen::Region) -> f64 {
         let Some((c, ox, _)) = self.active() else { return 0.0 };
-        let r = c.regions[region].rect;
+        // A redraw can move it under the pointer.
+        let r = c.regions.iter().find(|r| r.left == held.left).unwrap_or(held).rect;
         // The region is padded 6px either side so the thumb can reach both ends.
         ((self.pointer.0 - ox - r.0 - 6.0) / (r.2 - 12.0)).clamp(0.0, 1.0)
     }
@@ -970,15 +1062,14 @@ impl Island {
     }
 
     pub fn hovering_target(&self) -> bool {
-        self.hover.is_some()
+        self.hover.and_then(|i| self.active()?.0.regions.get(i)).is_some_and(|r| !r.inert())
     }
 
     pub fn motion(&mut self, at: (f64, f64)) -> Outcome {
         self.pointer = at;
         if self.sliding {
-            let region = self.press.as_ref().and_then(|p| p.region).unwrap_or(0);
-            let action = self.active().map_or(Action::Volume, |(c, ..)| c.regions[region].left.clone());
-            return Outcome::Act(action, self.slider_frac(region));
+            let Some(held) = self.press.as_ref().and_then(|p| p.region.as_ref()) else { return Outcome::None };
+            return Outcome::Act(held.left.clone(), self.slider_frac(held));
         }
         if let Some(p) = &self.press {
             let moved = (at.0 - p.at.0).hypot(at.1 - p.at.1);
@@ -1019,17 +1110,13 @@ impl Island {
 
     pub fn press(&mut self, button: u32) -> Outcome {
         self.open_at = None;
-        let region = self.hit(self.pointer);
+        let region = self.hit(self.pointer).and_then(|i| self.active()?.0.regions.get(i).cloned());
+        let slider = region.clone().filter(|r| button == BTN_LEFT && is_slider(&r.left));
         self.press = Some(Press { button, at: self.pointer, region });
-        if button == BTN_LEFT {
-            if let Some(i) = region {
-                let slider = self.active().map(|(c, ..)| c.regions[i].left.clone())
-                    .filter(is_slider);
-                if let Some(action) = slider {
-                    self.sliding = true;
-                    return Outcome::Act(action, self.slider_frac(i));
-                }
-            }
+        if let Some(held) = slider {
+            self.sliding = true;
+            let frac = self.slider_frac(&held);
+            return Outcome::Act(held.left, frac);
         }
         Outcome::None
     }
@@ -1044,10 +1131,10 @@ impl Island {
             self.finish_drag();
             return Outcome::Moved;
         }
-        let same = self.hit(self.pointer) == p.region;
-        if let (true, Some(i)) = (same, p.region) {
-            let Some((c, ..)) = self.active() else { return Outcome::None };
-            let r = &c.regions[i];
+        if let Some(pressed) = &p.region {
+            let under = self.hit(self.pointer);
+            // Let go off it, or it changed underneath: that's a click on nothing, not on the background.
+            let Some(r) = self.active().and_then(|(c, ..)| c.same(under, pressed)) else { return Outcome::None };
             let action = match p.button {
                 BTN_LEFT => &r.left,
                 BTN_RIGHT => &r.right,
@@ -1076,6 +1163,8 @@ impl Island {
 
     fn finish_drag(&mut self) {
         self.dragging = false;
+        // Somewhere else has different room.
+        self.panel_dirty = true;
         self.suppress = true; // no hover expansion from the drop until the pointer leaves
         let (x, y) = (self.place.0.x, self.place.1.x);
         let home = self.home();
@@ -1096,6 +1185,7 @@ impl Island {
         let home = self.home();
         self.place.0.target = home.0;
         self.place.1.target = home.1;
+        self.panel_dirty = true;
         self.dirty = true;
     }
 
@@ -1103,7 +1193,9 @@ impl Island {
         if self.view == View::Palette {
             return Scroll::Palette;
         }
-        self.hover.and_then(|i| self.active()?.0.regions.get(i)?.scroll).unwrap_or(Scroll::Tags)
+        let on = self.hover.and_then(|i| self.active()?.0.regions.get(i)?.scroll);
+        let rest = if self.t.target > 0.5 && self.overflows() { Scroll::Panel } else { Scroll::Tags };
+        on.unwrap_or(rest)
     }
 
     pub fn next_deadline(&self) -> Option<Instant> {
@@ -1176,7 +1268,7 @@ pub(crate) fn live_bounds(live: &[Live], origin: (f64, f64)) -> Option<Rect> {
 fn surface_size(out: (f64, f64), style: Style) -> (f64, f64) {
     let compact = if style == Style::Split { MAX_COMPACT_W + modules::BUBBLE_W } else { MAX_COMPACT_W };
     let w = (PANEL_W.max(compact) + 2.0 * SHADOW).min(out.0);
-    let h = (MAX_PANEL_H + SHADOW + 12.0).min(out.1);
+    let h = (MAX_PANEL_H + 2.0 * SHADOW + SLACK).min(out.1);
     (w.floor(), h.floor())
 }
 

@@ -77,6 +77,8 @@ pub enum Scroll {
     Tags,
     Volume,
     Palette,
+    /// A panel with more than fits.
+    Panel,
 }
 
 #[derive(Clone, Debug)]
@@ -117,6 +119,43 @@ pub struct Content {
     pub split: Option<f64>,
     /// Where visualizers get painted over it.
     pub live: Vec<Live>,
+}
+
+impl Content {
+    /// What's under a point in its own coordinates. Past its edges is out of reach.
+    pub fn hit(&self, (x, y): (f64, f64)) -> Option<usize> {
+        if y < 0.0 || y >= self.h {
+            return None;
+        }
+        // Icons are pushed after their chip, so search top-most first.
+        self.regions.iter().rposition(|r| x >= r.rect.0 && x < r.rect.0 + r.rect.2 && y >= r.rect.1 && y < r.rect.1 + r.rect.3)
+    }
+
+    /// The region still doing what `pressed` did. Content can change under a press, so
+    /// an index proves nothing: the one at the same index may be another notification.
+    pub fn same(&self, at: Option<usize>, pressed: &Region) -> Option<&Region> {
+        self.regions.get(at?).filter(|r| r.left == pressed.left && r.right == pressed.right && r.middle == pressed.middle)
+    }
+}
+
+impl Region {
+    /// Nothing happens on a click, so it mustn't look as if something would.
+    pub fn inert(&self) -> bool {
+        self.left == Action::None && self.right == Action::None && self.middle == Action::None
+    }
+}
+
+/// Content scrolled up by `by`: only what's in `room` can be pointed at or painted live.
+pub fn scrolled(regions: &mut Vec<Region>, live: &mut Vec<Live>, by: f64, room: f64) {
+    regions.retain_mut(|r| {
+        let (top, bottom) = ((r.rect.1 - by).max(0.0), (r.rect.1 - by + r.rect.3).min(room));
+        (r.rect.1, r.rect.3) = (top, bottom - top);
+        bottom > top
+    });
+    live.retain_mut(|l| {
+        l.rect.1 -= by;
+        l.rect.1 >= 0.0 && l.rect.1 + l.rect.3 <= room
+    });
 }
 
 /// Regions that follow the pointer while it's held.
@@ -397,6 +436,26 @@ fn configure(l: &pango::Layout, s: &str, family: &str, size: f64, weight: Weight
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scrolled_content_takes_the_click_where_its_drawn() {
+        let row = |id: u32, y: f64| Region::new((0.0, y, 100.0, 40.0), 10.0, Action::NoteDismiss(id));
+        let mut regions = vec![row(1, 0.0), row(2, 40.0), row(3, 80.0), row(4, 120.0)];
+        scrolled(&mut regions, &mut Vec::new(), 60.0, 90.0);
+        let surf = ImageSurface::create(Format::ARgb32, 1, 1).unwrap();
+        let c = Content { surf, w: 100.0, h: 90.0, regions, split: None, live: Vec::new() };
+        let on = |y: f64| c.hit((50.0, y)).map(|i| c.regions[i].left.clone());
+        assert_eq!(on(0.0), Some(Action::NoteDismiss(2)));
+        assert_eq!(on(19.9), Some(Action::NoteDismiss(2)));
+        assert_eq!(on(20.0), Some(Action::NoteDismiss(3)));
+        assert_eq!(on(89.9), Some(Action::NoteDismiss(4)));
+        assert_eq!(on(90.0), None, "below the room is out of reach");
+        assert_eq!(on(-1.0), None);
+        assert!(c.regions.iter().all(|r| r.rect.1 >= 0.0 && r.rect.1 + r.rect.3 <= 90.0), "no highlight past the room");
+        // The same index, another notification: not what was pressed.
+        assert!(c.same(Some(0), &row(1, 0.0)).is_none());
+        assert!(c.same(Some(0), &row(2, 0.0)).is_some());
+    }
 
     #[test]
     fn cached_shaping_matches_a_fresh_shape() {

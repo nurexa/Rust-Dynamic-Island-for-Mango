@@ -17,6 +17,8 @@ pub struct Canvas {
     newest: u64,
     size: (f64, f64),
     scale: i32,
+    /// No slot has been given back, so each new one is untouched memory: zero, which is clear.
+    untouched: bool,
     /// What's on screen now.
     shown: Rect,
 }
@@ -42,7 +44,7 @@ impl Canvas {
     pub fn new(shm: &Shm, size: (f64, f64), scale: i32) -> Option<Self> {
         let bytes = (size.0 * size.1).max(1.0) as usize * 4 * scale.pow(2) as usize;
         let pool = SlotPool::new(bytes, shm).ok()?;
-        Some(Canvas { pool, buffers: Vec::new(), drawn: Vec::new(), newest: 0, size, scale, shown: (0.0, 0.0, size.0, size.1) })
+        Some(Canvas { pool, buffers: Vec::new(), drawn: Vec::new(), newest: 0, size, scale, untouched: true, shown: (0.0, 0.0, size.0, size.1) })
     }
 
     pub fn scale(&self) -> i32 {
@@ -52,6 +54,7 @@ impl Canvas {
     pub fn resize(&mut self, size: (f64, f64), scale: i32) {
         if (size, scale) != (self.size, self.scale) {
             (self.size, self.scale) = (size, scale);
+            self.untouched &= self.buffers.is_empty();
             self.buffers.clear();
             self.drawn.clear();
             self.shown = (0.0, 0.0, size.0, size.1);
@@ -79,8 +82,9 @@ impl Canvas {
             Some(i) => i,
             None => {
                 let (buffer, _) = self.pool.create_buffer(bw, bh, stride, wl_shm::Format::Argb8888).ok()?;
-                // A recycled slot can hold anything.
-                self.buffers.push((buffer, (0.0, 0.0, self.size.0, self.size.1)));
+                // A recycled slot can hold anything. Clearing an untouched one would only make it resident.
+                let held = if self.untouched { bounds } else { (0.0, 0.0, self.size.0, self.size.1) };
+                self.buffers.push((buffer, held));
                 self.drawn.push(0);
                 self.buffers.len() - 1
             }

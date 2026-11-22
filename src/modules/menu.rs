@@ -1,5 +1,5 @@
 //! A tray app's menu, which takes over the panel while it's open.
-use super::{MAX_PANEL_H, PAD};
+use super::PAD;
 use crate::{
     bus::MenuEntry,
     pen::{Action, Pen, Region},
@@ -14,9 +14,6 @@ pub fn view(p: &mut Pen, title: &str, entries: &[MenuEntry]) -> f64 {
     p.text(title, 14.0, Weight::Semibold, pal.fg, PAD + 34.0, y + 16.0, p.w - 2.0 * PAD - 40.0);
     y += 40.0;
     for e in entries {
-        if y + 44.0 > MAX_PANEL_H {
-            break;
-        }
         if e.separator {
             p.fill((PAD, y + 4.0, p.w - 2.0 * PAD, 1.0), 0.5, pal.fg, 0.1);
             y += 9.0;
