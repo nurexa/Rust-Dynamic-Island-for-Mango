@@ -2002,6 +2002,13 @@ fn watch_theme(palette: &str, tx: Tx) {
 }
 
 fn main() {
+    // Frames are drawn into a fresh surface each time. glibc raises its mmap threshold after
+    // the first one is freed, so later ones come from the heap and stay resident: 3+ MB
+    // once the panel has opened. Pinned, they go back to the kernel when freed.
+    #[cfg(target_env = "gnu")]
+    unsafe {
+        libc::mallopt(libc::M_MMAP_THRESHOLD, 128 * 1024);
+    }
     if let Some(cmd) = env::args().nth(1) {
         if cmd == "--gpu-sampler" {
             return sys::gpu_sampler();
