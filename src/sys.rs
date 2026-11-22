@@ -123,7 +123,6 @@ fn parse_uptime(src: &str) -> Option<u64> {
 }
 
 /// "4 min", "3 h 12 min", "2 d 5 h".
-#[allow(dead_code)] // until the tile grid draws it
 pub fn uptime_text(secs: u64) -> String {
     let (m, h, d) = (secs / 60 % 60, secs / 3600 % 24, secs / 86400);
     match (d, h) {
@@ -135,7 +134,6 @@ pub fn uptime_text(secs: u64) -> String {
 
 /// What this machine is, read once.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct About {
     pub distro: String,
     pub kernel: String,
@@ -143,8 +141,6 @@ pub struct About {
     pub host: String,
 }
 
-#[allow(dead_code)] // until the tile grid draws it
-#[allow(dead_code)]
 pub fn about() -> &'static About {
     static ABOUT: OnceLock<About> = OnceLock::new();
     ABOUT.get_or_init(|| {
@@ -160,7 +156,6 @@ pub fn about() -> &'static About {
 }
 
 /// PRETTY_NAME, else NAME, from an os-release file.
-#[allow(dead_code)]
 fn os_name(src: &str) -> String {
     let get = |key: &str| src.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix('=')).map(|v| v.trim().trim_matches('"').to_owned());
     get("PRETTY_NAME").or_else(|| get("NAME")).unwrap_or_default()

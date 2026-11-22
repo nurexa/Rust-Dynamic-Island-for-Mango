@@ -19,6 +19,7 @@ mod calendar;
 mod claude;
 mod clock;
 pub mod custom;
+mod dash;
 mod header;
 mod media;
 mod menu;
@@ -42,7 +43,8 @@ pub const MAX_COMPACT_W: f64 = 680.0;
 pub const BUBBLE_W: f64 = 220.0;
 const MIN_COMPACT_W: f64 = 168.0;
 const PAD: f64 = 20.0;
-const PILL_PAD: (f64, f64) = (10.0, 16.0);
+/// Even at both ends, so whatever shows alone sits in the middle.
+const PILL_PAD: (f64, f64) = (13.0, 13.0);
 const PILL_GAP: f64 = 9.0;
 
 /// Everything a module can read.
@@ -91,6 +93,9 @@ const PILL: &[(&str, PillModule)] = &[
 
 const PANEL: &[(&str, PanelModule)] = &[
     ("header", header::panel),
+    ("clock", dash::clock),
+    ("weather", dash::weather),
+    ("about", dash::about),
     ("workspaces", workspaces::panel),
     ("media", media::panel),
     ("calendar", calendar::panel),
@@ -113,74 +118,144 @@ pub const CARD_R: f64 = 18.0;
 /// What a panel module sits on.
 #[derive(Clone, Copy, PartialEq)]
 enum Seat {
-    /// The island itself: the header, and tiles that are cards already.
+    /// The island itself: the header.
     Bare,
-    /// The card that leads: what's playing.
+    /// The tile that leads: what's playing.
     Lead,
     Card,
-    /// Shares one card with its neighbours of the same kind.
+    /// Shares one tile with its neighbours of the same kind.
     Levels,
     Links,
 }
 
-/// Where a module sits, and the spacing it leaves under itself, which a card takes back.
-fn seat(name: &str) -> (Seat, f64) {
+/// Where a module sits, the share of a row it asks for, and the spacing it leaves
+/// under itself, which its tile takes back.
+fn seat(name: &str) -> (Seat, f64, f64) {
     match name {
-        "header" | "stats" => (Seat::Bare, 12.0),
-        "media" => (Seat::Lead, 16.0),
-        "workspaces" => (Seat::Card, 14.0),
-        "audio" | "brightness" | "nightlight" => (Seat::Levels, 2.0),
-        "status" | "bluetooth" => (Seat::Links, 12.0),
-        "timer" => (Seat::Card, 8.0),
-        "wallpaper" => (Seat::Card, 6.0),
-        "calendar" | "notifications" => (Seat::Card, 12.0),
-        _ => (Seat::Card, 4.0),
+        "header" => (Seat::Bare, 1.0, 12.0),
+        "media" => (Seat::Lead, 1.0, 16.0),
+        "clock" => (Seat::Card, 0.22, 0.0),
+        "calendar" => (Seat::Card, 0.48, 12.0),
+        "stats" => (Seat::Card, 0.3, 0.0),
+        "weather" => (Seat::Card, 0.42, 0.0),
+        "about" => (Seat::Card, 0.58, 0.0),
+        "workspaces" => (Seat::Card, 1.0, 14.0),
+        "audio" | "brightness" | "nightlight" => (Seat::Levels, 1.0, 2.0),
+        "status" | "bluetooth" => (Seat::Links, 1.0, 12.0),
+        "timer" => (Seat::Card, 1.0, 8.0),
+        "wallpaper" => (Seat::Card, 1.0, 6.0),
+        "notifications" => (Seat::Card, 1.0, 12.0),
+        _ => (Seat::Card, 1.0, 4.0),
     }
 }
 
-/// The panel's modules in their order, gathered onto cards.
+/// One module drawn into a column `w` wide whose content starts at `x`: modules lay
+/// out between PAD and `p.w - PAD`, so they're moved and narrowed rather than told.
+fn column(name: &str, p: &mut Pen, c: &Ctx, (x, w): (f64, f64), y: f64) -> f64 {
+    let (full, dx, regions, live) = (p.w, x - PAD, p.regions.len(), p.live.len());
+    p.w = w + 2.0 * PAD;
+    p.cr.translate(dx, 0.0);
+    let next = draw_panel(name, p, c, y);
+    p.cr.translate(-dx, 0.0);
+    p.w = full;
+    p.regions[regions..].iter_mut().for_each(|r| r.rect.0 += dx);
+    p.live[live..].iter_mut().for_each(|l| l.rect.0 += dx);
+    next
+}
+
+/// A tile's modules stacked in it from `y`; where its content ends, or None for nothing to show.
+fn tile(group: &[&str], p: &mut Pen, c: &Ctx, x: f64, w: f64, y: f64) -> Option<f64> {
+    let mut end: Option<f64> = None;
+    for name in group {
+        let at = end.map_or(y, |e| e + 2.0);
+        let next = column(name, p, c, (x, w), at);
+        if next > at {
+            end = Some(next - seat(name).2);
+        }
+    }
+    end
+}
+
+/// The panel's modules in their order: each tile asks for a share of a row, rows fill
+/// in order, and what's in a row grows to fill it at the height of its tallest.
 fn layers(p: &mut Pen, c: &Ctx, mut y: f64) -> f64 {
-    let pal = p.pal;
-    // The card being filled: what kind, its top, where its content ends.
-    let mut open: Option<(Seat, f64, f64)> = None;
-    let close = |p: &Pen, (seat, top, end): (Seat, f64, f64)| {
-        let face = if seat == Seat::Lead { pal.tint } else { pal.card };
-        let h = end + CARD.1 - top;
-        p.behind((PAD - CARD.0, top, p.w - 2.0 * (PAD - CARD.0), h), CARD_R, face);
-        top + h + CARD_GAP
-    };
+    // Tiles: runs of Levels or Links share one.
+    let mut tiles: Vec<(Seat, f64, Vec<&str>)> = Vec::new();
     for name in &c.cfg.panel {
-        let (seat, spacing) = seat(name);
-        let joins = matches!(seat, Seat::Levels | Seat::Links) && open.is_some_and(|o| o.0 == seat);
-        let at = match open {
-            Some((.., end)) if joins => end + 2.0,
-            Some((.., end)) => end + CARD.1 + CARD_GAP + if seat == Seat::Bare { 0.0 } else { CARD.1 },
-            None if seat == Seat::Bare => y,
-            None => y + CARD.1,
+        let (seat, share, _) = seat(name);
+        match tiles.last_mut() {
+            Some((s, _, group)) if *s == seat && matches!(seat, Seat::Levels | Seat::Links) => group.push(name),
+            _ => tiles.push((seat, share, vec![name])),
+        }
+    }
+    let left = PAD - CARD.0;
+    let room = p.w - 2.0 * left;
+    let mut i = 0;
+    while i < tiles.len() {
+        let mut row = vec![i];
+        let mut sum = tiles[i].1;
+        while tiles[i].0 != Seat::Bare && i + row.len() < tiles.len() {
+            let next = &tiles[i + row.len()];
+            if next.0 == Seat::Bare || sum + next.1 > 1.001 {
+                break;
+            }
+            sum += next.1;
+            row.push(i + row.len());
+        }
+        i += row.len();
+        if tiles[row[0]].0 == Seat::Bare {
+            if let Some(end) = tile(&tiles[row[0]].2, p, c, PAD, p.w - 2.0 * PAD, y) {
+                y = end + CARD_GAP;
+            }
+            continue;
+        }
+        // Each tile drawn apart, so one with nothing to show can leave its share to the rest.
+        let (regions, live) = (p.regions.len(), p.live.len());
+        let drawn = loop {
+            let total: f64 = row.iter().map(|&t| tiles[t].1).sum();
+            let free = room - CARD_GAP * (row.len() - 1) as f64;
+            let mut x = left;
+            let mut drawn = Vec::new();
+            for &t in &row {
+                let w = free * tiles[t].1 / total;
+                let marks = (p.regions.len(), p.live.len());
+                p.cr.push_group();
+                let end = tile(&tiles[t].2, p, c, x + CARD.0, w - 2.0 * CARD.0, y + CARD.1);
+                let ink = p.cr.pop_group().ok();
+                drawn.push((t, x, w, end, ink, marks, (p.regions.len(), p.live.len())));
+                x += w + CARD_GAP;
+            }
+            if drawn.iter().all(|d| d.3.is_some()) {
+                break drawn;
+            }
+            p.regions.truncate(regions);
+            p.live.truncate(live);
+            row.retain(|&t| drawn.iter().any(|d| d.0 == t && d.3.is_some()));
+            if row.is_empty() {
+                break Vec::new();
+            }
         };
-        let next = draw_panel(name, p, c, at);
-        // Nothing to show takes no room, and no card.
-        if next <= at {
-            continue;
+        let Some(bottom) = drawn.iter().filter_map(|d| d.3).reduce(f64::max) else { continue };
+        let h = bottom + CARD.1 - y;
+        for (t, x, w, end, ink, from, to) in drawn {
+            let face = if tiles[t].0 == Seat::Lead { p.pal.tint } else { p.pal.card };
+            p.surface((x, y, w, h), CARD_R, face);
+            // What's shorter than its row sits in the middle of it.
+            let dy = ((bottom - end.unwrap_or(bottom)) / 2.0).round();
+            p.regions[from.0..to.0].iter_mut().for_each(|r| r.rect.1 += dy);
+            p.live[from.1..to.1].iter_mut().for_each(|l| l.rect.1 += dy);
+            if let Some(ink) = ink {
+                let _ = p.cr.save();
+                p.cr.translate(0.0, dy);
+                if p.cr.set_source(&ink).is_ok() {
+                    let _ = p.cr.paint();
+                }
+                let _ = p.cr.restore();
+            }
         }
-        let end = next - spacing;
-        if joins {
-            open = open.map(|(s, top, _)| (s, top, end));
-            continue;
-        }
-        if let Some(card) = open.take() {
-            y = close(p, card);
-        }
-        if seat == Seat::Bare {
-            y = end + CARD_GAP;
-        } else {
-            open = Some((seat, y, end));
-        }
+        y += h + CARD_GAP;
     }
-    if let Some(card) = open {
-        y = close(p, card);
-    }
-    y + 2.0
+    y - CARD_GAP + 2.0 + 8.0
 }
 
 /// Every built-in module name, pill then panel, for `island doctor`.
@@ -238,8 +313,6 @@ pub fn pill(m: &Model, icons: &mut Icons, cfg: &Config, mon: &str, scale: crate:
         spare = min - w;
         p.clear();
     };
-    // Glass sets it in a capsule, so the same at both ends.
-    let main_w = if style == Style::Glass && !empty { main_w - (PILL_PAD.1 - PILL_PAD.0) } else { main_w };
     let (mut w, mut split) = (main_w, None);
     if !bubble.is_empty() {
         let at = main_w + SPLIT_GAP;

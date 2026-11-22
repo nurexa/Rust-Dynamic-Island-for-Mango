@@ -16,41 +16,52 @@ fn gib(v: f64) -> String {
     format!("{:.1}", v / (1024.0 * 1024.0 * 1024.0))
 }
 
-fn tile(p: &mut Pen, rect: Rect, label: &str, value: &str, sub: &str, bar: Option<f64>) {
+/// One upright meter: its value over it, its name under it.
+fn column(p: &Pen, (x, y, w, h): Rect, label: &str, value: &str, frac: f64) {
     let pal = p.pal;
-    let (x, y, w, h) = rect;
-    p.surface(rect, 14.0, pal.card);
-    p.text(label, 10.5, Weight::Medium, pal.muted, x + 12.0, y + 15.0, -1.0);
-    if !sub.is_empty() {
-        p.right(sub, 11.0, Weight::Medium, pal.muted, x + w - 12.0, y + 15.0);
-    }
-    p.text(value, 17.0, Weight::Semibold, pal.fg, x + 12.0, y + 35.0, w - 24.0);
-    if let Some(frac) = bar {
-        p.meter((x + 12.0, y + h - 11.0, w - 24.0, 5.0), frac.max(0.015));
-    }
+    let mid = x + w / 2.0;
+    let vw = p.width(value, 12.5, Weight::Semibold);
+    p.text(value, 12.5, Weight::Semibold, pal.fg, mid - vw / 2.0, y + 8.0, -1.0);
+    let track = (mid - 7.0, y + 22.0, 14.0, h - 44.0);
+    p.well(track, 7.0);
+    let full = (track.3 * frac.clamp(0.0, 1.0)).max(14.0);
+    p.fill((track.0, track.1 + track.3 - full, 14.0, full), 7.0, pal.accent, 1.0);
+    let lw = p.width(label, 10.5, Weight::Semibold);
+    p.text(label, 10.5, Weight::Semibold, pal.muted, mid - lw / 2.0, y + h - 8.0, -1.0);
 }
 
+/// CPU, GPU and RAM as upright meters with temperatures beside the load, and the
+/// network's rates under them.
 pub fn panel(p: &mut Pen, c: &Ctx, y: f64) -> f64 {
     let s = &c.m.sys;
-    let temp = |t: Option<f64>| t.map_or(String::new(), |t| format!("{t:.0}°"));
-    let mut tiles: Vec<(&str, String, String, Option<f64>)> = Vec::new();
-    if let Some(c) = s.cpu {
-        tiles.push(("CPU", format!("{c:.0}%"), temp(s.cpu_temp), Some(c / 100.0)));
+    let pct = |v: f64, t: Option<f64>| match t {
+        Some(t) => format!("{v:.0}% {t:.0}°"),
+        None => format!("{v:.0}%"),
+    };
+    let wide = p.w - 2.0 * PAD > 240.0;
+    let mut cols: Vec<(&str, String, f64)> = Vec::new();
+    if let Some(v) = s.cpu {
+        cols.push(("CPU", if wide { pct(v, s.cpu_temp) } else { format!("{v:.0}%") }, v / 100.0));
     }
-    if let Some(g) = s.gpu {
-        tiles.push(("GPU", format!("{g:.0}%"), temp(s.gpu_temp), Some(g / 100.0)));
+    if let Some(v) = s.gpu {
+        cols.push(("GPU", if wide { pct(v, s.gpu_temp) } else { format!("{v:.0}%") }, v / 100.0));
     }
     if let Some((used, total)) = s.mem {
-        tiles.push(("RAM", format!("{} GB", gib(used)), format!("of {}", gib(total)), Some(used / total)));
+        cols.push(("RAM", format!("{}G", gib(used)), used / total));
     }
-    tiles.push(("NET", format!("↓ {}", rate(s.rx)), format!("↑ {}", rate(s.tx)), None));
-    let n = tiles.len() as f64;
-    let gap = 8.0;
-    // Out to where the cards reach.
-    let w = (p.w - 2.0 * (PAD - 12.0) - (n - 1.0) * gap) / n;
-    let h = 58.0;
-    for (i, (label, value, sub, bar)) in tiles.iter().enumerate() {
-        tile(p, (PAD - 12.0 + i as f64 * (w + gap), y, w, h), label, value, sub, *bar);
+    let (left, w) = (PAD, p.w - 2.0 * PAD);
+    let h = 150.0;
+    let n = cols.len().max(1) as f64;
+    for (i, (label, value, frac)) in cols.iter().enumerate() {
+        column(p, (left + i as f64 * w / n, y, w / n, h), label, value, *frac);
     }
-    y + h + 12.0
+    let pal = p.pal;
+    let net = |p: &Pen, arrow: &str, v: f64, cy: f64| {
+        let text = format!("{arrow} {}", rate(v));
+        let tw = p.width(&text, 11.5, Weight::Medium);
+        p.text(&text, 11.5, Weight::Medium, pal.muted, left + (w - tw) / 2.0, cy, -1.0);
+    };
+    net(p, "↓", s.rx, y + h + 12.0);
+    net(p, "↑", s.tx, y + h + 28.0);
+    y + h + 38.0
 }

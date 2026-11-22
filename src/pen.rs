@@ -342,31 +342,16 @@ impl<'a> Pen<'a> {
         let _ = self.cr.fill();
     }
 
-    /// A step up from what's under it: a soft drop, a face that catches a little light
-    /// at the top, and a lit rim. Cards, controls and chips are all this.
+    /// Depth is three flat steps: the island, a tile on it, a control on a tile. A tile
+    /// is its own face with a faint rim on top; no drops or gradients, which stack
+    /// into mud through glass and on saturated palettes.
     pub fn surface(&self, rect: Rect, r: f64, face: Rgb) {
         let (x, y, w, h) = rect;
-        let pal = self.pal;
-        let solid = self.solid;
-        // Through glass a drop would show under the face as a dark smudge.
-        if solid >= 1.0 {
-            let drop = if pal.dark { 0.2 } else { 0.07 };
-            for (grow, a) in [(1.5, 0.45), (0.5, 1.0)] {
-                self.fill((x - grow / 2.0, y + 1.0, w + grow, h + grow), r + grow / 2.0, (0.0, 0.0, 0.0), drop * a);
-            }
-        }
-        let lit = mix(face, pal.edge, if pal.dark { 0.09 } else { 0.1 });
-        let shade = cairo::LinearGradient::new(0.0, y, 0.0, y + h);
-        shade.add_color_stop_rgba(0.0, lit.0, lit.1, lit.2, solid);
-        shade.add_color_stop_rgba(1.0, face.0, face.1, face.2, solid);
-        self.pill(x, y, w, h, r);
-        if self.cr.set_source(&shade).is_ok() {
-            let _ = self.cr.fill();
-        }
-        let rim = cairo::LinearGradient::new(0.0, y, 0.0, y + h);
-        let (er, eg, eb) = pal.edge;
-        rim.add_color_stop_rgba(0.0, er, eg, eb, if pal.dark { 0.42 } else { 0.9 });
-        rim.add_color_stop_rgba(1.0, er, eg, eb, 0.07);
+        self.fill(rect, r, face, self.solid);
+        let rim = cairo::LinearGradient::new(0.0, y, 0.0, y + h.min(2.0 * r));
+        let (er, eg, eb) = self.pal.edge;
+        rim.add_color_stop_rgba(0.0, er, eg, eb, if self.pal.dark { 0.16 } else { 0.5 });
+        rim.add_color_stop_rgba(1.0, er, eg, eb, 0.0);
         self.pill(x + 0.5, y + 0.5, w - 1.0, h - 1.0, r - 0.5);
         self.cr.set_line_width(1.0);
         if self.cr.set_source(&rim).is_ok() {
@@ -374,23 +359,15 @@ impl<'a> Pen<'a> {
         }
     }
 
-    /// What can be pressed.
+    /// What can be pressed: a veil of ink over whatever it sits on, so it's the same
+    /// step on the island, on a tile, through glass or in the light.
     pub fn raised(&self, rect: Rect, r: f64) {
-        self.surface(rect, r, self.pal.raised);
+        self.fill(rect, r, self.pal.fg, if self.pal.dark { 0.09 } else { 0.07 });
     }
 
     /// A step down: tracks, fields and whatever holds a set of things.
     pub fn well(&self, rect: Rect, r: f64) {
-        let (x, y, w, h) = rect;
-        self.fill(rect, r, self.pal.well, self.solid);
-        let shade = cairo::LinearGradient::new(0.0, y, 0.0, y + h);
-        shade.add_color_stop_rgba(0.0, 0.0, 0.0, 0.0, if self.pal.dark { 0.4 } else { 0.14 });
-        shade.add_color_stop_rgba(0.6, 0.0, 0.0, 0.0, 0.0);
-        self.pill(x + 0.5, y + 0.5, w - 1.0, h - 1.0, r - 0.5);
-        self.cr.set_line_width(1.0);
-        if self.cr.set_source(&shade).is_ok() {
-            let _ = self.cr.stroke();
-        }
+        self.fill(rect, r, self.pal.fg, if self.pal.dark { 0.1 } else { 0.08 });
     }
 
     /// A surface under what's already drawn, for a card that's as tall as what's on it.

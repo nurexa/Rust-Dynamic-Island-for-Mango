@@ -32,7 +32,10 @@ pub fn pill(p: &mut Pen, c: &Ctx, mut x: f64) -> f64 {
         let extra = windows.len() - shown;
         let more = (extra > 0).then(|| format!("+{extra}"));
         let more_w = more.as_ref().map_or(0.0, |s| p.width(s, 11.0, Weight::Medium) + 4.0);
-        let w = 8.0 + digit + 8.0 + shown as f64 * 22.0 + more_w + if shown > 0 || more.is_some() { 4.0 } else { 0.0 };
+        // Only the active chip shows its padding: the rest keep little, so the row
+        // looks as wide as it is and the pill stays centred on it.
+        let pad = if tag.is_active { 8.0 } else { 3.0 };
+        let w = pad + digit + pad + shown as f64 * 22.0 + more_w + if shown > 0 || more.is_some() { pad / 2.0 } else { 0.0 };
         if x + w + 90.0 > MAX_COMPACT_W {
             break;
         }
@@ -45,10 +48,10 @@ pub fn pill(p: &mut Pen, c: &Ctx, mut x: f64) -> f64 {
             _ if tag.is_active => (pal.on_accent, pal.on_accent),
             _ => (pal.muted, pal.fg),
         };
-        p.text(&label, 12.5, Weight::Bold, digit_c, x + 8.0, cy, -1.0);
+        p.text(&label, 12.5, Weight::Bold, digit_c, x + pad, cy, -1.0);
         p.regions.push(Region::new(rect, 12.5, Action::View { tag: tag.index, mon: c.mon.into() })
             .right(Action::MoveTo(tag.index)));
-        let mut ix = x + 8.0 + digit + 6.0;
+        let mut ix = x + pad + digit + 6.0;
         for win in windows.iter().take(shown) {
             let tone = if win.is_urgent { pal.error } else { icon_c };
             p.app(win.appid.as_deref().unwrap_or(""), 18.0, ix, cy - 9.0, tone, 1.0);
@@ -63,9 +66,9 @@ pub fn pill(p: &mut Pen, c: &Ctx, mut x: f64) -> f64 {
         if let Some(s) = more {
             p.text(&s, 11.0, Weight::Medium, digit_c, ix + 2.0, cy, -1.0);
         }
-        x += w + 3.0;
+        x += w + 5.0;
     }
-    x - 3.0
+    x - 5.0
 }
 
 fn chips(p: &mut Pen, c: &Ctx, mon: &wm::Monitor, mut y: f64) -> f64 {

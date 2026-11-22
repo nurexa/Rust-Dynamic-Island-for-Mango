@@ -274,23 +274,20 @@ const MIDDLE: f64 = 190.0;
 const CHIP: f64 = 24.0;
 const GAP: f64 = 6.0;
 
-/// A chip: an icon, words or both, on a tint of `tint`. Returns its width.
-fn chip(p: &mut Pen, x: f64, icon: Option<&'static str>, words: &str, tint: Option<crate::theme::Rgb>, most: f64) -> f64 {
+/// A chip: an icon, words or both, on the one control step every chip shares.
+/// Returns its width.
+fn chip(p: &mut Pen, x: f64, icon: Option<&'static str>, words: &str, most: f64) -> f64 {
     let y = (crate::style::BAR - CHIP) / 2.0;
     let lead = if icon.is_some() { 20.0 } else { 0.0 };
     let words_w = if words.is_empty() { 0.0 } else { p.width(words, 12.0, Weight::Semibold).min(most) };
     let gap = if icon.is_some() && words.is_empty() { -4.0 } else { 0.0 };
     let w = 8.0 + lead + gap + words_w + 8.0;
-    match tint {
-        Some(c) => p.surface((x, y, w, CHIP), 8.0, c),
-        None => p.raised((x, y, w, CHIP), 8.0),
-    }
-    let tone = if tint.is_some() { p.pal.on_accent } else { p.pal.fg };
+    p.raised((x, y, w, CHIP), CHIP / 2.0);
     if let Some(name) = icon {
-        p.icon(name, true, 16.0, x + 8.0, y + 4.0, tone, 1.0);
+        p.icon(name, true, 16.0, x + 8.0, y + 4.0, p.pal.fg, 1.0);
     }
     if !words.is_empty() {
-        p.text(words, 12.0, Weight::Semibold, tone, x + 8.0 + lead, y + CHIP / 2.0, most);
+        p.text(words, 12.0, Weight::Semibold, p.pal.fg, x + 8.0 + lead, y + CHIP / 2.0, most);
     }
     w
 }
@@ -301,12 +298,12 @@ pub fn glass(p: &mut Pen, c: &Ctx, width: f64) {
     let bar = crate::style::BAR;
     let (top, cy) = ((bar - CHIP) / 2.0, bar / 2.0);
     let target = |p: &mut Pen, x: f64, w: f64, left: Action, right: Action| {
-        p.regions.push(Region::new((x, top, w, CHIP), 8.0, left).right(right));
+        p.regions.push(Region::new((x, top, w, CHIP), CHIP / 2.0, left).right(right));
     };
 
     let (mut x, limit) = (GAP, width / 2.0 - MIDDLE);
     if !cfg.tools.is_empty() {
-        let w = chip(p, x, Some("search"), "", None, 0.0);
+        let w = chip(p, x, Some("search"), "", 0.0);
         target(p, x, w, Action::Cmd("open".into()), Action::Open("settings"));
         x += w + GAP;
     }
@@ -316,7 +313,7 @@ pub fn glass(p: &mut Pen, c: &Ctx, width: f64) {
         let name = app_name(appid);
         let words = p.width(&name, 12.0, Weight::Semibold).min(150.0_f64.min(limit - x - 36.0));
         let w = 8.0 + 20.0 + words + 8.0;
-        p.raised((x, top, w, CHIP), 8.0);
+        p.raised((x, top, w, CHIP), CHIP / 2.0);
         p.app(appid, 16.0, x + 8.0, top + 4.0, pal.fg, 1.0);
         p.text(&name, 12.0, Weight::Semibold, pal.fg, x + 28.0, cy, words + 1.0);
         target(p, x, w, Action::Focus(win.id), Action::None);
@@ -336,19 +333,19 @@ pub fn glass(p: &mut Pen, c: &Ctx, width: f64) {
     let (mut end, limit) = (width - GAP, width / 2.0 + MIDDLE);
     if has(&cfg.tools, "power") {
         end -= CHIP + 8.0;
-        let w = chip(p, end, Some("power_settings_new"), "", None, 0.0);
+        let w = chip(p, end, Some("power_settings_new"), "", 0.0);
         target(p, end, w, Action::Open("power"), Action::Open("settings"));
         end -= GAP;
     }
     end -= CHIP + 8.0;
-    let w = chip(p, end, Some("settings"), "", None, 0.0);
+    let w = chip(p, end, Some("settings"), "", 0.0);
     target(p, end, w, Action::Open("settings"), Action::None);
     end -= GAP;
     if has(&cfg.pill, "clock") {
         let now = clock::format(&cfg.clock);
         let w = p.width(&now, 12.0, Weight::Semibold) + 16.0;
         end -= w;
-        chip(p, end, None, &now, Some(pal.accent), w);
+        chip(p, end, None, &now, w);
         target(p, end, w, if cfg.sidebar.is_empty() { Action::Pin } else { Action::Sidebar }, Action::Pin);
         end -= GAP;
     }
