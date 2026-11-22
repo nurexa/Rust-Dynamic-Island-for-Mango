@@ -264,7 +264,7 @@ fn rule(value: &str) -> Option<Rule> {
                 r.by_day = v.split(',').filter_map(|d| {
                     let at = d.len().checked_sub(2)?;
                     let (nth, code) = (d.get(..at)?, d.get(at..)?);
-                    let nth = if nth.is_empty() { 0 } else { nth.trim_start_matches('+').parse().ok().filter(|n: &i64| n.abs() <= 53)? };
+                    let nth = if nth.is_empty() { 0 } else { nth.trim_start_matches('+').parse().ok().filter(|n: &i64| (-53..=53).contains(n))? };
                     Some((nth, day_code(code)?))
                 }).collect();
             }
@@ -515,7 +515,7 @@ fn event(lines: &[String]) -> Option<Event> {
 fn duration_days(v: &str) -> Option<i64> {
     let body = v.trim_start_matches('+').strip_prefix('P')?;
     let (n, unit) = body.split_at(body.find(['W', 'D'])?);
-    Some(n.parse::<i64>().ok()?.min(MAX_SPAN) * if unit.starts_with('W') { 7 } else { 1 })
+    Some(n.parse::<i64>().ok()?.clamp(0, MAX_SPAN) * if unit.starts_with('W') { 7 } else { 1 })
 }
 
 fn expand(events: &[Event], (from, to): (i64, i64), local: &TimeZone) -> Vec<Occurrence> {
@@ -670,6 +670,8 @@ mod tests {
         let (a, b) = (day(2026, 11, 1), day(2026, 12, 1));
         for body in ["DTSTART:99999999T999999", "DTSTART:2026\u{e9}121", "DTSTART:20261131", "DTSTART:20261101\r\nRRULE:FREQ=DAILY;INTERVAL=99999999999999999999",
                      "DTSTART:20261101\r\nRRULE:FREQ=MONTHLY;BYMONTHDAY=31;BYMONTH=2;COUNT=999999999", "DTSTART:20261101\r\nRRULE:FREQ=WEEKLY;BYDAY=,\u{e9},-9223372036854775808MO",
+                     "DTSTART:20261101\r\nRRULE:FREQ=MONTHLY;BYDAY=-9223372036854775808MO",
+                     "DTSTART:20261101\r\nDURATION:P-9223372036854775807W",
                      "DTSTART:20261101\r\nDURATION:P99999999999999W", "DTSTART;TZID=\"x:y\":20261101T100000"] {
             found(&event(body), a, b);
         }
