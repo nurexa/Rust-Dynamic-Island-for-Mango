@@ -13,9 +13,12 @@ terminal = "kitty"                # for apps that need one
 screenshot_dir = "~/Pictures"
 web_search = "https://duckduckgo.com/?q={}"   # the search's last row; empty hides it
 
-# Every part is optional: leave a name out and it's gone.
+# Every part is optional: leave a name out and it's gone. The panel is a grid of tiles:
+# small ones (clock, calendar, stats, weather, about) share a row in the order given,
+# a tile with nothing to show gives its room to its neighbours. Just "header" and
+# "audio" make the lightest panel.
 pill = ["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]
-panel = ["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "nightlight", "status", "bluetooth"]
+panel = ["header", "clock", "calendar", "stats", "weather", "about", "media", "timer", "notifications", "audio", "brightness", "nightlight", "status", "bluetooth"]
 tools = ["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "bluetooth", "wallpaper", "power"]
 sidebar = ["media", "calendar", "controls", "notifications"]   # [] leaves it out
 visualizer = ["bars", "wave", "ring"]   # run only while music plays and one is on screen; [] is off

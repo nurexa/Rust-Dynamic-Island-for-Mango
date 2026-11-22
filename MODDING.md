@@ -7,11 +7,13 @@ you want. After a config change, run `island reload`; nothing needs a restart.
 ## 1. Turn things on and off
 
 Copy [`examples/config.toml`](examples/config.toml) to `~/.config/island/config.toml`.
-Leave a name out of a list and that part is gone.
+Leave a name out of a list and that part is gone. The panel lays its tiles out as a grid:
+`clock`, `calendar`, `stats`, `weather` and `about` are narrow and share a row with their
+neighbours in the order given; the rest take a row each. `weather` needs a `[weather] location`.
 
 ```toml
 pill = ["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]
-panel = ["header", "workspaces", "media", "timer", "notifications", "stats", "audio", "brightness", "nightlight", "status", "bluetooth"]
+panel = ["header", "clock", "calendar", "stats", "weather", "about", "media", "timer", "notifications", "audio", "brightness", "nightlight", "status", "bluetooth"]
 tools = ["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "bluetooth", "wallpaper", "power"]
 sidebar = ["media", "calendar", "controls", "notifications"]   # [] leaves it out
 visualizer = ["bars", "wave", "ring"]                           # [] is off
@@ -223,6 +225,10 @@ pub fn pill(p: &mut Pen, c: &Ctx, x: f64) -> f64 {
     x + w
 }
 ```
+
+A panel module is the same with y: it draws between `PAD` and `p.w - PAD` from the y it's
+given and returns where the next starts. Its tile, and its width in the grid, come from
+`seat()` in `src/modules/mod.rs`: give it a share under 1.0 there and it sits beside others.
 
 Register it in `src/modules/mod.rs`, then add `"title"` to `pill` in your config:
 

@@ -76,7 +76,8 @@ doctor` says so.
 |---|---|---|
 | Bar | Waybar | Hover the pill |
 | Sidebar | eww and swaync control centres | `island sidebar`, `Super+Alt+S`, or the frame's right border |
-| Calendar | gsimplecal, calendar scripts | The sidebar, with events from local .ics files |
+| Calendar | gsimplecal, calendar scripts | The panel and sidebar, with events from local .ics files |
+| Dashboard tiles | fastfetch, weather and btop widgets | The panel: big clock, weather (open-meteo, opt-in), system info, CPU/GPU/RAM meters |
 | Music visualizers | cava widgets | The pill, panel and sidebar, while music plays |
 | App search | rofi `drun` | `island open apps` |
 | Run prompt | rofi `run` | `island open run` |
