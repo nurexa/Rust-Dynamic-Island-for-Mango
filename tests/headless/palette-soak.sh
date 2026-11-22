@@ -1,7 +1,7 @@
 #!/bin/bash
 # Open and close the palette and show notifications many times: anything that grows
 # here grows for weeks on a real desktop.
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
 BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$R/bus PATH=$H/shim:$PATH
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }

@@ -1,5 +1,5 @@
 #!/bin/bash
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; V=$H/vp
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 mons(){ mmsg get all-monitors | python3 -c "import json,sys;print(' '.join(f\"{m['name']}{'*' if m['active'] else ''}:{m['active_tags']}\" for m in json.load(sys.stdin)['monitors']))"; }
 rm -f $XDG_RUNTIME_DIR/island/state; $H/isl

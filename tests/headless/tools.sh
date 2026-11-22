@@ -1,7 +1,7 @@
 #!/bin/bash
 # Every palette tool, driven by a virtual keyboard. systemctl and nmcli are shims, so
 # nothing here can touch the real machine, and clipboard history is a private copy.
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 px(){ python3 $H/px.py "$@"; }
 BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}

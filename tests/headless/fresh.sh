@@ -1,6 +1,6 @@
 #!/bin/bash
 # Fresh headless mango with quiet windows: kitty on tag 1, pavucontrol on tag 3.
-H=$(dirname "$(readlink -f "$0")")
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}
 [ -f $H/run/env ] && source $H/run/env
 # island, pointer, bus, player, mock, compositor: everything the last run started.
 # A stale pid file can name someone else's process by now: only kill what carries this runtime dir.

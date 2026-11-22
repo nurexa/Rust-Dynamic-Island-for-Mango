@@ -1,8 +1,8 @@
 #!/bin/bash
-H=$(dirname "$(readlink -f "$0")")
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}
 # Rehearse install.sh on a copy of the mango config, against a real Waybar running
 # in the test compositor. Everything it kills is matched on this compositor's socket.
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; R=$XDG_RUNTIME_DIR
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; R=$XDG_RUNTIME_DIR
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 layers(){ mmsg get all-layers | python3 -c "import json,sys;print(sorted(l['name'] for l in json.load(sys.stdin)['layers'] if l['layer'] in ('top','bottom')))"; }
 winy(){ mmsg get all-clients | python3 -c "import json,sys;print([c['y'] for c in json.load(sys.stdin)['clients'] if c['appid']=='kitty'][0])"; }

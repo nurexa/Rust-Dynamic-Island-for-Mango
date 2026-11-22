@@ -1,5 +1,5 @@
 #!/bin/bash
-H=$(dirname "$(readlink -f "$0")")
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}
 # isl [start|stop]: run the debug island inside the headless session.
 source $H/run/env
 P=$XDG_RUNTIME_DIR/island.pid
@@ -9,6 +9,6 @@ BIN=${ISLAND_BIN:-$(readlink -f $H/../../target/release/island)}
 # Never the real system bus: BlueZ there has someone's headphones on it. bluetooth.sh
 # points ISLAND_SYSTEM_BUS at a fake; everywhere else there's simply none.
 # Its HOME is the run's: your palette, calendars and caches would change what the tests see.
-HOME=$XDG_RUNTIME_DIR/home XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$XDG_RUNTIME_DIR/xdg} XDG_STATE_HOME=$XDG_RUNTIME_DIR DBUS_SYSTEM_BUS_ADDRESS=${ISLAND_SYSTEM_BUS:-unix:path=/nonexistent} nohup setsid $BIN > $XDG_RUNTIME_DIR/island.log 2>&1 &
+USER=you HOSTNAME=island HOME=$XDG_RUNTIME_DIR/home XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$XDG_RUNTIME_DIR/xdg} XDG_STATE_HOME=$XDG_RUNTIME_DIR DBUS_SYSTEM_BUS_ADDRESS=${ISLAND_SYSTEM_BUS:-unix:path=/nonexistent} nohup setsid $BIN > $XDG_RUNTIME_DIR/island.log 2>&1 &
 echo $! > $P
 sleep 1

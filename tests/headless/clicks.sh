@@ -1,5 +1,5 @@
 #!/bin/bash
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; V=$H/vp
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 tags(){ mmsg get all-monitors | python3 -c "import json,sys;print(json.load(sys.stdin)['monitors'][0]['active_tags'])"; }
 focused(){ mmsg get focusing-client | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('appid'))"; }

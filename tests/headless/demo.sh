@@ -4,7 +4,7 @@
 # titles, a mock player, sample clipboard text and no network name, so nothing personal ends up
 # in it. Animations run at a tenth of real speed and the capture is sped back up, because grim
 # is far slower than the spring. Needs ffmpeg, awww and matugen.
-H=$(dirname "$(readlink -f "$0")")
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}
 ROOT=$(readlink -f "$H/../..")
 $H/fresh.sh 1 >/dev/null; rm -f $H/run/island/state
 source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR

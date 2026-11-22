@@ -1,5 +1,5 @@
 #!/bin/bash
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; V=$H/vp
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 layers(){ mmsg get all-layers | python3 -c "import json,sys;print(sorted(l['monitor'] for l in json.load(sys.stdin)['layers'] if l['name']=='island'))"; }
 alive(){ kill -0 $(cat $XDG_RUNTIME_DIR/island.pid) 2>/dev/null && echo alive || echo dead; }

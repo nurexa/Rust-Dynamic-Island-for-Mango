@@ -1,7 +1,7 @@
 #!/bin/bash
 # Claude Code: hooks in settings.json, the pill, permission cards and done notes.
 # The hook is fed events by hand, the way Claude Code would run it.
-H=$(dirname "$(readlink -f "$0")"); source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}; source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
 ok(){ if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi; }
 # The pill's width: its background is darker and less blue than the desktop around it.
 pillw(){ magick "$1" -crop 1920x1+0+35 -fx "b<0.055" -format "%[fx:round(mean*w)]" info:; }
@@ -39,7 +39,10 @@ answer 1145
 ok "closing the card leaves it to the terminal" "$(wc -c < $R/cl.out)" 0
 ev PermissionRequest "$ASK" | $BIN claude-hook > $R/cl.out & sleep 1
 ev PostToolUse ',"tool_name":"Bash"' | $BIN claude-hook; sleep .6; grim -g "560,0 800x120" $H/run/cl3.png
-ok "answered in the terminal: the card goes" "$(light $H/run/cl3.png 250 31)" dark
+# The card is darker than the desktop behind it, and the narrower pill no longer reaches under its corner.
+body(){ magick "$1" -crop 20x10+200+60 -format "%[fx:mean<0.07?1:0]" info: | sed 's/1/card/;s/0/none/'; }
+ok "a permission card has a body" "$(body $H/run/cl2.png)" card
+ok "answered in the terminal: the card goes" "$(body $H/run/cl3.png)" none
 # From a terminal you're looking at, the terminal asks and the hook returns at once.
 kitty sh -c "printf '{\"hook_event_name\":\"PermissionRequest\",\"session_id\":\"s2\",\"cwd\":\"/x\",\"tool_name\":\"Bash\"}' | $BIN claude-hook > $R/cl5.out; echo done >> $R/cl5.out" & sleep 2.5
 ok "a focused terminal gets no card" "$(cat $R/cl5.out)" done

@@ -1,5 +1,5 @@
 #!/bin/bash
-H=$(dirname "$(readlink -f "$0")")
+H=${ISLAND_HEADLESS:-$(dirname "$(readlink -f "$0")")}
 # Headless mango for tests. DBUS_SESSION_BUS_ADDRESS must stay unset: see memory note.
 N=${1:-1}
 if grep -qF " $H/run/" /proc/self/mountinfo; then
