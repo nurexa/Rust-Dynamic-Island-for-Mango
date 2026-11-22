@@ -8,6 +8,7 @@ listener and Waybar's custom modules spawn helpers.
 
     bench/run.py                       3 runs of 30 s idle, prints JSON
     WAYBAR_CONFIG=... bench/run.py     another Waybar config
+    BASELINE=old/island bench/run.py   an older island in the same rotation
 """
 import json, os, shutil, statistics, subprocess, sys, time
 from pathlib import Path
@@ -183,12 +184,17 @@ def main():
         mb_env["LD_LIBRARY_PATH"] = MANGOBAR_LIBS
     # The island as it installs, whatever this machine's config says.
     island_env = dict(env, XDG_CONFIG_HOME=str(run / "nocfg"))
-    envs = {"mangobar": mb_env, "island": island_env}
+    envs = {"mangobar": mb_env, "island": island_env, "island_before": island_env}
+    # Absolute memory moves with the session, so an older build is only comparable side by side.
+    if os.environ.get("BASELINE"):
+        commands["island_before"] = [os.environ["BASELINE"]]
+        order.append("island_before")
+        runs["island_before"] = []
     for i in range(RUNS):
         # Rotate the order so no bar always gets the warm page cache.
         at = i % len(order)
         for name in order[at:] + order[:at]:
-            r = measure(name, commands[name], envs.get(name, env))
+            r = measure(name.split("_")[0], commands[name], envs.get(name, env))
             runs[name].append(r)
             print(name, r, file=sys.stderr, flush=True)
 
@@ -260,7 +266,7 @@ def main():
         h.terminate()
     subprocess.run(f'for f in {H}/run/*pid; do kill $(cat "$f") 2>/dev/null; done', shell=True)
 
-    version = subprocess.run(["waybar", "--version"], capture_output=True, text=True).stdout.strip()
+    version = subprocess.run(["waybar", "--version"], capture_output=True, text=True).stdout.strip().splitlines()[-1]  # it logs first
     median = {n: {k: statistics.median(r[k] for r in rs) for k in rs[0]} for n, rs in runs.items()}
     median["island"]["morph_cpu_ms"] = round(morph_ms, 1)
     if dunst:

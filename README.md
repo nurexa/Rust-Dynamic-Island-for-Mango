@@ -67,38 +67,46 @@ your session, and they should stay small, separate programs.
 
 ## Benchmarks
 
-Island, Waybar 0.15.0 and [mangobar](https://github.com/mangowm/mangobar) 0.2.2 (stock config),
-in one private headless Mango with the same windows and apps. Each number is the median of
-5 runs, with the order rotated so none gets the warm cache, and child processes count.
-Lower is better, and the best is bold.
+The island against Waybar 0.16.0 (stock config), measured 2026-11-22 in one private headless
+Mango with the same windows and apps. Each number is the median of 5 runs, with the order
+rotated so none gets the warm cache, and child processes count. Lower is better, and the
+better of those two is bold. [mangobar](https://github.com/mangowm/mangobar) 0.2.2 was last
+measured on Nov 2 and is shown for reference, not ranked.
 
-| | Waybar | mangobar | Island |
+| | Waybar | Island | mangobar, on Nov 2 |
 |---|---|---|---|
-| Real memory (PSS) | 34.2 MB | 18.6 MB | **12.5 MB** |
-| Resident memory (RSS) | 70.8 MB | 40.6 MB | **39.7 MB** |
-| CPU per workspace switch | 29 ms | **0.5 ms** | **0.5 ms** |
-| Bar startup | 102 ms | 50 ms | **32 ms** |
-| Idle wakeups per second | **3.1** | 12.0 | 9.7 |
-| Idle CPU | 0–0.03% | 0–0.07% | 0% |
-| Binary size | 2.5 MB | **0.3 MB** | 3.4 MB |
+| Real memory (PSS) | 37.0 MB | **15.2 MB** | 18.6 MB |
+| Resident memory (RSS) | 59.7 MB | **35.9 MB** | 40.6 MB |
+| CPU per workspace switch | n/a | 0.5 ms | 0.5 ms |
+| Bar startup | 98 ms | **33 ms** | 50 ms |
+| Idle wakeups per second | **0.8** | 4.7 | 12.0 |
+| Idle CPU, across all runs | 0–0.03% | 0–0.03% | 0–0.07% |
+| Binary size | 3.8 MB | **3.7 MB** | 0.3 MB |
 
-The island and mangobar tie on drawing a workspace change. That cost is counted in 10 ms
-clock ticks over 40 switches, so 0.25 ms is the resolution. mangobar is a 0.3 MB C program
-that only draws a bar, dynamically linked to more libraries (65 against the island's 40);
-the island is also the launcher, notifications, clipboard and screenshots, and still uses
-the least memory. Idle wakeups swing with audio-server events between sessions (the island
-read 4.0 in an earlier run), so treat that row as a range. Idle CPU is a tie between all
-three. Waybar's switch cost includes the helper commands its custom workspace modules run,
-not the separate script that feeds them. Opening the
-palette adds about 4 MB while it's open, and the first Waybar run was a cold start
-(201 ms), which is why the median matters. A busy desktop moves these numbers, so rerun it
-on yours.
+Waybar's stock config has no module for Mango's workspaces, so it redraws nothing on a switch
+and that cell is n/a. The island's switch cost is counted in 10 ms clock ticks over 40
+switches, so 0.25 ms is the resolution.
 
-The previous run, against Waybar plus dunst and rofi (both since uninstalled on the test
-machine), had 47 MB for the Waybar and dunst stack against 13.6 MB, and 41 ms for rofi
-against 8 ms for the island's launcher.
+Absolute memory moves with what else is running, so compare within a session. The island's
+Nov 2 build read 12.5 MB that day, beside mangobar's 18.6 MB. The same build read
+14.8 MB in this session, so everything added since costs 0.4 MB and
+0.6 idle wakeups a second.
 
-Run `bench/run.py` to reproduce this; raw results are in `bench/results.json`.
+Each style at rest (median of 3):
+
+| | pill | frame | notch | bar | split | minimal |
+|---|---|---|---|---|---|---|
+| PSS, MB | 14.8 | 14.7 | 14.6 | 14.5 | 14.7 | 12.9 |
+| CPU per switch, ms | 0.75 | 0.75 | 0.5 | 0.75 | 0.5 | 0.5 |
+
+While music plays, the pill's bars cost 0.6% of one core, the panel's wave and ring 1.4%,
+and the sidebar's 1.6% (fed synthetic audio). Paused, they cost nothing measurable and
+capture stops. The sidebar takes about 4 MB while it's open and the palette about 3 MB;
+the launcher is on screen 10 ms after its key. A busy desktop moves these numbers,
+so rerun it on yours.
+
+Run `bench/run.py` to reproduce this (`BASELINE=path/to/older/island` adds an older build);
+raw results are in `bench/results.json`.
 
 ## Install
 

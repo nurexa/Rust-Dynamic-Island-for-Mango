@@ -213,66 +213,59 @@ footer { margin-top: 72px; font-size: .92rem; color: var(--ink-soft); }
   </section>
 
   <section id="benchmarks">
-    <h2>Lightest on memory, and it does more</h2>
-    <p class="lede">The island against Waybar and mangobar, on the same compositor with the same windows and apps. Lower is better. mangobar only draws a bar; the island is also your launcher, notifications, clipboard and screenshots.</p>
+    <h2>Light on memory, and it does more</h2>
+    <p class="lede">The island against Waybar, on the same compositor with the same windows and apps. Lower is better. mangobar was last measured on Nov 2 and is here for reference: it only draws a bar, while the island is also your launcher, notifications, clipboard and screenshots.</p>
     <div class="card">
       <div class="legend" aria-label="Legend">
         <span><i style="background:var(--series-island)"></i>Island</span>
-        <span><i style="background:var(--series-mangobar)"></i>mangobar</span>
         <span><i style="background:var(--series-waybar)"></i>Waybar</span>
+        <span><i style="background:var(--series-mangobar)"></i>mangobar, on Nov 2</span>
       </div>
       <div class="metric">
         <h3>Real memory (PSS)</h3>
         <p>Memory shared with other apps is split fairly between them.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(36.5% - 26px)" data-tip="Island: 12.5 MB"></div><span class="value">12.5 MB</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(54.4% - 39px)" data-tip="mangobar: 18.6 MB"></div><span class="value">18.6 MB</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 34.2 MB"></div><span class="value">34.2 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(41.1% - 30px)" data-tip="Island: 15.2 MB"></div><span class="value">15.2 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 37.0 MB"></div><span class="value">37.0 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(50.3% - 36px)" data-tip="mangobar: 18.6 MB"></div><span class="value">18.6 MB</span></div></div>
       </div>
       <div class="metric">
         <h3>Resident memory (RSS)</h3>
         <p>Everything mapped in, shared libraries and fonts included.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(56.1% - 40px)" data-tip="Island: 39.7 MB"></div><span class="value">39.7 MB</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(57.3% - 41px)" data-tip="mangobar: 40.6 MB"></div><span class="value">40.6 MB</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 70.8 MB"></div><span class="value">70.8 MB</span></div></div>
-      </div>
-      <div class="metric">
-        <h3>CPU per workspace switch</h3>
-        <p>What each switch costs the bar. mangobar wins this one.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(1.7% - 1px)" data-tip="Island: 0.5 ms"></div><span class="value">0.5 ms</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(1.7% - 1px)" data-tip="mangobar: 0.5 ms"></div><span class="value">0.5 ms</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 29 ms"></div><span class="value">29 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(60.1% - 43px)" data-tip="Island: 35.9 MB"></div><span class="value">35.9 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 59.7 MB"></div><span class="value">59.7 MB</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(68.0% - 49px)" data-tip="mangobar: 40.6 MB"></div><span class="value">40.6 MB</span></div></div>
       </div>
       <div class="metric">
         <h3>Bar startup</h3>
         <p>From launch to first frame on screen.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(31.4% - 23px)" data-tip="Island: 32 ms"></div><span class="value">32 ms</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(49.0% - 35px)" data-tip="mangobar: 50 ms"></div><span class="value">50 ms</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 102 ms"></div><span class="value">102 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(33.7% - 24px)" data-tip="Island: 33 ms"></div><span class="value">33 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(100.0% - 72px)" data-tip="Waybar: 98 ms"></div><span class="value">98 ms</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(51.0% - 37px)" data-tip="mangobar: 50 ms"></div><span class="value">50 ms</span></div></div>
       </div>
       <div class="metric">
         <h3>Idle wakeups per second</h3>
-        <p>How often it wakes up doing nothing.</p>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(80.8% - 58px)" data-tip="Island: 9.7 per second"></div><span class="value">9.7</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(100.0% - 72px)" data-tip="mangobar: 12.0 per second"></div><span class="value">12.0</span></div></div>
-        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(25.8% - 19px)" data-tip="Waybar: 3.1 per second"></div><span class="value">3.1</span></div></div>
+        <p>How often it wakes up doing nothing. Waybar wins this one.</p>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Island</span><div class="track"><div class="bar island" style="width:calc(39.2% - 28px)" data-tip="Island: 4.7"></div><span class="value">4.7</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>Waybar</span><div class="track"><div class="bar waybar" style="width:calc(6.7% - 5px)" data-tip="Waybar: 0.8"></div><span class="value">0.8</span></div></div>
+        <div class="bar-row" style="grid-template-columns:118px 1fr"><span>mangobar</span><div class="track"><div class="bar mangobar" style="width:calc(100.0% - 72px)" data-tip="mangobar: 12.0"></div><span class="value">12.0</span></div></div>
       </div>
     </div>
     <div class="card">
       <table>
         <caption>Everything we measured</caption>
-        <thead><tr><th scope="col">Median of 5 runs</th><th scope="col">Waybar</th><th scope="col">mangobar</th><th scope="col">Island</th></tr></thead>
+        <thead><tr><th scope="col">Median of 5 runs</th><th scope="col">Waybar</th><th scope="col">Island</th><th scope="col">mangobar, on Nov 2</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Real memory (PSS)</th><td>34.2 MB</td><td>18.6 MB</td><td>12.5 MB</td></tr>
-          <tr><th scope="row">Resident memory (RSS)</th><td>70.8 MB</td><td>40.6 MB</td><td>39.7 MB</td></tr>
-          <tr><th scope="row">CPU per workspace switch</th><td>29 ms</td><td>0.5 ms</td><td>0.5 ms</td></tr>
-          <tr><th scope="row">Bar startup</th><td>102 ms</td><td>50 ms</td><td>32 ms</td></tr>
-          <tr><th scope="row">Idle wakeups per second</th><td>3.1</td><td>12.0</td><td>9.7</td></tr>
-          <tr><th scope="row">Idle CPU, across all runs</th><td>0–0.03%</td><td>0–0.07%</td><td>0%</td></tr>
-          <tr><th scope="row">Linked shared libraries</th><td>117</td><td>65</td><td>40</td></tr>
-          <tr><th scope="row">Binary size</th><td>2.5 MB</td><td>0.3 MB</td><td>3.4 MB</td></tr>
+          <tr><th scope="row">Real memory (PSS)</th><td>37.0 MB</td><td>15.2 MB</td><td>18.6 MB</td></tr>
+          <tr><th scope="row">Resident memory (RSS)</th><td>59.7 MB</td><td>35.9 MB</td><td>40.6 MB</td></tr>
+          <tr><th scope="row">CPU per workspace switch</th><td>n/a</td><td>0.5 ms</td><td>0.5 ms</td></tr>
+          <tr><th scope="row">Bar startup</th><td>98 ms</td><td>33 ms</td><td>50 ms</td></tr>
+          <tr><th scope="row">Idle wakeups per second</th><td>0.8</td><td>4.7</td><td>12.0</td></tr>
+          <tr><th scope="row">Idle CPU, across all runs</th><td>0–0.03%</td><td>0–0.03%</td><td>0–0.07%</td></tr>
+          <tr><th scope="row">Binary size</th><td>3.8 MB</td><td>3.7 MB</td><td>0.3 MB</td></tr>
+          <tr><th scope="row">Linked shared libraries</th><td>117</td><td>40</td><td>65</td></tr>
         </tbody>
       </table>
-      <p class="fine">Measured in a private headless Mango: Waybar 0.15.0 with a daily-driver config (workspace pills, media, audio, tray, network, clock), mangobar 0.2.2 with its stock config, and the island with its defaults, each started fresh with the order rotated between runs. Child processes count, including the island's pactl listener. Waybar's switch cost includes the helper commands its custom workspace modules run, but not the separate script that feeds them. The island and mangobar tie on redrawing a workspace change; that cost is counted in 10 ms clock ticks over 40 switches, so 0.25 ms is the resolution. mangobar has by far the smallest binary, but the island uses the least memory and starts fastest while also replacing your launcher, notifications and clipboard. An earlier run against Waybar plus dunst and rofi put the island's launcher at 8 ms against rofi's 41 ms. A busy desktop moves all of these, so run <code>bench/run.py</code> on yours.</p>
+      <p class="fine">Measured 2026-11-22 in a private headless Mango: Waybar 0.16.0 with its stock config and the island with its defaults, each started fresh with the order rotated between runs. Child processes count. Stock Waybar has no module for Mango's workspaces, so it has no switch cost to compare. Absolute memory moves between sessions: the island's Nov 2 build read 12.5 MB beside mangobar that day and 14.8 MB in this session, so everything added since costs 0.4 MB. The six styles rest between 12.9 and 14.8 MB. While music plays the visualizers cost 0.6% of a core on the pill and up to 1.6% in the panel or sidebar, and nothing measurable when it's paused. A busy desktop moves all of these, so run <code>bench/run.py</code> on yours.</p>
     </div>
   </section>
 
