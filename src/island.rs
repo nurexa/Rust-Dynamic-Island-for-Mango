@@ -23,6 +23,8 @@ use smithay_client_toolkit::{
 };
 use std::time::{Duration, Instant};
 
+/// A view switch's crossfade, seconds.
+const SWAP: f64 = 0.16;
 const SHADOW: f64 = 26.0;
 /// Opening runs a little past the panel's height; that needs somewhere to go.
 const SLACK: f64 = 24.0;
@@ -191,6 +193,10 @@ pub struct Island {
     pub view: View,
     compact: Option<Content>,
     panel: Option<Content>,
+    /// What a view switch replaced, fading out under the new one, and since when.
+    leaving: Option<(Content, Instant)>,
+    /// The view and launcher tool shown, so a switch between them can crossfade.
+    kind: (View, Option<usize>),
     /// How far down the panel is scrolled, the height of the whole of it, and which view that's for.
     scroll: f64,
     total: f64,
@@ -249,7 +255,7 @@ impl Island {
             pinned, tucked, toast: false, typing: false, raised: false, hovered: false, open: false, suppress: false, press: None,
             dragging: false, sliding: false, pointer: (0.0, 0.0), hover: None, pin_at: None,
             open_at: None, close_at: None, flash_until: None, view: View::Main,
-            compact: None, panel: None, scroll: 0.0, total: 0.0, scrolled_view: View::Main,
+            compact: None, panel: None, leaving: None, kind: (View::Main, None), scroll: 0.0, total: 0.0, scrolled_view: View::Main,
             compact_dirty: true, panel_dirty: true,
             frame_pending: false, drawn_at: None, dirty: true, live_dirty: false,
         })
@@ -448,6 +454,11 @@ impl Island {
         home(self.out, self.style)
     }
 
+    /// How far a view switch's crossfade has got: 1 when there's none.
+    fn swap(&self) -> f64 {
+        self.leaving.as_ref().map_or(1.0, |(_, at)| (at.elapsed().as_secs_f64() * self.time_scale / SWAP).min(1.0))
+    }
+
     fn body_alpha(&self, k: f64) -> f64 {
         let a = lerp(0.97, 0.72, k);
         if self.alpha < 1.0 { self.alpha * a / 0.97 } else { a }
@@ -616,6 +627,10 @@ impl Island {
             if (self.panel_dirty && self.wants_panel() && !self.returning()) || self.panel.is_none() {
                 self.panel_dirty = false;
                 let first = self.panel.is_none();
+                // Another view while it's open: the old one fades out under the new.
+                let kind = (self.view.clone(), m.palette.as_ref().map(|p| p.current));
+                let switched = !first && self.kind != kind && self.t.x > 0.5;
+                self.kind = kind;
                 if first || self.scrolled_view != self.view {
                     self.scroll = 0.0;
                     self.scrolled_view = self.view.clone();
@@ -639,10 +654,14 @@ impl Island {
                     }
                     self.ph.target = c.h;
                     self.pw.target = c.w;
+                    if switched {
+                        self.leaving = self.panel.take().map(|old| (old, Instant::now()));
+                    }
                     self.panel = Some(c);
                 }
             }
         } else if self.panel.take().is_some() {
+            self.leaving = None;
             // Nothing shows it until the next hover; give the memory back.
             self.view = View::Main;
             self.panel_dirty = true;
@@ -673,6 +692,13 @@ impl Island {
             s.step(dt);
         }
         let mut animating = !self.springs_settled();
+        if self.leaving.is_some() {
+            if self.swap() >= 1.0 {
+                self.leaving = None;
+                self.dirty = true;
+            }
+            animating = true;
+        }
         if self.returning() && self.t.settled() && self.t.target == 0.0 {
             // All the way into the bottom border: carry on from the top one.
             self.flipped = false;
@@ -753,7 +779,9 @@ impl Island {
         }
 
         let a_compact = if self.flipped { 0.0 } else { (1.0 - smooth(t / 0.45)) * (1.0 - k) };
-        let a_panel = smooth((t - 0.32) / 0.68);
+        // Content waits for the shape to have mostly grown, so nothing shows sliced by
+        // its edges, then settles in from the edge it grows out of.
+        let a_panel = smooth((t - 0.5) / 0.5);
         let morphing = animating && (t > 0.0 && t < 1.0 || k > 0.0 && k < 1.0);
         // What scrolls runs under the rounded corners.
         let clipped = morphing || (a_panel > 0.003 && self.overflows());
@@ -799,9 +827,27 @@ impl Island {
                     }
                 }
             };
+            let swap = self.swap();
+            let _ = cr.save();
+            // Never wider than the shape it's in: it grows with it, out of the edge it opens from.
+            let fit = (sh.w / c.w).min(1.0);
+            let grow = fit.max(0.86);
+            let a_panel = a_panel * smooth((fit - 0.86) / 0.14);
+            if grow < 1.0 {
+                let edge = if self.opens_down() { sh.y } else { sh.y + sh.h };
+                cr.translate(sh.cx, edge);
+                cr.scale(grow, grow);
+                cr.translate(-sh.cx, -edge);
+            }
+            if let Some((old, _)) = self.leaving.as_ref().filter(|_| swap < 1.0) {
+                let (ox, oy) = self.panel_at(sh, old);
+                // Out quicker than the new one comes in, so they barely overlap.
+                blit(cr, old, ox, oy, old.w, old.h.min(sh.h + 8.0), a_panel * (1.0 - smooth(self.swap() / 0.55)));
+            }
             visualize(true);
-            blit(cr, c, x, y, c.w, c.h.min(sh.h + 8.0), a_panel);
+            blit(cr, c, x, y, c.w, c.h.min(sh.h + 8.0), a_panel * smooth((self.swap() - 0.3) / 0.7));
             visualize(false);
+            let _ = cr.restore();
         }
         if clipped {
             let _ = cr.restore();
