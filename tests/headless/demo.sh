@@ -10,11 +10,15 @@ $H/fresh.sh 1 >/dev/null; rm -f $H/run/island/state
 source $H/run/env; V=$H/vp; R=$XDG_RUNTIME_DIR
 stop(){ for f in $R/*pid; do for p in $(cat "$f"); do grep -qzxF "XDG_RUNTIME_DIR=$R" /proc/$p/environ 2>/dev/null && kill $p; done; done; }
 
-# The owner's two wallpapers: their cached stills and thumbnails stand in for the videos.
+# The owner's two wallpapers: the stills the site already publishes (docs/wall) and their cached
+# thumbnails stand in for the videos.
 WC=${WALL_CACHE:-$HOME/.cache/wallpapers}
 A=arona-sunset-flower-blue-archive-moewalls-com.mp4; B=azure-horizon.1920x1080.mp4
 mkdir -p $R/walls $R/thumbs $R/cfg/island
-for f in $A $B; do : > $R/walls/$f; cp $WC/$f.thumb.jpg $R/thumbs/$f.thumb.jpg; cp $WC/$f.still.png $R/$f.png; done
+for p in "$A arona" "$B azure"; do set -- $p
+  : > $R/walls/$1; cp $WC/$1.thumb.jpg $R/thumbs/$1.thumb.jpg
+  ffmpeg -nostdin -v error -y -i $ROOT/docs/wall/$2.jpg -vf scale=1920:1080:flags=lanczos $R/$1.png
+done
 # matugen as the real theme does it: same template, private output.
 cat > $R/matugen.toml <<E
 [config]
@@ -80,7 +84,7 @@ F=$R/frames; rm -rf $F; mkdir -p $F
 (n=0; while :; do grim -c -t ppm $F/$(printf %05d $n).ppm 2>/dev/null; n=$((n+1)); done) &
 CAP=$!
 START=$(date +%s.%N)
-SL_X0=1000; SL_X1=1160; VOL_Y=341; BRI_Y=373   # slider rows, measured from a screenshot (CALIB=1 takes one)
+SL_X0=930; SL_X1=1170; VOL_Y=625; BRI_Y=657   # slider rows, measured from a screenshot (CALIB=1 takes one)
 pos(){ read -r _ _ X Y < <(grep pos $R/island/state); X=${X%.*}; Y=${Y%.*}; }
 
 sleep 5                                   # the pill, windows running behind it
@@ -113,7 +117,7 @@ SECS=$(python3 -c "import time;print(time.time()-$START)")
 N=$(ls $F | wc -l); echo "$N frames"
 # A second of capture is a tenth of a second on screen.
 FPS=$(python3 -c "print($N/($SECS/10))")
-CROP="fps=24,crop=1240:760:340:0,scale=960:-2:flags=lanczos"
+CROP="fps=24,crop=1240:800:340:0,scale=960:-2:flags=lanczos"
 ffmpeg -nostdin -v error -y -framerate "$FPS" -pattern_type glob -i "$F/*.ppm" \
   -vf "$CROP,split[a][b];[a]palettegen=max_colors=256:stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle" \
   "$ROOT/docs/demo.gif"
