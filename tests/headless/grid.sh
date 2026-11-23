@@ -40,8 +40,21 @@ echo '{"current":{"temperature_2m":4.6,"weather_code":61,"is_day":1},"daily":{"t
 $BIN reload; sleep 2.5
 $V move 960 22; sleep 1.3; grim $R/gr5.png; $V move 1500 900
 ok "weather configured: it asked open-meteo, through the shim" "$(grep -c '^curl .*api.open-meteo.com' $R/shim.log)" 1
-ok "weather configured: the tile shares row two with about" "$([ "$(px $R/gr5.png 916 360)" != "$(px $R/gr5.png 700 360)" ] && [ "$(px $R/gr5.png 700 360)" = "$(px $R/gr5.png 1100 360)" ] && echo shared)" shared
-w=$(px $R/gr5.png 694 400 span); a=$(px $R/gr5.png 927 400 span)
+ok "weather configured: the tile shares row two with about" "$([ "$(px $R/gr5.png 928 360)" != "$(px $R/gr5.png 700 360)" ] && [ "$(px $R/gr5.png 700 360)" = "$(px $R/gr5.png 1100 360)" ] && echo shared)" shared
+w=$(px $R/gr5.png 800 490 span); a=$(px $R/gr5.png 1100 490 span)
 ok "weather configured: and the two share a top and a height" "$w" "$a"
 rm -f $R/forecast.json
+
+# The pomodoro tile: no weather now, so the ring (centre 810, 410) shares row two with about.
+# A left click starts a timer (the ring's top fills with the accent, blue here), a right click stops it.
+printf 'panel = ["header", "clock", "calendar", "stats", "timer", "weather", "about"]\n' > $CFG
+$BIN reload; sleep 2.5
+blue(){ set -- $(px "$@"); [ $(( $3 - $1 )) -gt 50 ] && echo blue || echo grey; }
+$V move 960 22; sleep 1.3; grim $R/gr6.png
+ok "timer tile: the ring starts idle" "$(blue $R/gr6.png 810 368)" grey
+$V click 810 410 l; sleep 2.5; grim $R/gr7.png
+ok "timer tile: a click on the ring starts a timer" "$(blue $R/gr7.png 810 368)" blue
+$V click 810 410 r; sleep 1.5; grim $R/gr8.png
+ok "timer tile: a right click stops it" "$(blue $R/gr8.png 810 368)" grey
+$V move 1500 900; sleep 1
 unset XDG_CONFIG_HOME; $H/isl
