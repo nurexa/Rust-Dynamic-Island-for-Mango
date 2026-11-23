@@ -8,12 +8,12 @@ you want. After a config change, run `island reload`; nothing needs a restart.
 
 Copy [`examples/config.toml`](examples/config.toml) to `~/.config/island/config.toml`.
 Leave a name out of a list and that part is gone. The panel lays its tiles out as a grid:
-`clock`, `calendar`, `stats`, `weather` and `about` are narrow and share a row with their
+`clock`, `calendar`, `stats`, `weather`, `about` and `timer` are narrow and share a row with their
 neighbours in the order given; the rest take a row each. `weather` needs a `[weather] location`.
 
 ```toml
 pill = ["media", "workspaces", "claude", "timer", "network", "privacy", "battery", "clock"]
-panel = ["header", "clock", "calendar", "stats", "weather", "about", "media", "timer", "notifications", "audio", "brightness", "nightlight", "status", "bluetooth"]
+panel = ["header", "clock", "calendar", "stats", "weather", "about", "timer", "media", "notifications", "audio", "brightness", "nightlight", "status", "bluetooth"]
 tools = ["apps", "run", "windows", "files", "clipboard", "screenshot", "wifi", "bluetooth", "wallpaper", "power"]
 sidebar = ["media", "calendar", "controls", "notifications"]   # [] leaves it out
 visualizer = ["bars", "wave", "ring"]                           # [] is off
